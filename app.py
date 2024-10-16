@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
+import matplotlib
+mtplotlib.use('Agg')
 
 # 한글 폰트 설정
 font_path = "C:\\Users\\User\\AppData\\Local\\Microsoft\\Windows\\Fonts\\nanumBarunGothic.ttf"  # 폰트 경로
