@@ -16,7 +16,7 @@ st.title('기업 매출 분석')
 # 데이터 로드 (GitHub의 raw 파일 URL을 사용)
 @st.cache_data
 def load_data():
-    url = "https://raw.githubusercontent.com/your-username/your-repo/main/your_data.xlsx"
+    url = "https://raw.githubusercontent.com/yulechesnuts/KDT_Dataset/main/DATASET_PASTE.xlsx"
     return pd.read_excel(url)
 
 df = load_data()
