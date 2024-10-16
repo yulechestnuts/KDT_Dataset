@@ -1,23 +1,17 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.font_manager as fm
-from matplotlib import font_manager, rc
+import matplotlib
 
-# 한글 폰트 설정 (나눔고딕 사용)
-font_url = "https://github.com/moonspam/NanumSquare/raw/master/NanumSquareR.ttf"
-font_name = "NanumSquare"
-font_manager.fontManager.addfont(font_url)
-plt.rcParams['font.family'] = font_name
 
 # Streamlit 앱 제목
-st.title('기업 매출 분석')
+st.title('KDT 매출분석')
 
 # 데이터 로드 (GitHub의 raw 파일 URL을 사용)
 @st.cache_data
 def load_data():
-    url = "https://raw.githubusercontent.com/yulechesnuts/KDT_Dataset/main/DATASET_PASTE.xlsx"
-    return pd.read_excel(url)
+    file_path = r"C:\Users\User\Documents\GitHub\KDT_Dataset\data.xlsx"
+    return pd.read_excel(file_path)
 
 df = load_data()
 
