@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib
-
+import matplotlib.font_manager as fm
+from matplotlib import font_manager, rc
 
 # Streamlit 앱 제목
 st.title('KDT 매출분석')
@@ -10,8 +10,8 @@ st.title('KDT 매출분석')
 # 데이터 로드 (GitHub의 raw 파일 URL을 사용)
 @st.cache_data
 def load_data():
-    file_path = r"C:\Users\User\Documents\GitHub\KDT_Dataset\data.xlsx"
-    return pd.read_excel(file_path)
+    url = "https://raw.githubusercontent.com/yulechesnuts/KDT_Dataset/main/DATASET_PASTE.xlsx"
+    return pd.read_excel(url)
 
 df = load_data()
 
