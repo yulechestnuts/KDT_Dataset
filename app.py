@@ -13,7 +13,7 @@ def log_debug(message):
 @st.cache_data
 def load_data():
     log_debug("Starting data load process...")
-    url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/DATASET_PASTE.xlsx?raw=true"
+    url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/data_paste.xlsx?raw=true"
     log_debug(f"Attempting to fetch data from: {url}")
     
     try:
