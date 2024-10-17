@@ -1,3 +1,4 @@
+# 패키지 재설치를 위한 주석 추가
 streamlit==1.31.0
 pandas==2.2.0
 matplotlib==3.7.1
