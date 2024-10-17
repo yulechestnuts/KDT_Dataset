@@ -1,8 +1,12 @@
+import os
+os.system('pip install matplotlib')
+import matplotlib.pyplot as plt
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 from matplotlib import font_manager, rc
+
 
 # Streamlit 앱 제목
 st.title('KDT 매출분석')
