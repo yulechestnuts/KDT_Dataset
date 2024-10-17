@@ -3,3 +3,4 @@ pandas
 matplotlib
 openpyxl
 numpy
+Python_version < 3.12
