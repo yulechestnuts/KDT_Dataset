@@ -1,13 +1,27 @@
 import os
-import pandas as pd  # Pandas를 최상단에 import
+import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
 import requests
+import matplotlib.font_manager as fm
 
-# 필요 패키지 설치 (로컬 환경에서만 사용)
-os.system('pip install matplotlib')
+# 한글 폰트 설정
+plt.rcParams['font.family'] = 'Malgun Gothic'  # 기본 한글 폰트
+plt.rcParams['axes.unicode_minus'] = False  # 마이너스 기호 깨짐 방지
 
 # Streamlit 앱 제목
+st.set_page_config(page_title='KDT 매출분석', layout='wide')
+
+# CSS를 사용하여 한글 폰트 스타일 적용
+st.markdown("""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap');
+        html, body, [class*="css"] {
+            font-family: 'Noto Sans KR', sans-serif;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
 st.title('KDT 매출분석')
 
 # 데이터 로드 (GitHub의 raw 파일 URL 사용)
@@ -24,7 +38,7 @@ def load_data():
         return df
     else:
         st.error(f"파일을 불러올 수 없습니다. 상태 코드: {response.status_code}")
-        return pd.DataFrame()  # 빈 데이터프레임 반환
+        return pd.DataFrame()
 
 df = load_data()
 
@@ -44,7 +58,7 @@ if filtered_data.empty:
 else:
     company_data = filtered_data.iloc[0]
     years = ['2021년', '2022년', '2023년', '2024년']
-    sales = {year: company_data[year] // 100000000 for year in years}  # 억 원 단위로 변환
+    sales = {year: company_data[year] // 100000000 for year in years}
 
     total_sales = df[years].sum()
     market_share = {year: (company_data[year] / total_sales[year]) * 100 if total_sales[year] != 0 else 0 for year in years}
@@ -54,16 +68,35 @@ else:
     # 매출 추이 시각화
     st.subheader(f"{selected_company}의 매출 추이")
     fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # DPI 설정 추가
+    plt.rcParams['figure.dpi'] = 300
+    plt.rcParams['savefig.dpi'] = 300
+    
     ax.plot(list(sales.keys()), list(sales.values()), marker='o', linestyle='-', color='royalblue')
     ax.set_xlabel('연도')
     ax.set_ylabel('매출 (억 원)')
     ax.set_title(f"{selected_company} 연도별 매출")
+    
+    # 그래프 스타일 개선
+    ax.grid(True, linestyle='--', alpha=0.7)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    
     st.pyplot(fig)
+    plt.close()  # 메모리 관리를 위해 figure 닫기
 
     # 상세 정보 출력
     st.subheader("상세 정보")
-    for year in years:
-        st.write(f"{year}의 매출은 {sales[year]}억 원, 시장 점유율 {market_share[year]:.2f}%, 순위 {company_ranks[year]}위")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        for year in years[:2]:
+            st.write(f"{year}의 매출은 {sales[year]:,}억 원, 시장 점유율 {market_share[year]:.2f}%, 순위 {company_ranks[year]}위")
+    
+    with col2:
+        for year in years[2:]:
+            st.write(f"{year}의 매출은 {sales[year]:,}억 원, 시장 점유율 {market_share[year]:.2f}%, 순위 {company_ranks[year]}위")
 
     # 누적 시장 점유율 및 순위 계산
     total_company_sales = sum(company_data[years])
@@ -83,10 +116,17 @@ else:
     ax.set_ylabel('순위')
     ax.set_title(f"{selected_company} 연도별 순위 변화")
     ax.invert_yaxis()
+    
+    # 그래프 스타일 개선
+    ax.grid(True, linestyle='--', alpha=0.7)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
 
     max_rank = max(company_ranks.values())
     min_rank = min(company_ranks.values())
     ax.set_ylim(max_rank + 1, max(0, min_rank - 1))
     ax.set_yticks(range(max(1, min_rank - 1), max_rank + 2))
     ax.yaxis.set_major_locator(plt.MaxNLocator(integer=True))
+    
     st.pyplot(fig)
+    plt.close()  # 메모리 관리를 위해 figure 닫기
