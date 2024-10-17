@@ -4,66 +4,75 @@ import pandas as pd
 import numpy as np
 import streamlit as st
 import altair as alt
+import io
+import traceback
 
-# 기본 streamlit 설정
-st.set_page_config(
-    page_title='KDT 매출분석',
-    layout='centered',
-    initial_sidebar_state='expanded'
-)
-
-# CSS 스타일링
-st.markdown("""
-    <style>
-        .main > div {
-            max-width: 1000px;
-            padding: 1rem 2rem;
-        }
-        .metric-container {
-            background-color: #f8f9fa;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            margin: 0.5rem 0;
-        }
-    </style>
-""", unsafe_allow_html=True)
-
-st.title('KDT 매출분석')
+# 디버그 정보를 기록하는 함수
+def log_debug(message):
+    st.sidebar.text(message)
 
 # 데이터 로드 함수
 @st.cache_data
 def load_data():
+    log_debug("Starting data load process...")
     try:
         url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/DATASET_PASTE.xlsx?raw=true"
+        log_debug(f"Attempting to fetch data from: {url}")
         response = requests.get(url, timeout=10)
         
         if response.status_code == 200:
-            with open("temp.xlsx", "wb") as f:
-                f.write(response.content)
-            
-            df = pd.read_excel("temp.xlsx", engine="openpyxl")
-            if os.path.exists("temp.xlsx"):
-                os.remove("temp.xlsx")
-            return df
-            
+            log_debug("Successfully fetched data from URL")
+            try:
+                log_debug("Attempting to read Excel file...")
+                df = pd.read_excel(io.BytesIO(response.content), engine="openpyxl")
+                log_debug("Excel file successfully loaded")
+                return df
+            except Exception as excel_error:
+                log_debug(f"Error reading Excel file: {excel_error}")
+                log_debug("Full traceback:")
+                log_debug(traceback.format_exc())
+                log_debug("Attempting to load as CSV...")
+                try:
+                    df = pd.read_csv(io.StringIO(response.content.decode('utf-8')))
+                    log_debug("CSV file successfully loaded")
+                    return df
+                except Exception as csv_error:
+                    log_debug(f"Error reading CSV file: {csv_error}")
+                    log_debug("Full traceback:")
+                    log_debug(traceback.format_exc())
+                    return pd.DataFrame()
         else:
-            st.error(f"데이터를 가져올 수 없습니다. 상태 코드: {response.status_code}")
+            log_debug(f"Unable to fetch data. Status code: {response.status_code}")
             return pd.DataFrame()
             
     except Exception as e:
-        st.error(f"데이터 로드 중 오류가 발생했습니다: {str(e)}")
+        log_debug(f"Error in load_data function: {str(e)}")
+        log_debug("Full traceback:")
+        log_debug(traceback.format_exc())
         return pd.DataFrame()
 
 # 데이터 로드
 df = load_data()
 
 if df.empty:
-    st.error("데이터를 불러올 수 없습니다.")
+    st.error("데이터를 불러올 수 없습니다. 사이드바의 디버그 정보를 확인해주세요.")
     st.stop()
 
 # 데이터 전처리
+log_debug("Starting data preprocessing...")
 df.columns = df.columns.str.strip()
 df = df[df['기관명'] != '합계']
+
+# 데이터 타입 확인 및 변환
+year_columns = ['2021년', '2022년', '2023년', '2024년']
+for col in year_columns:
+    log_debug(f"Processing column: {col}")
+    log_debug(f"Original data type: {df[col].dtype}")
+    if df[col].dtype == 'object':
+        df[col] = pd.to_numeric(df[col].str.replace(',', ''), errors='coerce')
+    log_debug(f"Final data type: {df[col].dtype}")
+
+log_debug("Data preprocessing completed")
 
 # 사이드바 설정
 with st.sidebar:
