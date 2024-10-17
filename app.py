@@ -43,17 +43,12 @@ def load_data():
             
             # 3. Last resort: Save as binary and try to read
             log_debug("Attempting to save and read as binary...")
-            with open("temp_data", "wb") as f:
-                f.write(response.content)
             try:
-                df = pd.read_excel("temp_data", engine="openpyxl")
-                log_debug("Successfully read from binary file")
-                os.remove("temp_data")
+                df = pd.read_excel(io.BytesIO(response.content), engine="openpyxl")
+                log_debug("Successfully read from binary data")
                 return df
             except Exception as binary_error:
-                log_debug(f"Error reading binary file: {binary_error}")
-                if os.path.exists("temp_data"):
-                    os.remove("temp_data")
+                log_debug(f"Error reading from binary data: {binary_error}")
         
         else:
             log_debug(f"Unable to fetch data. Status code: {response.status_code}")
