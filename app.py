@@ -8,14 +8,17 @@ import streamlit as st
 try:
     import matplotlib.pyplot as plt
     import matplotlib.font_manager as fm
-    
+
     plt.rcParams['font.family'] = 'Malgun Gothic'
     plt.rcParams['axes.unicode_minus'] = False
-except:
+
+except ModuleNotFoundError as e:
+    print(f"Module not found: {e}. Trying fallback setup.")
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     plt.rcParams['font.family'] = 'DejaVu Sans'
+
 
 # 기본 streamlit 설정
 st.set_page_config(
