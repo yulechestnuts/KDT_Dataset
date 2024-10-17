@@ -32,6 +32,7 @@ def main():
         <style>
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
+        .stAxis text {writing-mode: horizontal-tb !important;}
         </style>
         """, unsafe_allow_html=True)
 
@@ -46,6 +47,9 @@ def main():
 
     for col in year_columns:
         df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', ''), errors='coerce')
+
+    # '누적매출' 계산
+    df['누적매출'] = df[year_columns].sum(axis=1)
 
     # 사이드바에서 검색 기능 활성화
     with st.sidebar:
@@ -75,10 +79,13 @@ def main():
             ranks = {year: df[year].rank(ascending=False, method='min') for year in year_columns}
             company_ranks = {year: int(ranks[year][company_data.name]) for year in year_columns}
 
+            # 연도별 매출액 그래프 제목
+            st.subheader("연도별 매출액")
+
             # 매출 추이 그래프
             sales_df = pd.DataFrame({'Year': year_columns, 'Sales': list(sales.values())})
             chart = alt.Chart(sales_df).mark_line(point=True).encode(
-                x=alt.X('Year', title='연도'),
+                x=alt.X('Year', title='연도', axis=alt.Axis(labelAngle=0)),
                 y=alt.Y('Sales', title='매출 (억 원)'),
                 tooltip=['Year', alt.Tooltip('Sales', format='.1f')]
             ).properties(width=600, height=400)
@@ -103,10 +110,13 @@ def main():
 
             st.write("")  # 그래프 사이 여백 추가
 
+            # 연도별 순위 변화 그래프 제목
+            st.subheader("연도별 순위 변화")
+
             # 순위 변화 그래프
             rank_df = pd.DataFrame({'Year': year_columns, 'Rank': [company_ranks[year] for year in year_columns]})
             rank_chart = alt.Chart(rank_df).mark_line(point=True).encode(
-                x=alt.X('Year', title='연도'),
+                x=alt.X('Year', title='연도', axis=alt.Axis(labelAngle=0)),
                 y=alt.Y('Rank', scale=alt.Scale(reverse=True), title='순위'),
                 tooltip=['Year', 'Rank']
             ).properties(width=600, height=400)
@@ -117,8 +127,8 @@ def main():
             st.altair_chart(rank_chart + rank_text, use_container_width=True)
 
             # 누적 통계
-            total_company_sales = sum(company_data[year_columns])
-            total_market_sales = sum(total_sales)
+            total_company_sales = company_data['누적매출']
+            total_market_sales = df['누적매출'].sum()
             cumulative_market_share = (total_company_sales / total_market_sales) * 100 if total_market_sales else 0
             cumulative_rank = df['누적매출'].rank(ascending=False, method='min')[company_data.name]
 
