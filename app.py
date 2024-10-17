@@ -27,12 +27,14 @@ def format_number(number):
 def main():
     st.set_page_config(layout="wide")  # 전체 페이지 레이아웃을 넓게 설정
 
-    # 좌측 시작 메시지 숨기기
+    # 좌측 시작 메시지 숨기기 및 스타일 조정
     st.markdown("""
         <style>
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
         .stAxis text {writing-mode: horizontal-tb !important;}
+        .main > div {padding-top: 2rem; padding-bottom: 2rem;}
+        .stSubheader {font-size: 1.2em; margin-bottom: 0.5rem;}
         </style>
         """, unsafe_allow_html=True)
 
@@ -79,6 +81,9 @@ def main():
             ranks = {year: df[year].rank(ascending=False, method='min') for year in year_columns}
             company_ranks = {year: int(ranks[year][company_data.name]) for year in year_columns}
 
+            # 분석 결과 헤더
+            st.header(f"{selected_company}의 분석 결과")
+
             # 연도별 매출액 그래프 제목
             st.subheader("연도별 매출액")
 
@@ -88,7 +93,7 @@ def main():
                 x=alt.X('Year', title='연도', axis=alt.Axis(labelAngle=0)),
                 y=alt.Y('Sales', title='매출 (억 원)'),
                 tooltip=['Year', alt.Tooltip('Sales', format='.1f')]
-            ).properties(width=600, height=400)
+            ).properties(width=600, height=300)
 
             text = chart.mark_text(align='center', baseline='bottom', dy=-10).encode(
                 text=alt.Text('Sales:Q', format='.1f')
@@ -99,11 +104,12 @@ def main():
             st.subheader("연도별 주요 지표")
             cols = st.columns(4)
             for i, year in enumerate(year_columns):
-                delta_color = "inverse" if market_share[year] < market_share.get(year_columns[i - 1], 100) else "normal"
+                delta = market_share[year] - market_share.get(year_columns[i - 1], market_share[year])
+                delta_color = "inverse" if delta < 0 else "normal"
                 with cols[i]:
                     st.metric(
                         label=year,
-                        value=f"{format_number(sales[year])}억",
+                        value=f"{format_number(sales[year])}억 / {company_ranks[year]}위",
                         delta=f"점유율 {format_number(market_share[year])}%",
                         delta_color=delta_color
                     )
@@ -117,9 +123,9 @@ def main():
             rank_df = pd.DataFrame({'Year': year_columns, 'Rank': [company_ranks[year] for year in year_columns]})
             rank_chart = alt.Chart(rank_df).mark_line(point=True).encode(
                 x=alt.X('Year', title='연도', axis=alt.Axis(labelAngle=0)),
-                y=alt.Y('Rank', scale=alt.Scale(reverse=True), title='순위'),
+                y=alt.Y('Rank', scale=alt.Scale(reverse=True, domain=[1, max(company_ranks.values())]), title='순위'),
                 tooltip=['Year', 'Rank']
-            ).properties(width=600, height=400)
+            ).properties(width=600, height=300)
 
             rank_text = rank_chart.mark_text(align='center', baseline='bottom', dy=-10).encode(
                 text=alt.Text('Rank:Q', format='.0f')
