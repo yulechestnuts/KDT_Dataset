@@ -9,7 +9,7 @@ import io
 # 데이터 로드 함수 (캐시 적용)
 @st.cache_data
 def load_data():
-    url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/data_paste.xlsx?raw=true"
+    url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata.xlsx?raw=true"
     try:
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
