@@ -37,11 +37,11 @@ def preprocess_data(df):
     # 대한상공회의소와 한국표준협회 특별 처리
     special_orgs = ['대한상공회의소', '한국표준협회']
     for org in special_orgs:
-        mask = (df['기관명'] == org) & (df['선도기업'].notna()) & (df['파트너기관'].notna())
+        mask = (df['훈련기관명'] == org) & (df['선도기업'].notna()) & (df['파트너기관'].notna())
         df.loc[mask, year_columns] *= 0.1
         
         # 파트너기관으로 90% 매출 이전
-        partner_mask = df['기관명'].isin(df.loc[mask, '파트너기관'])
+        partner_mask = df['훈련기관명'].isin(df.loc[mask, '파트너기관'])
         df.loc[partner_mask, year_columns] += df.loc[mask, year_columns].values * 0.9
     
     return df
@@ -70,16 +70,16 @@ def analyze_training_institution(df):
     st.title("훈련기관 분석")
     
     # 기관 선택
-    institution = st.selectbox("훈련기관 선택", df['기관명'].unique())
+    institution = st.selectbox("훈련기관 선택", df['훈련기관명'].unique())
     
     # 선택된 기관의 데이터
-    inst_data = df[df['기관명'] == institution]
+    inst_data = df[df['훈련기관명'] == institution]
     
     # 연도별 매출 및 순위 계산
     year_columns = ['2021년', '2022년', '2023년', '2024년']
     total_market = df[year_columns].sum()
     market_share = (inst_data[year_columns].sum() / total_market * 100).round(2)
-    ranks = df.groupby('기관명')[year_columns].sum().rank(ascending=False, method='min')
+    ranks = df.groupby('훈련기관명')[year_columns].sum().rank(ascending=False, method='min')
     inst_ranks = ranks.loc[institution].astype(int)
     
     # 매출 그래프
@@ -112,7 +112,7 @@ def analyze_training_institution(df):
     
     # 요약 정보
     total_sales = inst_data['누적매출'].sum() / 1e8
-    overall_rank = df.groupby('기관명')['누적매출'].sum().rank(ascending=False, method='min')[institution]
+    overall_rank = df.groupby('훈련기관명')['누적매출'].sum().rank(ascending=False, method='min')[institution]
     st.write(f"**{institution}**의 현재 누적 매출은 **{total_sales:.1f}억 원**이며, 시장점유율 순위는 **{overall_rank:.0f}위** 입니다.")
     
     # 과정별 분석
