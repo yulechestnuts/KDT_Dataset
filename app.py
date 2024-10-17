@@ -3,22 +3,7 @@ import requests
 import pandas as pd
 import numpy as np
 import streamlit as st
-
-# matplotlib 설정
-try:
-    import matplotlib.pyplot as plt
-    import matplotlib.font_manager as fm
-
-    plt.rcParams['font.family'] = 'Malgun Gothic'
-    plt.rcParams['axes.unicode_minus'] = False
-
-except ModuleNotFoundError as e:
-    print(f"Module not found: {e}. Trying fallback setup.")
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-    plt.rcParams['font.family'] = 'DejaVu Sans'
-
+import altair as alt
 
 # 기본 streamlit 설정
 st.set_page_config(
@@ -33,13 +18,6 @@ st.markdown("""
         .main > div {
             max-width: 1000px;
             padding: 1rem 2rem;
-        }
-        .stPlot {
-            width: 100%;
-            max-width: 800px;
-        }
-        .st-emotion-cache-1r6slb0 {
-            max-width: 800px;
         }
         .metric-container {
             background-color: #f8f9fa;
@@ -108,26 +86,28 @@ else:
     ranks = {year: df[year].rank(ascending=False, method='min') for year in years}
     company_ranks = {year: int(ranks[year][company_data.name]) for year in years}
 
-    # 매출 추이 그래프
-    fig, ax = plt.subplots(figsize=(8, 5))
-    plt.rcParams['figure.dpi'] = 200
+    # 매출 추이 그래프 (Altair)
+    sales_df = pd.DataFrame({'Year': years, 'Sales': list(sales.values())})
     
-    line = ax.plot(list(sales.keys()), list(sales.values()), marker='o', linestyle='-', color='royalblue', linewidth=2)
+    chart = alt.Chart(sales_df).mark_line(point=True).encode(
+        x='Year',
+        y=alt.Y('Sales', title='매출 (억 원)'),
+        tooltip=['Year', 'Sales']
+    ).properties(
+        width=600,
+        height=400,
+        title=f"{selected_company} 연도별 매출"
+    )
     
-    for i, (year, value) in enumerate(sales.items()):
-        ax.text(i, value, f'{value:,}억', ha='center', va='bottom', fontsize=9)
+    text = chart.mark_text(
+        align='center',
+        baseline='bottom',
+        dy=-10
+    ).encode(
+        text=alt.Text('Sales:Q', format=',d')
+    )
     
-    ax.set_xlabel('연도')
-    ax.set_ylabel('매출 (억 원)')
-    ax.set_title(f"{selected_company} 연도별 매출")
-    ax.grid(True, linestyle='--', alpha=0.3)
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    
-    with st.container():
-        st.subheader(f"{selected_company}의 매출 추이")
-        st.pyplot(fig)
-    plt.close()
+    st.altair_chart(chart + text, use_container_width=True)
 
     # 주요 지표 표시
     st.subheader("연도별 주요 지표")
@@ -140,32 +120,28 @@ else:
                 delta=f"점유율 {market_share[year]:.1f}%"
             )
 
-    # 순위 변화 그래프
-    fig2, ax2 = plt.subplots(figsize=(8, 5))
+    # 순위 변화 그래프 (Altair)
+    rank_df = pd.DataFrame({'Year': years, 'Rank': [company_ranks[year] for year in years]})
     
-    ax2.plot(years, [company_ranks[year] for year in years], marker='o', linestyle='-', color='green', linewidth=2)
+    rank_chart = alt.Chart(rank_df).mark_line(point=True).encode(
+        x='Year',
+        y=alt.Y('Rank', scale=alt.Scale(reverse=True), title='순위'),
+        tooltip=['Year', 'Rank']
+    ).properties(
+        width=600,
+        height=400,
+        title=f"{selected_company} 연도별 순위 변화"
+    )
     
-    for i, (year, rank) in enumerate(company_ranks.items()):
-        ax2.text(i, rank, f'{rank}위', ha='center', va='bottom', fontsize=9)
+    rank_text = rank_chart.mark_text(
+        align='center',
+        baseline='bottom',
+        dy=-10
+    ).encode(
+        text=alt.Text('Rank:Q', format='d')
+    )
     
-    ax2.set_xlabel('연도')
-    ax2.set_ylabel('순위')
-    ax2.set_title(f"{selected_company} 연도별 순위 변화")
-    ax2.invert_yaxis()
-    ax2.grid(True, linestyle='--', alpha=0.3)
-    ax2.spines['top'].set_visible(False)
-    ax2.spines['right'].set_visible(False)
-
-    max_rank = max(company_ranks.values())
-    min_rank = min(company_ranks.values())
-    step = 2 if (max_rank - min_rank) > 10 else 1
-    y_ticks = np.arange(min_rank - step, max_rank + step * 2, step)
-    ax2.set_yticks(y_ticks)
-    
-    with st.container():
-        st.subheader("연도별 순위 변화")
-        st.pyplot(fig2)
-    plt.close()
+    st.altair_chart(rank_chart + rank_text, use_container_width=True)
 
     # 누적 통계
     total_company_sales = sum(company_data[years])
