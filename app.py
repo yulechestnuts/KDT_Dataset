@@ -7,21 +7,21 @@ import altair as alt
 import io
 import traceback
 
-# 디버그 정보를 기록하는 함수
 def log_debug(message):
     st.sidebar.text(message)
 
-# 데이터 로드 함수
 @st.cache_data
 def load_data():
     log_debug("Starting data load process...")
+    url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/DATASET_PASTE.xlsx?raw=true"
+    log_debug(f"Attempting to fetch data from: {url}")
+    
     try:
-        url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/DATASET_PASTE.xlsx?raw=true"
-        log_debug(f"Attempting to fetch data from: {url}")
         response = requests.get(url, timeout=10)
-        
         if response.status_code == 200:
             log_debug("Successfully fetched data from URL")
+            
+            # 1. Try reading as Excel
             try:
                 log_debug("Attempting to read Excel file...")
                 df = pd.read_excel(io.BytesIO(response.content), engine="openpyxl")
@@ -29,27 +29,41 @@ def load_data():
                 return df
             except Exception as excel_error:
                 log_debug(f"Error reading Excel file: {excel_error}")
-                log_debug("Full traceback:")
-                log_debug(traceback.format_exc())
-                log_debug("Attempting to load as CSV...")
+            
+            # 2. Try reading as CSV with different encodings
+            encodings = ['utf-8', 'euc-kr', 'cp949', 'iso-8859-1']
+            for encoding in encodings:
                 try:
-                    df = pd.read_csv(io.StringIO(response.content.decode('utf-8')))
-                    log_debug("CSV file successfully loaded")
+                    log_debug(f"Attempting to load as CSV with {encoding} encoding...")
+                    df = pd.read_csv(io.StringIO(response.content.decode(encoding)))
+                    log_debug(f"CSV file successfully loaded with {encoding} encoding")
                     return df
                 except Exception as csv_error:
-                    log_debug(f"Error reading CSV file: {csv_error}")
-                    log_debug("Full traceback:")
-                    log_debug(traceback.format_exc())
-                    return pd.DataFrame()
+                    log_debug(f"Error reading CSV file with {encoding} encoding: {csv_error}")
+            
+            # 3. Last resort: Save as binary and try to read
+            log_debug("Attempting to save and read as binary...")
+            with open("temp_data", "wb") as f:
+                f.write(response.content)
+            try:
+                df = pd.read_excel("temp_data", engine="openpyxl")
+                log_debug("Successfully read from binary file")
+                os.remove("temp_data")
+                return df
+            except Exception as binary_error:
+                log_debug(f"Error reading binary file: {binary_error}")
+                if os.path.exists("temp_data"):
+                    os.remove("temp_data")
+        
         else:
             log_debug(f"Unable to fetch data. Status code: {response.status_code}")
-            return pd.DataFrame()
-            
+        
     except Exception as e:
         log_debug(f"Error in load_data function: {str(e)}")
         log_debug("Full traceback:")
         log_debug(traceback.format_exc())
-        return pd.DataFrame()
+    
+    return pd.DataFrame()
 
 # 데이터 로드
 df = load_data()
