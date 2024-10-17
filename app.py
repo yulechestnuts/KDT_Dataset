@@ -37,7 +37,17 @@ def main():
     year_columns = ['2021년', '2022년', '2023년', '2024년']
 
     for col in year_columns:
-        df[col] = pd.to_numeric(df[col].str.replace(',', ''), errors='coerce')
+        log_debug(f"Processing column: {col}")
+        log_debug(f"Original data type: {df[col].dtype}")
+        
+        # 문자열로 변환 가능한 경우만 쉼표 제거
+        df[col] = df[col].astype(str).str.replace(',', '', regex=False)
+        
+        # 쉼표 제거 후 숫자로 변환
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        log_debug(f"Final data type: {df[col].dtype}")
+
 
     # 사이드바에서 검색 기능 활성화
     with st.sidebar:
