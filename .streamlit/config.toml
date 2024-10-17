@@ -18,6 +18,3 @@ dataFrameSerialization = "arrow"
 
 [runner]
 fastReruns = true
-
-[browser]
-serverAddress = "0.0.0.0"

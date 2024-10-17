@@ -1,24 +1,23 @@
 import os
+import requests
 import pandas as pd
-import streamlit as st
 import numpy as np
+import streamlit as st
 
-# matplotlib 설정을 try-except로 감싸서 에러 방지
+# matplotlib 설정
 try:
     import matplotlib.pyplot as plt
     import matplotlib.font_manager as fm
     
-    # 한글 폰트 설정
     plt.rcParams['font.family'] = 'Malgun Gothic'
     plt.rcParams['axes.unicode_minus'] = False
 except:
-    # matplotlib import 실패 시 대체 방법
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     plt.rcParams['font.family'] = 'DejaVu Sans'
 
-# 페이지 설정
+# 기본 streamlit 설정
 st.set_page_config(
     page_title='KDT 매출분석',
     layout='centered',
@@ -50,24 +49,31 @@ st.markdown("""
 
 st.title('KDT 매출분석')
 
-# 데이터 로드
+# 데이터 로드 함수
 @st.cache_data
 def load_data():
     try:
         url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/DATASET_PASTE.xlsx?raw=true"
-        response = requests.get(url)
+        response = requests.get(url, timeout=10)
         
         if response.status_code == 200:
             with open("temp.xlsx", "wb") as f:
                 f.write(response.content)
             
             df = pd.read_excel("temp.xlsx", engine="openpyxl")
-            os.remove("temp.xlsx")
+            if os.path.exists("temp.xlsx"):
+                os.remove("temp.xlsx")
             return df
+            
+        else:
+            st.error(f"데이터를 가져올 수 없습니다. 상태 코드: {response.status_code}")
+            return pd.DataFrame()
+            
     except Exception as e:
         st.error(f"데이터 로드 중 오류가 발생했습니다: {str(e)}")
         return pd.DataFrame()
 
+# 데이터 로드
 df = load_data()
 
 if df.empty:
@@ -83,7 +89,7 @@ with st.sidebar:
     st.header("기업 선택")
     selected_company = st.selectbox("회사를 선택하세요", df['기관명'].unique())
 
-# 메인 컨텐츠
+# 선택된 회사 데이터 필터링
 filtered_data = df[df['기관명'] == selected_company]
 
 if filtered_data.empty:
@@ -93,6 +99,7 @@ else:
     years = ['2021년', '2022년', '2023년', '2024년']
     sales = {year: company_data[year] // 100000000 for year in years}
 
+    # 시장 점유율 및 순위 계산
     total_sales = df[years].sum()
     market_share = {year: (company_data[year] / total_sales[year]) * 100 if total_sales[year] != 0 else 0 for year in years}
     ranks = {year: df[year].rank(ascending=False, method='min') for year in years}
@@ -102,10 +109,8 @@ else:
     fig, ax = plt.subplots(figsize=(8, 5))
     plt.rcParams['figure.dpi'] = 200
     
-    # 매출 선 그래프
     line = ax.plot(list(sales.keys()), list(sales.values()), marker='o', linestyle='-', color='royalblue', linewidth=2)
     
-    # 매출액 표시
     for i, (year, value) in enumerate(sales.items()):
         ax.text(i, value, f'{value:,}억', ha='center', va='bottom', fontsize=9)
     
@@ -135,10 +140,8 @@ else:
     # 순위 변화 그래프
     fig2, ax2 = plt.subplots(figsize=(8, 5))
     
-    # 순위 선 그래프
     ax2.plot(years, [company_ranks[year] for year in years], marker='o', linestyle='-', color='green', linewidth=2)
     
-    # 순위 레이블 표시
     for i, (year, rank) in enumerate(company_ranks.items()):
         ax2.text(i, rank, f'{rank}위', ha='center', va='bottom', fontsize=9)
     
@@ -150,7 +153,6 @@ else:
     ax2.spines['top'].set_visible(False)
     ax2.spines['right'].set_visible(False)
 
-    # y축 눈금 조정
     max_rank = max(company_ranks.values())
     min_rank = min(company_ranks.values())
     step = 2 if (max_rank - min_rank) > 10 else 1
