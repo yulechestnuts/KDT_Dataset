@@ -3,6 +3,3 @@ pandas
 matplotlib
 openpyxl
 numpy
-
-pip install -r requirements.txt 
-streamlit run app.py
