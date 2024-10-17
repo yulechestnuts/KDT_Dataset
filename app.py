@@ -1,22 +1,31 @@
 import os
 import pandas as pd
 import streamlit as st
-import matplotlib.pyplot as plt
-import requests
-import matplotlib.font_manager as fm
+import numpy as np
 
-# 페이지 설정 - 더 좁은 레이아웃
+# matplotlib 설정을 try-except로 감싸서 에러 방지
+try:
+    import matplotlib.pyplot as plt
+    import matplotlib.font_manager as fm
+    
+    # 한글 폰트 설정
+    plt.rcParams['font.family'] = 'Malgun Gothic'
+    plt.rcParams['axes.unicode_minus'] = False
+except:
+    # matplotlib import 실패 시 대체 방법
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    plt.rcParams['font.family'] = 'DejaVu Sans'
+
+# 페이지 설정
 st.set_page_config(
     page_title='KDT 매출분석',
-    layout='centered',  # 'wide' 대신 'centered' 사용
+    layout='centered',
     initial_sidebar_state='expanded'
 )
 
-# 한글 폰트 설정
-plt.rcParams['font.family'] = 'Malgun Gothic'
-plt.rcParams['axes.unicode_minus'] = False
-
-# CSS로 전체적인 너비 조정
+# CSS 스타일링
 st.markdown("""
     <style>
         .main > div {
@@ -29,6 +38,12 @@ st.markdown("""
         }
         .st-emotion-cache-1r6slb0 {
             max-width: 800px;
+        }
+        .metric-container {
+            background-color: #f8f9fa;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin: 0.5rem 0;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -47,7 +62,7 @@ def load_data():
                 f.write(response.content)
             
             df = pd.read_excel("temp.xlsx", engine="openpyxl")
-            os.remove("temp.xlsx")  # 임시 파일 삭제
+            os.remove("temp.xlsx")
             return df
     except Exception as e:
         st.error(f"데이터 로드 중 오류가 발생했습니다: {str(e)}")
@@ -84,65 +99,87 @@ else:
     company_ranks = {year: int(ranks[year][company_data.name]) for year in years}
 
     # 매출 추이 그래프
-    fig, ax = plt.subplots(figsize=(8, 5))  # 그래프 크기 축소
-    plt.rcParams['figure.dpi'] = 200  # DPI 조정
+    fig, ax = plt.subplots(figsize=(8, 5))
+    plt.rcParams['figure.dpi'] = 200
     
-    ax.plot(list(sales.keys()), list(sales.values()), marker='o', linestyle='-', color='royalblue')
+    # 매출 선 그래프
+    line = ax.plot(list(sales.keys()), list(sales.values()), marker='o', linestyle='-', color='royalblue', linewidth=2)
+    
+    # 매출액 표시
+    for i, (year, value) in enumerate(sales.items()):
+        ax.text(i, value, f'{value:,}억', ha='center', va='bottom', fontsize=9)
+    
     ax.set_xlabel('연도')
     ax.set_ylabel('매출 (억 원)')
     ax.set_title(f"{selected_company} 연도별 매출")
-    ax.grid(True, linestyle='--', alpha=0.7)
+    ax.grid(True, linestyle='--', alpha=0.3)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     
-    # 컨테이너를 사용하여 그래프 크기 제한
     with st.container():
         st.subheader(f"{selected_company}의 매출 추이")
         st.pyplot(fig)
     plt.close()
 
-    # 상세 정보를 컴팩트하게 표시
-    st.subheader("상세 정보")
-    cols = st.columns(2)
+    # 주요 지표 표시
+    st.subheader("연도별 주요 지표")
+    cols = st.columns(4)
     for i, year in enumerate(years):
-        with cols[i % 2]:
-            st.write(f"**{year}**")
-            st.write(f"매출: {sales[year]:,}억 원")
-            st.write(f"시장점유율: {market_share[year]:.2f}%")
-            st.write(f"순위: {company_ranks[year]}위")
-            st.write("---")
-
-    # 누적 데이터 계산
-    total_company_sales = sum(company_data[years])
-    total_market_sales = sum(total_sales)
-    cumulative_market_share = (total_company_sales / total_market_sales) * 100 if total_market_sales != 0 else 0
-    df['누적매출'] = df[years].sum(axis=1)
-    cumulative_rank = df['누적매출'].rank(ascending=False, method='min')[company_data.name]
+        with cols[i]:
+            st.metric(
+                label=year,
+                value=f"{sales[year]:,}억",
+                delta=f"점유율 {market_share[year]:.1f}%"
+            )
 
     # 순위 변화 그래프
-    fig2, ax2 = plt.subplots(figsize=(8, 5))  # 그래프 크기 축소
+    fig2, ax2 = plt.subplots(figsize=(8, 5))
     
-    ax2.plot(years, [company_ranks[year] for year in years], marker='o', linestyle='-', color='green')
+    # 순위 선 그래프
+    ax2.plot(years, [company_ranks[year] for year in years], marker='o', linestyle='-', color='green', linewidth=2)
+    
+    # 순위 레이블 표시
+    for i, (year, rank) in enumerate(company_ranks.items()):
+        ax2.text(i, rank, f'{rank}위', ha='center', va='bottom', fontsize=9)
+    
     ax2.set_xlabel('연도')
     ax2.set_ylabel('순위')
     ax2.set_title(f"{selected_company} 연도별 순위 변화")
     ax2.invert_yaxis()
-    ax2.grid(True, linestyle='--', alpha=0.7)
+    ax2.grid(True, linestyle='--', alpha=0.3)
     ax2.spines['top'].set_visible(False)
     ax2.spines['right'].set_visible(False)
 
+    # y축 눈금 조정
     max_rank = max(company_ranks.values())
     min_rank = min(company_ranks.values())
-    ax2.set_ylim(max_rank + 1, max(0, min_rank - 1))
-    ax2.set_yticks(range(max(1, min_rank - 1), max_rank + 2))
+    step = 2 if (max_rank - min_rank) > 10 else 1
+    y_ticks = np.arange(min_rank - step, max_rank + step * 2, step)
+    ax2.set_yticks(y_ticks)
     
     with st.container():
         st.subheader("연도별 순위 변화")
         st.pyplot(fig2)
     plt.close()
 
-    # 누적 정보 표시
+    # 누적 통계
+    total_company_sales = sum(company_data[years])
+    total_market_sales = sum(total_sales)
+    cumulative_market_share = (total_company_sales / total_market_sales) * 100 if total_market_sales != 0 else 0
+    df['누적매출'] = df[years].sum(axis=1)
+    cumulative_rank = df['누적매출'].rank(ascending=False, method='min')[company_data.name]
+
+    # 누적 통계 표시
     st.write("---")
-    st.write(f"**누적 통계 (2021-2024)**")
-    st.write(f"• 누적 시장 점유율: {cumulative_market_share:.2f}%")
-    st.write(f"• 누적 매출 기준 순위: {int(cumulative_rank)}위")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric(
+            label="누적 매출",
+            value=f"{total_company_sales // 100000000:,}억",
+            delta=f"시장 점유율 {cumulative_market_share:.1f}%"
+        )
+    with col2:
+        st.metric(
+            label="누적 순위",
+            value=f"{int(cumulative_rank)}위"
+        )
