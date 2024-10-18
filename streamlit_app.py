@@ -36,12 +36,12 @@ def preprocess_data(df):
         
         for _, row in partner_courses.iterrows():
             partner = row['파트너기관']
+            course = row['과정명']
             # 파트너기관으로 90% 매출 이전
-            partner_mask = df['훈련기관'] == partner
             for year in year_columns:
                 transfer_amount = row[year] * 0.9  # 90% 이전
-                df.loc[partner_mask & (df['과정명'] == row['과정명']), year] += transfer_amount
-                df.loc[(df['훈련기관'] == org) & (df['과정명'] == row['과정명']), year] *= 0.1  # 10% 남김
+                df.loc[(df['훈련기관'] == partner) & (df['과정명'] == course), year] += transfer_amount
+                df.loc[(df['훈련기관'] == org) & (df['과정명'] == course), year] *= 0.1  # 10% 남김
     
     # 누적매출 다시 계산
     df['누적매출'] = df[year_columns].sum(axis=1)
@@ -64,41 +64,6 @@ def analyze_training_institution(df):
         institution = st.selectbox("훈련기관 선택", filtered_institutions)
         
         inst_data = df[df['훈련기관'] == institution]
-        
-        # 카드 스타일의 주요 지표
-        st.markdown("""
-        <style>
-        .metric-card {
-            background-color: #f8f9fa;
-            border-radius: 10px;
-            padding: 20px;
-            margin: 10px 0;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .metric-title {
-            color: #666;
-            font-size: 0.9em;
-            margin-bottom: 5px;
-        }
-        .metric-value {
-            color: #1f77b4;
-            font-size: 1.8em;
-            font-weight: bold;
-        }
-        .metric-subvalue {
-            color: #666;
-            font-size: 0.8em;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-        
-        # 전체 수강/수료 인원
-        total_applicants = inst_data['수강신청 인원'].sum()
-        total_completed = inst_data['수료인원'].sum()
-        
-        # 수료율 계산 (종료된 과정만)
-        completed_courses = inst_data[inst_data['과정종료일'] <= pd.Timestamp('2024-09-30')]
-        completion_rate = (completed_courses['수료인원'].sum() / completed_courses['수강신청 인원'].sum() * 100) if completed_courses['수강신청 인원'].sum() > 0 else 0
         
         # 연도별 매출 및 시장점유율
         year_columns = ['2021년', '2022년', '2023년', '2024년']
@@ -129,7 +94,12 @@ def analyze_training_institution(df):
             </div>
             """, unsafe_allow_html=True)
         
-        # 수강생 관련 지표 카드
+        # 수강생 관련 지표
+        total_applicants = inst_data['수강신청 인원'].sum()
+        total_completed = inst_data['수료인원'].sum()
+        completion_rate = (total_completed / total_applicants * 100) if total_applicants > 0 else 0
+        avg_satisfaction = inst_data['만족도'].mean()
+        
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-title">수강생 현황</div>
@@ -137,7 +107,7 @@ def analyze_training_institution(df):
             <div class="metric-subvalue">
                 수강인원: {int(total_applicants):,}명<br>
                 수료율: {completion_rate:.1f}%<br>
-                평균 만족도: {inst_data['만족도'].mean():.2f}
+                평균 만족도: {avg_satisfaction:.2f}
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -153,15 +123,14 @@ def analyze_training_institution(df):
             '누적매출': 'sum'
         }).sort_values('누적매출', ascending=False)
         
-        # 상위 10개 과정과 기타로 분리
+        # 상위 10개 과정 선택
         top_10_courses = course_data.head(10)
-        other_revenue = course_data['누적매출'][10:].sum() if len(course_data) > 10 else 0
         
         chart_data = pd.DataFrame({
-            '과정': list(top_10_courses.index),
-            '매출': list(top_10_courses['누적매출'] / 1e8) + ([other_revenue / 1e8] if other_revenue > 0 else [])
+            '과정': top_10_courses.index,
+            '매출': top_10_courses['누적매출'] / 1e8,
+            '비중': (top_10_courses['누적매출'] / top_10_courses['누적매출'].sum() * 100)
         })
-        chart_data['비중'] = (chart_data['매출'] / chart_data['매출'].sum() * 100)
         
         chart = alt.Chart(chart_data).mark_bar().encode(
             y=alt.Y('과정:N', 
@@ -194,6 +163,11 @@ def analyze_training_institution(df):
         
         st.altair_chart(chart + text, use_container_width=True)
 
+    # Debugging information
+    if institution in ['대한상공회의소', '한국표준협회', '멀티캠퍼스']:
+        st.subheader("디버깅 정보")
+        for year in year_columns:
+            st.write(f"{year} 매출: {df[df['훈련기관'] == institution][year].sum() / 1e8:.2f}억원")
 
 def analyze_ncs(df):
     st.title("NCS 분석")
