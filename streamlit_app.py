@@ -21,7 +21,7 @@ def load_data():
 def preprocess_data(df):
     if '과정종료일' in df.columns:
         df['과정종료일'] = pd.to_datetime(df['과정종료일'])
-        df['회차'] = df['회차'].astype(int)  # 회차를 정수로 변환
+        df['회차'] = df['회차'].astype(int)
     
     year_columns = ['2021년', '2022년', '2023년', '2024년']
     
@@ -51,156 +51,149 @@ def preprocess_data(df):
 def analyze_training_institution(df):
     st.title("훈련기관 분석")
     
-    inst_search = st.text_input("훈련기관 검색", "")
-    filtered_institutions = df['훈련기관'].unique()
-    if inst_search:
-        filtered_institutions = [inst for inst in filtered_institutions if inst_search.lower() in inst.lower()]
+    # 좌우 컬럼으로 레이아웃 분할
+    left_col, right_col = st.columns([2, 3])
     
-    institution = st.selectbox("훈련기관 선택", filtered_institutions)
+    with left_col:
+        # 검색 기능이 있는 훈련기관 선택
+        inst_search = st.text_input("훈련기관 검색", "")
+        filtered_institutions = df['훈련기관'].unique()
+        if inst_search:
+            filtered_institutions = [inst for inst in filtered_institutions if inst_search.lower() in inst.lower()]
+        
+        institution = st.selectbox("훈련기관 선택", filtered_institutions)
+        
+        inst_data = df[df['훈련기관'] == institution]
+        
+        # 카드 스타일의 주요 지표
+        st.markdown("""
+        <style>
+        .metric-card {
+            background-color: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 10px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .metric-title {
+            color: #666;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+        .metric-value {
+            color: #1f77b4;
+            font-size: 1.8em;
+            font-weight: bold;
+        }
+        .metric-subvalue {
+            color: #666;
+            font-size: 0.8em;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        # 전체 수강/수료 인원
+        total_applicants = inst_data['수강신청 인원'].sum()
+        total_completed = inst_data['수료인원'].sum()
+        
+        # 수료율 계산 (종료된 과정만)
+        completed_courses = inst_data[inst_data['과정종료일'] <= pd.Timestamp('2024-09-30')]
+        completion_rate = (completed_courses['수료인원'].sum() / completed_courses['수강신청 인원'].sum() * 100) if completed_courses['수강신청 인원'].sum() > 0 else 0
+        
+        # 연도별 매출 및 시장점유율
+        year_columns = ['2021년', '2022년', '2023년', '2024년']
+        yearly_sales = inst_data[year_columns].sum() / 1e8
+        total_market = df[year_columns].sum() / 1e8
+        market_share = (yearly_sales / total_market * 100).round(1)
+        
+        # 누적 매출 및 순위
+        total_revenue = inst_data['누적매출'].sum() / 1e8
+        overall_rank = df.groupby('훈련기관')['누적매출'].sum().rank(ascending=False, method='min')[institution]
+        
+        # 주요 지표 카드 표시
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-title">누적 매출</div>
+            <div class="metric-value">{total_revenue:.0f}억원</div>
+            <div class="metric-subvalue">시장 점유율 순위: {overall_rank:.0f}위</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # 연도별 매출 카드
+        for year, sales, share in zip(year_columns, yearly_sales, market_share):
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-title">{year} 매출</div>
+                <div class="metric-value">{sales:.0f}억원</div>
+                <div class="metric-subvalue">시장점유율: {share:.1f}%</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # 수강생 관련 지표 카드
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-title">수강생 현황</div>
+            <div class="metric-value">{int(total_completed):,}명</div>
+            <div class="metric-subvalue">
+                수강인원: {int(total_applicants):,}명<br>
+                수료율: {completion_rate:.1f}%<br>
+                평균 만족도: {inst_data['만족도'].mean():.2f}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
     
-    inst_data = df[df['훈련기관'] == institution]
-    
-    # 전체 수강/수료 인원
-    total_applicants = inst_data['수강신청 인원'].sum()
-    total_completed = inst_data['수료인원'].sum()
-    
-    # 수료율 계산용 (종료된 과정만)
-    completed_courses = inst_data[inst_data['과정종료일'] <= pd.Timestamp('2024-09-30')]
-    completion_rate = (completed_courses['수료인원'].sum() / completed_courses['수강신청 인원'].sum() * 100) if completed_courses['수강신청 인원'].sum() > 0 else 0
-    
-    year_columns = ['2021년', '2022년', '2023년', '2024년']
-    yearly_sales = inst_data[year_columns].sum() / 1e8
-    total_market = df[year_columns].sum() / 1e8
-    market_share = (yearly_sales / total_market * 100).round(1)
-    
-    total_revenue = inst_data['누적매출'].sum() / 1e8
-    overall_rank = df.groupby('훈련기관')['누적매출'].sum().rank(ascending=False, method='min')[institution]
-    
-    st.subheader("기관 종합 현황")
-    st.write(f"**{institution}**의 현재 누적 매출은 **{total_revenue:.0f}억 원**이며, "
-             f"시장점유율 순위는 **{overall_rank:.0f}위** 입니다.")
-    
-    for year, sales, share in zip(year_columns, yearly_sales, market_share):
-        st.write(f"{year} 매출: **{sales:.0f}억 원** (시장점유율: {share:.1f}%)")
-    
-    st.write(f"총 수강 인원: **{int(total_applicants):,}명**")
-    st.write(f"총 수료 인원: **{int(total_completed):,}명**")
-    st.write(f"수료율: **{completion_rate:.1f}%** (2024-09-30 이전 종료 과정 기준)")
-    st.write(f"평균 만족도: **{inst_data['만족도'].mean():.2f}**")
-    
-    st.subheader("과정별 분석")
-    # 과정별로 그룹화 (회차 구분 없이)
-    course_data = inst_data.groupby('과정명').agg({
-        '수강신청 인원': 'sum',
-        '수료인원': 'sum',
-        '만족도': 'mean',
-        '누적매출': 'sum'
-    }).sort_values('누적매출', ascending=False)
-    
-    # 상위 10개 과정과 기타로 분리
-    top_10_courses = course_data.head(10)
-    other_revenue = course_data['누적매출'][10:].sum() if len(course_data) > 10 else 0
-    
-    chart_data = pd.DataFrame({
-        '과정': list(top_10_courses.index) + (['기타'] if other_revenue > 0 else []),
-        '매출': list(top_10_courses['누적매출'] / 1e8) + ([other_revenue / 1e8] if other_revenue > 0 else [])
-    })
-    chart_data['비중'] = (chart_data['매출'] / chart_data['매출'].sum() * 100)
-    
-    # 기타를 마지막으로 이동
-    if '기타' in chart_data['과정'].values:
-        chart_data = pd.concat([
-            chart_data[chart_data['과정'] != '기타'],
-            chart_data[chart_data['과정'] == '기타']
-        ]).reset_index(drop=True)
-    
-    chart = alt.Chart(chart_data).mark_bar().encode(
-        y=alt.Y('과정:N', 
-                sort=alt.EncodingSortField(field='매출', order='descending'),
-                axis=alt.Axis(labelAngle=0, labelLimit=300)),
-        x=alt.X('매출:Q',
-                title='매출 (억원)',
-                axis=alt.Axis(format=',.0f')),
-        tooltip=[
-            alt.Tooltip('과정:N', title='과정'),
-            alt.Tooltip('매출:Q', title='매출 (억원)', format=',.0f'),
-            alt.Tooltip('비중:Q', title='비중 (%)', format='.1f')
-        ]
-    ).properties(
-        title='과정별 매출 (억원)',
-        width=700,
-        height=400
-    )
-    
-    text = chart.mark_text(
-        align='left',
-        baseline='middle',
-        dx=5,
-        fontSize=12
-    ).encode(
-        text=alt.Text('비중:Q', format='.1f'),
-        color=alt.value('black')
-    )
-    
-    st.altair_chart(chart + text, use_container_width=True)
+    with right_col:
+        st.subheader("과정별 매출 분석")
+        
+        # 과정별 매출 분석
+        course_data = inst_data.groupby('과정명').agg({
+            '수강신청 인원': 'sum',
+            '수료인원': 'sum',
+            '만족도': 'mean',
+            '누적매출': 'sum'
+        }).sort_values('누적매출', ascending=False)
+        
+        # 상위 10개 과정과 기타로 분리
+        top_10_courses = course_data.head(10)
+        other_revenue = course_data['누적매출'][10:].sum() if len(course_data) > 10 else 0
+        
+        chart_data = pd.DataFrame({
+            '과정': list(top_10_courses.index) + (['기타'] if other_revenue > 0 else []),
+            '매출': list(top_10_courses['누적매출'] / 1e8) + ([other_revenue / 1e8] if other_revenue > 0 else [])
+        })
+        chart_data['비중'] = (chart_data['매출'] / chart_data['매출'].sum() * 100)
+        
+        chart = alt.Chart(chart_data).mark_bar().encode(
+            y=alt.Y('과정:N', 
+                    sort='-x',
+                    axis=alt.Axis(labelAngle=0, labelLimit=300)),
+            x=alt.X('매출:Q',
+                    title='매출 (억원)',
+                    axis=alt.Axis(format=',.0f')),
+            color=alt.Color('매출:Q', scale=alt.Scale(scheme='blues')),
+            tooltip=[
+                alt.Tooltip('과정:N', title='과정'),
+                alt.Tooltip('매출:Q', title='매출 (억원)', format=',.0f'),
+                alt.Tooltip('비중:Q', title='비중 (%)', format='.1f')
+            ]
+        ).properties(
+            title='과정별 매출 현황',
+            width=600,
+            height=400
+        )
+        
+        text = chart.mark_text(
+            align='left',
+            baseline='middle',
+            dx=5,
+            fontSize=12
+        ).encode(
+            text=alt.Text('비중:Q', format='.1f'),
+            color=alt.value('white')
+        )
+        
+        st.altair_chart(chart + text, use_container_width=True)
 
-def analyze_course(df):
-    st.title("과정 분석")
-    
-    course_search = st.text_input("과정명 검색", "")
-    filtered_courses = df['과정명'].unique()
-    if course_search:
-        filtered_courses = [course for course in filtered_courses if course_search.lower() in course.lower()]
-    
-    course = st.selectbox("과정 선택", filtered_courses)
-    
-    course_data = df[df['과정명'] == course]
-    
-    # 전체 수강/수료 인원
-    total_applicants = course_data['수강신청 인원'].sum()
-    total_completed = course_data['수료인원'].sum()
-    
-    # 수료율 계산 (종료된 과정만)
-    completed_courses = course_data[course_data['과정종료일'] <= pd.Timestamp('2024-09-30')]
-    completion_rate = (completed_courses['수료인원'].sum() / completed_courses['수강신청 인원'].sum() * 100) if completed_courses['수강신청 인원'].sum() > 0 else 0
-    
-    total_revenue = course_data['누적매출'].sum() / 1e8
-    total_market = df['누적매출'].sum() / 1e8
-    market_share = (total_revenue / total_market * 100)
-    market_rank = df.groupby('과정명')['누적매출'].sum().rank(ascending=False, method='min')[course]
-    
-    st.subheader("과정 종합 현황")
-    st.write(f"누적 매출: **{total_revenue:.0f}억 원**")
-    st.write(f"시장 점유율: **{market_share:.1f}%** (전체 {market_rank:.0f}위)")
-    
-    year_columns = ['2021년', '2022년', '2023년', '2024년']
-    yearly_sales = course_data[year_columns].sum() / 1e8
-    yearly_market = df[year_columns].sum() / 1e8
-    yearly_share = (yearly_sales / yearly_market * 100).round(1)
-    
-    for year, sales, share in zip(year_columns, yearly_sales, yearly_share):
-        st.write(f"{year} 매출: **{sales:.0f}억 원** (시장점유율: {share:.1f}%)")
-    
-    st.write(f"총 수강 인원: **{int(total_applicants):,}명**")
-    st.write(f"총 수료 인원: **{int(total_completed):,}명**")
-    st.write(f"수료율: **{completion_rate:.1f}%** (2024-09-30 이전 종료 과정 기준)")
-    st.write(f"평균 만족도: **{course_data['만족도'].mean():.2f}**")
-    
-    st.subheader("회차별 분석")
-    course_details = course_data.groupby('회차').agg({
-        '수강신청 인원': 'sum',
-        '수료인원': 'sum',
-        '만족도': 'mean',
-        '누적매출': 'sum'
-    }).reset_index().sort_values('회차')
-    
-    for _, row in course_details.iterrows():
-        st.write(f"**{int(row['회차'])}회차**")
-        st.write(f"매출: {row['누적매출']/1e8:.1f}억 원")
-        st.write(f"수강인원: {int(row['수강신청 인원']):,}명")
-        st.write(f"수료인원: {int(row['수료인원']):,}명")
-        st.write(f"만족도: {row['만족도']:.2f}")
-        st.write("---")
 
 def analyze_ncs(df):
     st.title("NCS 분석")
@@ -245,8 +238,6 @@ def analyze_ncs(df):
     st.write(f"평균 만족도: **{ncs_data['만족도'].mean():.2f}**")
     
     st.subheader("과정별 분석")
-    
-    # 과정별로 그룹화
 
     course_data = ncs_data.groupby(['과정명', '회차']).agg({
         '수강신청 인원': 'sum',
