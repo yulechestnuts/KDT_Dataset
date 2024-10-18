@@ -22,30 +22,43 @@ def load_data():
 
 # 데이터 전처리 함수
 def preprocess_data(df):
+    print("데이터프레임 형태:", df.shape)
+    print("데이터프레임 열:", df.columns.tolist())
+    
     # 날짜 형식 변환
-    df['과정종료일'] = pd.to_datetime(df['과정종료일'])
+    if '과정종료일' in df.columns:
+        df['과정종료일'] = pd.to_datetime(df['과정종료일'])
     
     # 수료율 계산
-    df['수료율'] = df['수료인원'] / df['수강신청 인원'] * 100
+    if '수료인원' in df.columns and '수강신청 인원' in df.columns:
+        df['수료율'] = df['수료인원'] / df['수강신청 인원'] * 100
     
     # 연도별 매출 컬럼
-    year_columns = ['2021년', '2022년', '2023년', '2024년']
+    year_columns = [col for col in df.columns if col.endswith('년') and col[:-1].isdigit()]
+    print("연도별 매출 열:", year_columns)
     
     # 누적 매출 계산
-    df['누적매출'] = df[year_columns].sum(axis=1)
+    if year_columns:
+        df['누적매출'] = df[year_columns].sum(axis=1)
+    else:
+        print("Warning: 연도별 매출 데이터를 찾을 수 없습니다.")
+        df['누적매출'] = 0
     
     # 대한상공회의소와 한국표준협회 특별 처리
     special_orgs = ['대한상공회의소', '한국표준협회']
     for org in special_orgs:
-        mask = (df['훈련기관'] == org) & (df['선도기업'].notna()) & (df['파트너기관'].notna())
-        df.loc[mask, year_columns] *= 0.1
-        
-        # 파트너기관으로 90% 매출 이전
-        partner_mask = df['훈련기관'].isin(df.loc[mask, '파트너기관'])
-        df.loc[partner_mask, year_columns] += df.loc[mask, year_columns].values * 0.9
+        mask = (df['기관명'] == org) & (df['선도기업'].notna()) & (df['파트너기관'].notna())
+        if mask.any():
+            df.loc[mask, year_columns] *= 0.1
+            
+            # 파트너기관으로 90% 매출 이전 (안전하게 처리)
+            partner_mask = df['기관명'].isin(df.loc[mask, '파트너기관'])
+            for year in year_columns:
+                transfer_amount = df.loc[mask, year].values * 0.9
+                df.loc[partner_mask, year] += transfer_amount
     
     return df
-
+ 
 # 메인 함수
 def main():
     st.set_page_config(layout="wide", page_title="K-Digital Training 분석")
