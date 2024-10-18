@@ -40,7 +40,18 @@ def preprocess_data(df):
             # 파트너기관으로 90% 매출 이전
             for year in year_columns:
                 transfer_amount = row[year] * 0.9  # 90% 이전
-                df.loc[(df['훈련기관'] == partner) & (df['과정명'] == course), year] += transfer_amount
+                
+                # 파트너기관에 새로운 행 추가 또는 기존 행 업데이트
+                partner_row = df[(df['훈련기관'] == partner) & (df['과정명'] == course)]
+                if partner_row.empty:
+                    new_row = row.copy()
+                    new_row['훈련기관'] = partner
+                    new_row[year] = transfer_amount
+                    df = df.append(new_row, ignore_index=True)
+                else:
+                    df.loc[(df['훈련기관'] == partner) & (df['과정명'] == course), year] += transfer_amount
+                
+                # 원래 기관의 매출 감소
                 df.loc[(df['훈련기관'] == org) & (df['과정명'] == course), year] *= 0.1  # 10% 남김
     
     # 누적매출 다시 계산
@@ -51,120 +62,141 @@ def preprocess_data(df):
 def analyze_training_institution(df):
     st.title("훈련기관 분석")
     
-    # 좌우 컬럼으로 레이아웃 분할
-    left_col, right_col = st.columns([2, 3])
-    
-    with left_col:
-        # 검색 기능이 있는 훈련기관 선택
-        inst_search = st.text_input("훈련기관 검색", "")
-        filtered_institutions = df['훈련기관'].unique()
-        if inst_search:
-            filtered_institutions = [inst for inst in filtered_institutions if inst_search.lower() in inst.lower()]
-        
-        institution = st.selectbox("훈련기관 선택", filtered_institutions)
-        
-        inst_data = df[df['훈련기관'] == institution]
-        
-        # 연도별 매출 및 시장점유율
-        year_columns = ['2021년', '2022년', '2023년', '2024년']
-        yearly_sales = inst_data[year_columns].sum() / 1e8
-        total_market = df[year_columns].sum() / 1e8
-        market_share = (yearly_sales / total_market * 100).round(1)
-        
-        # 누적 매출 및 순위
-        total_revenue = inst_data['누적매출'].sum() / 1e8
-        overall_rank = df.groupby('훈련기관')['누적매출'].sum().rank(ascending=False, method='min')[institution]
-        
-        # 주요 지표 카드 표시
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">누적 매출</div>
-            <div class="metric-value">{total_revenue:.0f}억원</div>
-            <div class="metric-subvalue">시장 점유율 순위: {overall_rank:.0f}위</div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # 연도별 매출 카드
-        for year, sales, share in zip(year_columns, yearly_sales, market_share):
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-title">{year} 매출</div>
-                <div class="metric-value">{sales:.0f}억원</div>
-                <div class="metric-subvalue">시장점유율: {share:.1f}%</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        # 수강생 관련 지표
-        total_applicants = inst_data['수강신청 인원'].sum()
-        total_completed = inst_data['수료인원'].sum()
-        completion_rate = (total_completed / total_applicants * 100) if total_applicants > 0 else 0
-        avg_satisfaction = inst_data['만족도'].mean()
-        
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">수강생 현황</div>
-            <div class="metric-value">{int(total_completed):,}명</div>
-            <div class="metric-subvalue">
-                수강인원: {int(total_applicants):,}명<br>
-                수료율: {completion_rate:.1f}%<br>
-                평균 만족도: {avg_satisfaction:.2f}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with right_col:
-        st.subheader("과정별 매출 분석")
-        
-        # 과정별 매출 분석
-        course_data = inst_data.groupby('과정명').agg({
-            '수강신청 인원': 'sum',
-            '수료인원': 'sum',
-            '만족도': 'mean',
-            '누적매출': 'sum'
-        }).sort_values('누적매출', ascending=False)
-        
-        # 상위 10개 과정 선택
-        top_10_courses = course_data.head(10)
-        
-        chart_data = pd.DataFrame({
-            '과정': top_10_courses.index,
-            '매출': top_10_courses['누적매출'] / 1e8,
-            '비중': (top_10_courses['누적매출'] / top_10_courses['누적매출'].sum() * 100)
-        })
-        
-        chart = alt.Chart(chart_data).mark_bar().encode(
-            y=alt.Y('과정:N', 
-                    sort='-x',
-                    axis=alt.Axis(labelAngle=0, labelLimit=300)),
-            x=alt.X('매출:Q',
-                    title='매출 (억원)',
-                    axis=alt.Axis(format=',.0f')),
-            color=alt.Color('매출:Q', scale=alt.Scale(scheme='blues')),
-            tooltip=[
-                alt.Tooltip('과정:N', title='과정'),
-                alt.Tooltip('매출:Q', title='매출 (억원)', format=',.0f'),
-                alt.Tooltip('비중:Q', title='비중 (%)', format='.1f')
-            ]
-        ).properties(
-            title='과정별 매출 현황',
-            width=600,
-            height=400
-        )
-        
-        text = chart.mark_text(
-            align='left',
-            baseline='middle',
-            dx=5,
-            fontSize=12
-        ).encode(
-            text=alt.Text('비중:Q', format='.1f'),
-            color=alt.value('white')
-        )
-        
-        st.altair_chart(chart + text, use_container_width=True)
+    # 스타일 정의
+    st.markdown("""
+    <style>
+    .big-font {
+        font-size:30px !important;
+        font-weight: bold;
+    }
+    .medium-font {
+        font-size:20px !important;
+        font-weight: bold;
+    }
+    .small-font {
+        font-size:14px !important;
+    }
+    .metric-card {
+        background-color: #f0f2f6;
+        border-radius: 10px;
+        padding: 20px;
+        margin: 10px 0;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-    # Debugging information
-    if institution in ['대한상공회의소', '한국표준협회', '멀티캠퍼스']:
+    # 훈련기관 선택
+    inst_search = st.text_input("훈련기관 검색", "")
+    filtered_institutions = df['훈련기관'].unique()
+    if inst_search:
+        filtered_institutions = [inst for inst in filtered_institutions if inst_search.lower() in inst.lower()]
+    
+    institution = st.selectbox("훈련기관 선택", filtered_institutions)
+    
+    inst_data = df[df['훈련기관'] == institution]
+    
+    # 주요 지표 계산
+    year_columns = ['2021년', '2022년', '2023년', '2024년']
+    yearly_sales = inst_data[year_columns].sum() / 1e8
+    total_market = df[year_columns].sum() / 1e8
+    market_share = (yearly_sales / total_market * 100).round(1)
+    total_revenue = inst_data['누적매출'].sum() / 1e8
+    overall_rank = df.groupby('훈련기관')['누적매출'].sum().rank(ascending=False, method='min')[institution]
+    
+    # 주요 지표 표시
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown(f"""
+        <div class="metric-card">
+            <p class="small-font">누적 매출</p>
+            <p class="big-font">{total_revenue:.0f}억원</p>
+            <p class="small-font">시장 점유율 순위: {overall_rank:.0f}위</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"""
+        <div class="metric-card">
+            <p class="small-font">2024년 매출</p>
+            <p class="big-font">{yearly_sales['2024년']:.0f}억원</p>
+            <p class="small-font">시장점유율: {market_share['2024년']:.1f}%</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # 연도별 매출 차트
+    st.subheader("연도별 매출")
+    yearly_data = pd.DataFrame({
+        '연도': year_columns,
+        '매출': yearly_sales,
+        '시장점유율': market_share
+    })
+    
+    chart = alt.Chart(yearly_data).mark_bar().encode(
+        x='연도:O',
+        y='매출:Q',
+        color=alt.Color('연도:N', scale=alt.Scale(scheme='blues')),
+        tooltip=['연도', alt.Tooltip('매출:Q', format='.1f'), alt.Tooltip('시장점유율:Q', format='.2f')]
+    ).properties(
+        width=600,
+        height=400
+    )
+    
+    text = chart.mark_text(
+        align='center',
+        baseline='bottom',
+        dy=-5
+    ).encode(
+        text=alt.Text('매출:Q', format='.1f')
+    )
+    
+    st.altair_chart(chart + text, use_container_width=True)
+    
+    # 과정별 매출 분석
+    st.subheader("과정별 매출 분석")
+    course_data = inst_data.groupby('과정명').agg({
+        '수강신청 인원': 'sum',
+        '수료인원': 'sum',
+        '만족도': 'mean',
+        '누적매출': 'sum'
+    }).sort_values('누적매출', ascending=False)
+    
+    top_10_courses = course_data.head(10)
+    
+    chart_data = pd.DataFrame({
+        '과정': top_10_courses.index,
+        '매출': top_10_courses['누적매출'] / 1e8,
+        '비중': (top_10_courses['누적매출'] / top_10_courses['누적매출'].sum() * 100)
+    })
+    
+    chart = alt.Chart(chart_data).mark_bar().encode(
+        y=alt.Y('과정:N', sort='-x', axis=alt.Axis(labelLimit=200)),
+        x=alt.X('매출:Q', title='매출 (억원)'),
+        color=alt.Color('매출:Q', scale=alt.Scale(scheme='blues')),
+        tooltip=[
+            alt.Tooltip('과정:N', title='과정'),
+            alt.Tooltip('매출:Q', title='매출 (억원)', format='.1f'),
+            alt.Tooltip('비중:Q', title='비중 (%)', format='.1f')
+        ]
+    ).properties(
+        title='과정별 매출 현황 (상위 10개)',
+        width=700,
+        height=400
+    )
+    
+    text = chart.mark_text(
+        align='left',
+        baseline='middle',
+        dx=5,
+        fontSize=12
+    ).encode(
+        text=alt.Text('비중:Q', format='.1f')
+    )
+    
+    st.altair_chart(chart + text, use_container_width=True)
+
+    # 디버깅 정보 (필요시)
+    if st.checkbox("디버깅 정보 표시"):
         st.subheader("디버깅 정보")
         for year in year_columns:
             st.write(f"{year} 매출: {df[df['훈련기관'] == institution][year].sum() / 1e8:.2f}억원")
