@@ -37,7 +37,7 @@ def preprocess_data(df):
     # 대한상공회의소와 한국표준협회 특별 처리
     special_orgs = ['대한상공회의소', '한국표준협회']
     for org in special_orgs:
-        mask = (df['훈련기관명'] == org) & (df['선도기업'].notna()) & (df['파트너기관'].notna())
+        mask = (df['훈련기관'] == org) & (df['선도기업'].notna()) & (df['파트너기관'].notna())
         df.loc[mask, year_columns] *= 0.1
         
         # 파트너기관으로 90% 매출 이전
