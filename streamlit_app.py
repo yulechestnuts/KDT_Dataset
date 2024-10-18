@@ -27,32 +27,23 @@ def preprocess_data(df):
     
     # 대한상공회의소와 한국표준협회 매출 이전
     special_orgs = ['대한상공회의소', '한국표준협회']
-    for org in special_orgs:
-        # 파트너기관이 있는 과정들만 선택
-        partner_courses = df[
-            (df['훈련기관'] == org) & 
-            (df['파트너기관'].notna())
-        ].copy()
-        
-        for _, row in partner_courses.iterrows():
-            partner = row['파트너기관']
-            course = row['과정명']
-            # 파트너기관으로 90% 매출 이전
-            for year in year_columns:
-                transfer_amount = row[year] * 0.9  # 90% 이전
-                
-                # 파트너기관에 새로운 행 추가 또는 기존 행 업데이트
-                partner_row = df[(df['훈련기관'] == partner) & (df['과정명'] == course)]
-                if partner_row.empty:
-                    new_row = row.copy()
-                    new_row['훈련기관'] = partner
-                    new_row[year] = transfer_amount
-                    df = df.append(new_row, ignore_index=True)
-                else:
-                    df.loc[(df['훈련기관'] == partner) & (df['과정명'] == course), year] += transfer_amount
-                
-                # 원래 기관의 매출 감소
-                df.loc[(df['훈련기관'] == org) & (df['과정명'] == course), year] *= 0.1  # 10% 남김
+    
+    # 파트너기관이 있는 과정들 복사
+    partner_courses = df[
+        (df['훈련기관'].isin(special_orgs)) & 
+        (df['파트너기관'].notna())
+    ].copy()
+    
+    # 파트너기관으로 90% 매출 이전
+    partner_courses['훈련기관'] = partner_courses['파트너기관']
+    for year in year_columns:
+        partner_courses[year] *= 0.9
+    
+    # 원래 기관의 매출 90% 감소
+    df.loc[df['훈련기관'].isin(special_orgs), year_columns] *= 0.1
+    
+    # 파트너기관 데이터 추가
+    df = pd.concat([df, partner_courses], ignore_index=True)
     
     # 누적매출 다시 계산
     df['누적매출'] = df[year_columns].sum(axis=1)
