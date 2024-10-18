@@ -49,13 +49,18 @@ def preprocess_data(df):
     for org in special_orgs:
         mask = (df['훈련기관'] == org) & (df['선도기업'].notna()) & (df['파트너기관'].notna())
         if mask.any():
+            # 해당 기관의 매출을 10%로 줄임
             df.loc[mask, year_columns] *= 0.1
             
-            # 파트너기관으로 90% 매출 이전 (안전하게 처리)
-            partner_mask = df['훈련기관'].isin(df.loc[mask, '파트너기관'])
-            for year in year_columns:
-                transfer_amount = df.loc[mask, year].values * 0.9
-                df.loc[partner_mask, year] += transfer_amount
+            # 파트너기관으로 90% 매출 이전
+            for _, row in df[mask].iterrows():
+                partner_mask = df['훈련기관'] == row['파트너기관']
+                for year in year_columns:
+                    transfer_amount = row[year] * 9  # 원래 금액의 90%
+                    df.loc[partner_mask, year] += transfer_amount
+    
+    # 누적 매출 다시 계산
+    df['누적매출'] = df[year_columns].sum(axis=1)
     
     return df
  
