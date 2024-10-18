@@ -158,7 +158,7 @@ def analyze_training_institution(df):
         other_revenue = course_data['누적매출'][10:].sum() if len(course_data) > 10 else 0
         
         chart_data = pd.DataFrame({
-            '과정': list(top_10_courses.index) + (['기타'] if other_revenue > 0 else []),
+            '과정': list(top_10_courses.index),
             '매출': list(top_10_courses['누적매출'] / 1e8) + ([other_revenue / 1e8] if other_revenue > 0 else [])
         })
         chart_data['비중'] = (chart_data['매출'] / chart_data['매출'].sum() * 100)
@@ -251,7 +251,7 @@ def analyze_ncs(df):
     other_revenue = total_revenue - top_10_courses['누적매출'].sum()
     
     chart_data = pd.DataFrame({
-        '과정': [f"{row['과정명']} ({row['회차']}회차)" for _, row in top_10_courses.iterrows()] + ['기타'],
+        '과정': [f"{row['과정명']} ({row['회차']}회차)" for _, row in top_10_courses.iterrows()],
         '매출': list(top_10_courses['누적매출'] / 1e8) + [other_revenue / 1e8],
         '비중': list((top_10_courses['누적매출'] / total_revenue * 100)) + 
                [other_revenue / total_revenue * 100]
@@ -472,12 +472,14 @@ def main():
     df = preprocess_data(df)
     
     st.sidebar.title("K-Digital Training 분석")
-    analysis_type = st.sidebar.selectbox("분석 유형", ["훈련기관", "과정명"])
+    analysis_type = st.sidebar.selectbox("분석 유형", ["훈련기관", "과정명", "NCS명"])
     
     if analysis_type == "훈련기관":
         analyze_training_institution(df)
-    else:
+    elif analysis_type == "과정명":
         analyze_course(df)
+    else:
+        analyze_ncs(df)
 
 if __name__ == "__main__":
     main()
