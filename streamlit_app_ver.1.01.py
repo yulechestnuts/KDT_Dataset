@@ -763,11 +763,10 @@ def preprocess_data(df):
         # 날짜 형식 변환
         if '과정종료일' in df.columns:
             df['과정종료일'] = pd.to_datetime(df['과정종료일'], errors='coerce')
-        if '회차' in df.columns:
             df['회차'] = pd.to_numeric(df['회차'], errors='coerce').fillna(0).astype(int)
-
+        
         # 연도 컬럼 식별
-        year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'20\d{2}년', col)]
+        year_columns = [col for col in df.columns if re.match(r'20\d{2}년', col)]
         if not year_columns:
             raise ValueError("연도 데이터가 포함된 열을 찾을 수 없습니다.")
         
@@ -778,20 +777,16 @@ def preprocess_data(df):
         partner_courses = process_partner_courses(df, special_orgs, year_columns)
         
         # 특수 기관 매출 조정
-        for col in year_columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         df.loc[df['훈련기관'].isin(special_orgs), year_columns] *= 0.1
-
+        
         # 데이터 병합
-        if not partner_courses.empty:
-            assert set(partner_courses.columns).issubset(df.columns), "병합 데이터의 열 이름이 원본 데이터와 다릅니다."
-            df = pd.concat([df, partner_courses], ignore_index=True)
+        df = pd.concat([df, partner_courses], ignore_index=True)
         
         # 누적 매출 계산
         df['누적매출'] = df[year_columns].sum(axis=1)
-
+        
         return df
-
+        
     except Exception as error:
         raise ValueError(f"데이터 전처리 중 오류 발생: {str(error)}")
 
