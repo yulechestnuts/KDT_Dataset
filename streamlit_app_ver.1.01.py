@@ -888,9 +888,9 @@ def analyze_training_institution(df, yearly_data):
             return
     
     # 연도 확인 및 처리
-    year_columns = [col for col in yearly_data.columns if re.match(r'\d{4}년$', col)]
+    year_columns = [col for col in yearly_data.columns if re.search(r'\d{4}년', col)]
     if not year_columns:
-        st.error("연도별 데이터 열이 존재하지 않습니다.")
+        st.error(f"연도별 데이터 열이 존재하지 않습니다. 현재 열: {list(yearly_data.columns)}")
         return
     
     try:
