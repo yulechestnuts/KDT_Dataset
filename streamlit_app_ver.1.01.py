@@ -886,13 +886,17 @@ def analyze_training_institution(df, yearly_data):
         if col not in df.columns:
             st.error(f"필수 열 '{col}'이 데이터프레임에 없습니다.")
             return
-    
+        
     # 연도 확인 및 처리
-    year_columns = [col for col in yearly_data.columns if isinstance(col, (int, str)) and str(col).isdigit()]
+    year_columns = [col for col in yearly_data.columns if col.endswith('년')]
     if not year_columns:
         st.error(f"연도별 데이터 열이 존재하지 않습니다. 현재 열: {list(yearly_data.columns)}")
         return
-        
+
+    # 연도별 매출 추가 시 수정
+    for year in year_columns:
+        institution_stats[year + '_매출'] = yearly_data.groupby('훈련기관')[year].sum().reindex(institution_stats['훈련기관']).fillna(0)
+            
     try:
         # 기관별 통계
         institution_stats = df.groupby('훈련기관').agg({
