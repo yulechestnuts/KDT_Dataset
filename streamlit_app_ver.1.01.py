@@ -884,12 +884,27 @@ def analyze_training_institution(df, yearly_data):
         '누적매출': 'sum',
         '과정명': 'count',
         '과정시작일': 'min',
-        '과정종료일': 'max'
+        '과정종료일': 'max',
+        '훈련생': 'sum'
     }).reset_index()
     
     # 연도별 매출 추가
     for year in yearly_data.columns:
         institution_stats[f'{year}년_매출'] = df.groupby('훈련기관')[f'{year}년'].sum().values
+    
+    # 연도별, 월별 과정 수와 훈련생 수 계산
+    df['개강연도'] = pd.to_datetime(df['과정시작일']).dt.year
+    df['개강월'] = pd.to_datetime(df['과정시작일']).dt.month
+    
+    yearly_courses = df.groupby(['훈련기관', '개강연도']).agg({
+        '과정명': 'count',
+        '훈련생': 'sum'
+    }).reset_index()
+    
+    monthly_courses = df.groupby(['훈련기관', '개강월']).agg({
+        '과정명': 'count',
+        '훈련생': 'sum'
+    }).reset_index()
     
     # 전체 시장 규모
     total_market = institution_stats['누적매출'].sum()
@@ -902,7 +917,7 @@ def analyze_training_institution(df, yearly_data):
     
     # 리포트 작성
     st.header("시장 개요")
-    col1, col2= st.columns(2)
+    col1, col2 = st.columns(2)
     
     with col1:
         st.metric("총 시장 규모", f"{total_market/100000000:.1f}억원")
@@ -923,40 +938,94 @@ def analyze_training_institution(df, yearly_data):
     # 기관별 성과 분석
     st.header("기관별 성과 분석")
     
+    # 상위 5개 기관에 대한 상세 분석
     for _, inst in institution_stats.nlargest(5, '누적매출').iterrows():
         with st.expander(f"{inst['훈련기관']} 상세 분석"):
-            # 기관별 과정 데이터 준비
-            inst_courses = df[df['훈련기관'] == inst['훈련기관']].copy()
-            
-            courses_data = []
-            for _, course in inst_courses.iterrows():
-                courses_data.append({
-                    "courseName": course['과정명'],
-                    "revenue": float(course['누적매출']),
-                    "completionRate": float(course['수료율'] * 100),
-                    "satisfaction": float(course['만족도'])
-                })
-            
-            # 연도별 매출 데이터 준비
-            yearly_revenue = {
-                str(year): float(inst[f'{year}년_매출'])
+            # 연도별 매출 가로 바 차트
+            st.subheader("연도별 매출 추이")
+            yearly_revenue_data = {
+                str(year): float(inst[f'{year}년_매출']) / 100000000  # 억원 단위로 변환
                 for year in yearly_data.columns
             }
             
-            # React 컴포넌트에 데이터 전달
-            html(f"""
-                <div id="institution-analysis-{inst['훈련기관']}"></div>
-                <script type="text/babel">
-                    ReactDOM.render(
-                        <InstitutionCourseAnalysis 
-                            courses={json.dumps(courses_data)}
-                            yearlyData={json.dumps(yearly_revenue)}
-                            institutionName="{inst['훈련기관']}"
-                        />,
-                        document.getElementById('institution-analysis-{inst['훈련기관']}')
-                    );
-                </script>
-            """, height=800)
+            chart_data = pd.DataFrame.from_dict(
+                yearly_revenue_data, 
+                orient='index', 
+                columns=['매출']
+            ).reset_index()
+            chart_data.columns = ['연도', '매출']
+            
+            st.bar_chart(
+                chart_data.set_index('연도'),
+                use_container_width=True,
+                horizontal=True
+            )
+            
+            # 연도별 과정 및 훈련생 현황
+            st.subheader("연도별 과정 및 훈련생 현황")
+            inst_yearly_courses = yearly_courses[
+                yearly_courses['훈련기관'] == inst['훈련기관']
+            ]
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.dataframe(
+                    inst_yearly_courses.set_index('개강연도')[['과정명', '훈련생']],
+                    column_config={
+                        '과정명': st.column_config.Column('개설 과정 수', help='해당 연도에 개설된 과정 수'),
+                        '훈련생': st.column_config.Column('훈련생 수', help='해당 연도의 총 훈련생 수')
+                    },
+                    use_container_width=True
+                )
+            
+            with col2:
+                # 월별 과정 및 훈련생 현황
+                st.subheader("월별 과정 현황")
+                inst_monthly_courses = monthly_courses[
+                    monthly_courses['훈련기관'] == inst['훈련기관']
+                ]
+                
+                st.dataframe(
+                    inst_monthly_courses.set_index('개강월')[['과정명', '훈련생']],
+                    column_config={
+                        '과정명': st.column_config.Column('개설 과정 수', help='해당 월에 개설된 과정 수'),
+                        '훈련생': st.column_config.Column('훈련생 수', help='해당 월의 총 훈련생 수')
+                    },
+                    use_container_width=True
+                )
+            
+            # 기관별 과정 상세 정보
+            st.subheader("과정별 세부 정보")
+            
+            # 해당 기관의 과정 필터링
+            inst_courses = df[df['훈련기관'] == inst['훈련기관']]
+            
+            # 과정별 상세 정보 테이블
+            course_detail_columns = [
+                '과정명', '누적매출', '수료율', '만족도', '훈련생'
+            ]
+            
+            course_details = inst_courses[course_detail_columns].copy()
+            
+            # 누적매출을 억원 단위로 변환
+            course_details['누적매출'] = (course_details['누적매출'] / 100000000).round(1)
+            
+            # 수료율, 만족도 퍼센트 형식으로 변환
+            course_details['수료율'] = (course_details['수료율'] * 100).round(1)
+            course_details['만족도'] = course_details['만족도'].round(1)
+            
+            st.dataframe(
+                course_details, 
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    '과정명': st.column_config.Column('과정명'),
+                    '누적매출': st.column_config.Column('누적매출 (억원)'),
+                    '수료율': st.column_config.Column('수료율 (%)'),
+                    '만족도': st.column_config.Column('만족도'),
+                    '훈련생': st.column_config.Column('훈련생 수')
+                }
+            )
 
 
             
