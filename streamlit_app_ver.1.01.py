@@ -888,7 +888,7 @@ def analyze_training_institution(df, yearly_data):
             return
     
     # 연도 확인 및 처리
-    year_columns = ['2021년', '2022년', '2023년', '2024년', '2025년']
+    year_columns = ['2021', '2022', '2023', '2024', '2025']
     valid_year_columns = [col for col in year_columns if col in yearly_data.columns]
 
     if not valid_year_columns:
