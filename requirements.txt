@@ -6,3 +6,4 @@ openpyxl
 numpy
 python-dateutil
 requests
+plotly.express
