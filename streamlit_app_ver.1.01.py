@@ -885,25 +885,25 @@ def analyze_training_institution(df, yearly_data):
         '과정명': 'count',
         '과정시작일': 'min',
         '과정종료일': 'max',
-        '훈련생': 'sum'
+        '수강신청 인원': 'sum'
     }).reset_index()
     
     # 연도별 매출 추가
     for year in yearly_data.columns:
         institution_stats[f'{year}년_매출'] = df.groupby('훈련기관')[f'{year}년'].sum().values
     
-    # 연도별, 월별 과정 수와 훈련생 수 계산
+    # 연도별, 월별 과정 수와 수강신청 인원 수 계산
     df['개강연도'] = pd.to_datetime(df['과정시작일']).dt.year
     df['개강월'] = pd.to_datetime(df['과정시작일']).dt.month
     
     yearly_courses = df.groupby(['훈련기관', '개강연도']).agg({
         '과정명': 'count',
-        '훈련생': 'sum'
+        '수강신청 인원': 'sum'
     }).reset_index()
     
     monthly_courses = df.groupby(['훈련기관', '개강월']).agg({
         '과정명': 'count',
-        '훈련생': 'sum'
+        '수강신청 인원': 'sum'
     }).reset_index()
     
     # 전체 시장 규모
@@ -961,8 +961,8 @@ def analyze_training_institution(df, yearly_data):
                 horizontal=True
             )
             
-            # 연도별 과정 및 훈련생 현황
-            st.subheader("연도별 과정 및 훈련생 현황")
+            # 연도별 과정 및 수강신청 인원 현황
+            st.subheader("연도별 과정 및 수강신청 인원 현황")
             inst_yearly_courses = yearly_courses[
                 yearly_courses['훈련기관'] == inst['훈련기관']
             ]
@@ -970,26 +970,26 @@ def analyze_training_institution(df, yearly_data):
             col1, col2 = st.columns(2)
             with col1:
                 st.dataframe(
-                    inst_yearly_courses.set_index('개강연도')[['과정명', '훈련생']],
+                    inst_yearly_courses.set_index('개강연도')[['과정명', '수강신청 인원']],
                     column_config={
                         '과정명': st.column_config.Column('개설 과정 수', help='해당 연도에 개설된 과정 수'),
-                        '훈련생': st.column_config.Column('훈련생 수', help='해당 연도의 총 훈련생 수')
+                        '수강신청 인원': st.column_config.Column('수강신청 인원 수', help='해당 연도의 총 수강신청 인원 수')
                     },
                     use_container_width=True
                 )
             
             with col2:
-                # 월별 과정 및 훈련생 현황
+                # 월별 과정 및 수강신청 인원 현황
                 st.subheader("월별 과정 현황")
                 inst_monthly_courses = monthly_courses[
                     monthly_courses['훈련기관'] == inst['훈련기관']
                 ]
                 
                 st.dataframe(
-                    inst_monthly_courses.set_index('개강월')[['과정명', '훈련생']],
+                    inst_monthly_courses.set_index('개강월')[['과정명', '수강신청 인원']],
                     column_config={
                         '과정명': st.column_config.Column('개설 과정 수', help='해당 월에 개설된 과정 수'),
-                        '훈련생': st.column_config.Column('훈련생 수', help='해당 월의 총 훈련생 수')
+                        '수강신청 인원': st.column_config.Column('수강신청 인원 수', help='해당 월의 총 수강신청 인원 수')
                     },
                     use_container_width=True
                 )
@@ -1002,7 +1002,7 @@ def analyze_training_institution(df, yearly_data):
             
             # 과정별 상세 정보 테이블
             course_detail_columns = [
-                '과정명', '누적매출', '수료율', '만족도', '훈련생'
+                '과정명', '누적매출', '수료율', '만족도', '수강신청 인원'
             ]
             
             course_details = inst_courses[course_detail_columns].copy()
@@ -1023,7 +1023,7 @@ def analyze_training_institution(df, yearly_data):
                     '누적매출': st.column_config.Column('누적매출 (억원)'),
                     '수료율': st.column_config.Column('수료율 (%)'),
                     '만족도': st.column_config.Column('만족도'),
-                    '훈련생': st.column_config.Column('훈련생 수')
+                    '수강신청 인원': st.column_config.Column('수강신청 인원 수')
                 }
             )
 
