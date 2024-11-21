@@ -9,6 +9,7 @@ from streamlit.components.v1 import html
 import json
 import re
 from PIL import Image
+import plotly.express as px
 
 
 @st.cache_data
@@ -879,154 +880,231 @@ def analyze_ncs(df, yearly_data):
 def analyze_training_institution(df, yearly_data):
     st.title("K-Digital Training 훈련기관 분석 리포트")
     
-    # 기관별 통계
-    institution_stats = df.groupby('훈련기관').agg({
-        '누적매출': 'sum',
-        '과정명': 'count',
-        '과정시작일': 'min',
-        '과정종료일': 'max',
-        '수강신청 인원': 'sum'
-    }).reset_index()
+    # 필요한 열이 존재하는지 확인
+    required_columns = ['훈련기관', '누적매출', '과정명', '과정시작일', '과정종료일', '수강신청 인원']
+    for col in required_columns:
+        if col not in df.columns:
+            st.error(f"필수 열 '{col}'이 데이터프레임에 없습니다.")
+            return
     
-    # 연도별 매출 추가
-    for year in yearly_data.columns:
-        institution_stats[f'{year}년_매출'] = df.groupby('훈련기관')[f'{year}년'].sum().values
+    # 연도 확인 및 처리
+    year_columns = [col for col in yearly_data.columns if col.endswith('년')]
+    if not year_columns:
+        st.error("연도별 데이터 열이 존재하지 않습니다.")
+        return
     
-    # 연도별, 월별 과정 수와 수강신청 인원 수 계산
-    df['개강연도'] = pd.to_datetime(df['과정시작일']).dt.year
-    df['개강월'] = pd.to_datetime(df['과정시작일']).dt.month
-    
-    yearly_courses = df.groupby(['훈련기관', '개강연도']).agg({
-        '과정명': 'count',
-        '수강신청 인원': 'sum'
-    }).reset_index()
-    
-    monthly_courses = df.groupby(['훈련기관', '개강월']).agg({
-        '과정명': 'count',
-        '수강신청 인원': 'sum'
-    }).reset_index()
-    
-    # 전체 시장 규모
-    total_market = institution_stats['누적매출'].sum()
-    top_institution = institution_stats.nlargest(1, '누적매출').iloc[0]
-    avg_revenue = institution_stats['누적매출'].mean()
-    
-    # 시장 집중도 (HHI)
-    market_shares = (institution_stats['누적매출'] / total_market) * 100
-    hhi = (market_shares ** 2).sum()
-    
-    # 리포트 작성
-    st.header("시장 개요")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.metric("총 시장 규모", f"{total_market/100000000:.1f}억원")
-    with col2:
-        st.metric("평균 기관별 매출", f"{avg_revenue/100000000:.1f}억원")
-    
-    st.markdown("---")
-    
-    # 시장 구조 분석
-    st.header("시장 구조 분석")
-    st.write(f"""
-    - **시장 집중도(HHI)**: {hhi:.1f} (10,000 만점)
-        - {'고집중' if hhi > 2500 else '중집중' if hhi > 1500 else '저집중'} 시장 구조
-    - **선두 기관**: {top_institution['훈련기관']} (시장점유율 {(top_institution['누적매출']/total_market*100):.1f}%)
-    - **활성 훈련기관 수**: {len(institution_stats)} 개
-    """)
-    
-    # 기관별 성과 분석
-    st.header("기관별 성과 분석")
-    
-    # 상위 5개 기관에 대한 상세 분석
-    for _, inst in institution_stats.nlargest(5, '누적매출').iterrows():
-        with st.expander(f"{inst['훈련기관']} 상세 분석"):
-            # 연도별 매출 가로 바 차트
-            st.subheader("연도별 매출 추이")
-            yearly_revenue_data = {
-                str(year): float(inst[f'{year}년_매출']) / 100000000  # 억원 단위로 변환
-                for year in yearly_data.columns
-            }
-            
-            chart_data = pd.DataFrame.from_dict(
-                yearly_revenue_data, 
-                orient='index', 
-                columns=['매출']
-            ).reset_index()
-            chart_data.columns = ['연도', '매출']
-            
-            st.bar_chart(
-                chart_data.set_index('연도'),
-                use_container_width=True,
-                horizontal=True
-            )
-            
-            # 연도별 과정 및 수강신청 인원 현황
-            st.subheader("연도별 과정 및 수강신청 인원 현황")
-            inst_yearly_courses = yearly_courses[
-                yearly_courses['훈련기관'] == inst['훈련기관']
-            ]
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.dataframe(
-                    inst_yearly_courses.set_index('개강연도')[['과정명', '수강신청 인원']],
-                    column_config={
-                        '과정명': st.column_config.Column('개설 과정 수', help='해당 연도에 개설된 과정 수'),
-                        '수강신청 인원': st.column_config.Column('수강신청 인원 수', help='해당 연도의 총 수강신청 인원 수')
-                    },
-                    use_container_width=True
-                )
-            
-            with col2:
-                # 월별 과정 및 수강신청 인원 현황
-                st.subheader("월별 과정 현황")
+    try:
+        # 기관별 통계
+        institution_stats = df.groupby('훈련기관').agg({
+            '누적매출': 'sum',
+            '과정명': 'count',
+            '과정시작일': 'min',
+            '과정종료일': 'max',
+            '수강신청 인원': 'sum'
+        }).reset_index()
+        
+        # 연도별 매출 추가 (안전한 방식)
+        for year in year_columns:
+            institution_stats[year + '_매출'] = df.groupby('훈련기관')[year].sum().reindex(institution_stats['훈련기관']).fillna(0)
+        
+        # 날짜 열 안전하게 변환
+        df['개강연도'] = pd.to_datetime(df['과정시작일'], errors='coerce').dt.year
+        df['개강월'] = pd.to_datetime(df['과정시작일'], errors='coerce').dt.month
+        
+        # NaN 값 제거
+        df = df.dropna(subset=['개강연도', '개강월'])
+        
+        # 연도별, 월별 과정 수와 수강신청 인원 수 계산
+        yearly_courses = df.groupby(['훈련기관', '개강연도']).agg({
+            '과정명': 'count',
+            '수강신청 인원': 'sum'
+        }).reset_index()
+        
+        monthly_courses = df.groupby(['훈련기관', '개강월']).agg({
+            '과정명': 'count', 
+            '수강신청 인원': 'sum'
+        }).reset_index()
+        
+        # 전체 시장 규모
+        total_market = institution_stats['누적매출'].sum()
+        top_institution = institution_stats.nlargest(1, '누적매출').iloc[0]
+        avg_revenue = institution_stats['누적매출'].mean()
+        
+        # 시장 집중도 (HHI)
+        market_shares = (institution_stats['누적매출'] / total_market) * 100
+        hhi = (market_shares ** 2).sum()
+        
+        # 리포트 작성
+        st.header("시장 개요")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.metric("총 시장 규모", f"{total_market/100000000:.1f}억원")
+        with col2:
+            st.metric("평균 기관별 매출", f"{avg_revenue/100000000:.1f}억원")
+        
+        st.markdown("---")
+        
+        # 시장 구조 분석
+        st.header("시장 구조 분석")
+        st.write(f"""
+        - **시장 집중도(HHI)**: {hhi:.1f} (10,000 만점)
+            - {'고집중' if hhi > 2500 else '중집중' if hhi > 1500 else '저집중'} 시장 구조
+        - **선두 기관**: {top_institution['훈련기관']} (시장점유율 {(top_institution['누적매출']/total_market*100):.1f}%)
+        - **활성 훈련기관 수**: {len(institution_stats)} 개
+        """)
+        
+        # 기관별 검색 기능
+        st.header("기관별 성과 분석")
+        
+        # 기관 검색 드롭다운
+        selected_institution = st.selectbox(
+            "분석할 훈련기관 선택", 
+            ["전체"] + list(institution_stats['훈련기관'])
+        )
+        
+        # 선택된 기관 필터링
+        if selected_institution != "전체":
+            institution_stats = institution_stats[institution_stats['훈련기관'] == selected_institution]
+        
+        # 상위 기관들에 대한 상세 분석
+        for _, inst in institution_stats.iterrows():
+            with st.expander(f"{inst['훈련기관']} 상세 분석"):
+                # 연도별 매출 추이 - Plotly를 이용한 애플 스타일 그래프
+                st.subheader("연도별 매출 추이")
+                
+                # 안전한 연도별 매출 데이터 추출
+                yearly_revenue_data = {
+                    col.replace('년_매출', ''): float(inst.get(col, 0)) / 100000000  
+                    for col in institution_stats.columns 
+                    if col.endswith('년_매출')
+                }
+                
+                chart_data = pd.DataFrame.from_dict(
+                    yearly_revenue_data, 
+                    orient='index', 
+                    columns=['매출']
+                ).reset_index()
+                chart_data.columns = ['연도', '매출']
+                
+                # Plotly를 사용한 애플 스타일 그래프
+                if not chart_data.empty and chart_data['매출'].sum() > 0:
+                    fig = px.line(
+                        chart_data, 
+                        x='연도', 
+                        y='매출',
+                        title='연도별 매출 추이',
+                        labels={'매출': '매출 (억원)', '연도': '연도'},
+                        template='plotly_white',
+                        markers=True
+                    )
+                    fig.update_traces(
+                        line=dict(color='#007AFF', width=3),
+                        marker=dict(color='#007AFF', size=10)
+                    )
+                    fig.update_layout(
+                        plot_bgcolor='white',
+                        paper_bgcolor='white',
+                        font=dict(family='San Francisco', size=12),
+                        title_font_size=16
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.warning("해당 기관의 연도별 매출 데이터가 없습니다.")
+                
+                # 연도별 과정 및 수강신청 인원 현황
+                st.subheader("연도별 과정 및 수강신청 인원 현황")
+                inst_yearly_courses = yearly_courses[
+                    yearly_courses['훈련기관'] == inst['훈련기관']
+                ]
+                
+                # 월별 과정 현황
                 inst_monthly_courses = monthly_courses[
                     monthly_courses['훈련기관'] == inst['훈련기관']
                 ]
                 
+                # 두 테이블을 나란히 배치
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown("#### 연도별 현황")
+                    if not inst_yearly_courses.empty:
+                        st.dataframe(
+                            inst_yearly_courses.set_index('개강연도')[['과정명', '수강신청 인원']],
+                            column_config={
+                                '과정명': st.column_config.Column('개설 과정 수', help='해당 연도에 개설된 과정 수'),
+                                '수강신청 인원': st.column_config.Column('수강신청 인원 수', help='해당 연도의 총 수강신청 인원 수')
+                            },
+                            use_container_width=True
+                        )
+                    else:
+                        st.warning("연도별 데이터 없음")
+                
+                with col2:
+                    st.markdown("#### 월별 현황")
+                    if not inst_monthly_courses.empty:
+                        st.dataframe(
+                            inst_monthly_courses.set_index('개강월')[['과정명', '수강신청 인원']],
+                            column_config={
+                                '과정명': st.column_config.Column('개설 과정 수', help='해당 월에 개설된 과정 수'),
+                                '수강신청 인원': st.column_config.Column('수강신청 인원 수', help='해당 월의 총 수강신청 인원 수')
+                            },
+                            use_container_width=True
+                        )
+                    else:
+                        st.warning("월별 데이터 없음")
+                
+                # 과정별 세부 정보 (동일 과정명 통합)
+                st.subheader("과정별 세부 정보")
+                
+                # 해당 기관의 과정 필터링
+                inst_courses = df[df['훈련기관'] == inst['훈련기관']]
+                
+                # 과정별 상세 정보 통합
+                course_detail_columns = [
+                    '과정명', '누적매출', '수료율', '만족도', '수강신청 인원'
+                ]
+                
+                # 필요한 열이 모두 있는지 확인
+                missing_columns = [col for col in course_detail_columns if col not in inst_courses.columns]
+                if missing_columns:
+                    st.error(f"다음 열이 누락되었습니다: {missing_columns}")
+                    continue
+                
+                # 동일 과정명 통합
+                course_details = inst_courses.groupby('과정명').agg({
+                    '누적매출': 'sum',
+                    '수료율': 'mean',
+                    '만족도': 'mean',
+                    '수강신청 인원': 'sum'
+                }).reset_index()
+                
+                # 숫자형 데이터로 변환 및 안전한 처리
+                course_details['누적매출'] = pd.to_numeric(course_details['누적매출'], errors='coerce') / 100000000
+                course_details['수료율'] = pd.to_numeric(course_details['수료율'], errors='coerce') * 100
+                course_details['만족도'] = pd.to_numeric(course_details['만족도'], errors='coerce')
+                
+                course_details = course_details.round({
+                    '누적매출': 1, 
+                    '수료율': 1, 
+                    '만족도': 1
+                })
+                
                 st.dataframe(
-                    inst_monthly_courses.set_index('개강월')[['과정명', '수강신청 인원']],
+                    course_details, 
+                    use_container_width=True,
+                    hide_index=True,
                     column_config={
-                        '과정명': st.column_config.Column('개설 과정 수', help='해당 월에 개설된 과정 수'),
-                        '수강신청 인원': st.column_config.Column('수강신청 인원 수', help='해당 월의 총 수강신청 인원 수')
-                    },
-                    use_container_width=True
+                        '과정명': st.column_config.Column('과정명'),
+                        '누적매출': st.column_config.Column('누적매출 (억원)'),
+                        '수료율': st.column_config.Column('수료율 (%)'),
+                        '만족도': st.column_config.Column('만족도'),
+                        '수강신청 인원': st.column_config.Column('수강신청 인원 수')
+                    }
                 )
-            
-            # 기관별 과정 상세 정보
-            st.subheader("과정별 세부 정보")
-            
-            # 해당 기관의 과정 필터링
-            inst_courses = df[df['훈련기관'] == inst['훈련기관']]
-            
-            # 과정별 상세 정보 테이블
-            course_detail_columns = [
-                '과정명', '누적매출', '수료율', '만족도', '수강신청 인원'
-            ]
-            
-            course_details = inst_courses[course_detail_columns].copy()
-            
-            # 누적매출을 억원 단위로 변환
-            course_details['누적매출'] = (course_details['누적매출'] / 100000000).round(1)
-            
-            # 수료율, 만족도 퍼센트 형식으로 변환
-            course_details['수료율'] = (course_details['수료율'] * 100).round(1)
-            course_details['만족도'] = course_details['만족도'].round(1)
-            
-            st.dataframe(
-                course_details, 
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    '과정명': st.column_config.Column('과정명'),
-                    '누적매출': st.column_config.Column('누적매출 (억원)'),
-                    '수료율': st.column_config.Column('수료율 (%)'),
-                    '만족도': st.column_config.Column('만족도'),
-                    '수강신청 인원': st.column_config.Column('수강신청 인원 수')
-                }
-            )
 
+    except Exception as e:
+        st.error(f"데이터 처리 중 오류 발생: {str(e)}")
+        st.error("데이터를 확인해주세요.")
 
             
 def main():
