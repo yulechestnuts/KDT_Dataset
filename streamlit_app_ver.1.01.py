@@ -888,13 +888,11 @@ def analyze_training_institution(df, yearly_data):
             return
     
     # 연도 확인 및 처리
-    year_columns = ['2021', '2022', '2023', '2024', '2025']
-    valid_year_columns = [col for col in year_columns if col in yearly_data.columns]
-
-    if not valid_year_columns:
+    year_columns = [col for col in yearly_data.columns if isinstance(col, (int, str)) and str(col).isdigit()]
+    if not year_columns:
         st.error(f"연도별 데이터 열이 존재하지 않습니다. 현재 열: {list(yearly_data.columns)}")
         return
-    
+        
     try:
         # 기관별 통계
         institution_stats = df.groupby('훈련기관').agg({
