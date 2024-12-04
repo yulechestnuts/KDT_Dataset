@@ -96,51 +96,33 @@ def classify_training_type(df):
     return df
 
 def preprocess_data(df):
-    try:
-        if '과정종료일' in df.columns:
-            df['과정종료일'] = pd.to_datetime(df['과정종료일'])
-            df['회차'] = pd.to_numeric(df['회차'].astype(str).str.extract('(\d+)', expand=False), errors='coerce').fillna(0).astype(int)
-        
-        year_columns = [col for col in df.columns if re.match(r'20\d{2}년', col)]
-        
-        # 파트너기관이 있는 과정 처리
-        partner_courses = df[df['파트너기관'].notna()].copy()
-        
-        if not partner_courses.empty:
-            partner_courses['훈련기관_원본'] = partner_courses['훈련기관']
-            partner_courses['훈련기관'] = partner_courses['파트너기관']
-            
-            # 파트너기관용 매출 계산 (90%)
-            for year in year_columns:
-                partner_courses[year] = pd.to_numeric(partner_courses[year].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
-                partner_courses[year] *= 0.9
-            
-            # 원본 데이터의 매출 조정 (10%)
-            for year in year_columns:
-                df[year] = pd.to_numeric(df[year].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
-            df.loc[df['파트너기관'].notna(), year_columns] *= 0.1
-            
-            # 데이터 합치기
-            df = pd.concat([df, partner_courses], ignore_index=True)
-        else:
-            # 파트너기관이 없는 경우에도 연도별 매출을 숫자로 변환
-            for year in year_columns:
-                df[year] = pd.to_numeric(df[year].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
-        
-        # 훈련유형 분류 적용
-        df = classify_training_type(df)
-        
-        # 누적매출 계산
-        df['누적매출'] = df[year_columns].sum(axis=1)
-        
-        return df
-        
-    except Exception as error:
-        st.error(f"데이터 전처리 중 오류 발생: {str(error)}")
-        print(f"Error details: {error}")  # 디버깅을 위한 에러 출력
-        return pd.DataFrame()
+    if '과정종료일' in df.columns:
+        df['과정종료일'] = pd.to_datetime(df['과정종료일'])
+        df['회차'] = df['회차'].astype(int)
+    
+    year_columns = [col for col in df.columns if re.match(r'20\d{2}년', col)]
+    
+    special_orgs = ['대한상공회의소', '한국표준협회']
+    
+    partner_courses = df[
+        (df['훈련기관'].isin(special_orgs)) & 
+        (df['파트너기관'].notna())
+    ].copy()
+    
+    partner_courses['훈련기관'] = partner_courses['파트너기관']
+    for year in year_columns:
+        partner_courses[year] = pd.to_numeric(partner_courses[year], errors='coerce') * 0.9
+    
+    df.loc[df['훈련기관'].isin(special_orgs), year_columns] = df.loc[df['훈련기관'].isin(special_orgs), year_columns].apply(pd.to_numeric, errors='coerce') * 0.1
+    
+    df = pd.concat([df, partner_courses], ignore_index=True)
+    
+    df['누적매출'] = df[year_columns].apply(pd.to_numeric, errors='coerce').sum(axis=1)
+    
+    return df
 
-def create_ranking_component(df, yearly_data):
+
+def create_ranking_component(df):
     institution_revenue = df.groupby('훈련기관').agg({
         '누적매출': 'sum',
         '과정명': 'count',
@@ -148,15 +130,13 @@ def create_ranking_component(df, yearly_data):
         '과정종료일': 'max'
     }).reset_index()
     
-    yearly_sums = {}
-    for year in yearly_data.columns:
-        yearly_sums[year] = df.groupby('훈련기관')[f'{year}년'].sum()
+    year_columns = [col for col in df.columns if re.match(r'20\d{2}', col)]
+    yearly_sums = {year: df.groupby('훈련기관')[year].sum() for year in year_columns}
     
-    # 전체 기관에 대한 데이터 생성 (상위 20개 제한 제거)
     ranking_data = []
     for _, row in institution_revenue.iterrows():
         yearly_revenues = {str(year): float(yearly_sums[year][row['훈련기관']]) 
-                         for year in yearly_data.columns}
+                         for year in year_columns}
         
         ranking_data.append({
             "institution": row['훈련기관'],
