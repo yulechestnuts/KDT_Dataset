@@ -66,75 +66,76 @@ def classify_training_type(df):
     df = df.copy()
     
     # 기본 분류 컬럼 생성
-    df['훈련유형'] = '신기술 훈련'  # 기본값
-    training_types = []
+    df['훈련유형'] = '신기술 훈련'
     
-    # 재직자 훈련 확인
-    if '과정명' in df.columns:
-        mask_incumbent = df['과정명'].str.contains('재직자_', na=False)
-        training_types.append(np.where(mask_incumbent, '재직자 훈련', ''))
+    def combine_types(row):
+        types = []
+        
+        # 과정명이 문자열인 경우에만 검사
+        if isinstance(row.get('과정명', ''), str):
+            if '재직자_' in row['과정명']:
+                types.append('재직자 훈련')
+            if '심화_' in row['과정명']:
+                types.append('심화 훈련')
+            if '융합_' in row['과정명']:
+                types.append('융합 훈련')
+        
+        # 훈련기관이 문자열인 경우에만 검사
+        if isinstance(row.get('훈련기관', ''), str):
+            if '학교' in row['훈련기관']:
+                types.append('대학주도형 훈련')
+        
+        # 선도기업 또는 파트너기관이 있는 경우
+        if pd.notna(row.get('선도기업')) or pd.notna(row.get('파트너기관')):
+            types.append('선도기업형 훈련')
+        
+        # 유형이 없으면 기본값 반환
+        return '&'.join(types) if types else '신기술 훈련'
     
-    # 대학주도형 훈련 확인
-    mask_university = df['훈련기관'].str.contains('학교', na=False)
-    training_types.append(np.where(mask_university, '대학주도형 훈련', ''))
-    
-    # 선도기업형 훈련 확인
-    mask_leading = (df['선도기업'].notna()) | (df['파트너기관'].notna())
-    training_types.append(np.where(mask_leading, '선도기업형 훈련', ''))
-    
-    # 심화 훈련 확인
-    mask_advanced = df['과정명'].str.contains('심화_', na=False)
-    training_types.append(np.where(mask_advanced, '심화 훈련', ''))
-    
-    # 융합 훈련 확인
-    mask_convergence = df['과정명'].str.contains('융합_', na=False)
-    training_types.append(np.where(mask_convergence, '융합 훈련', ''))
-    
-    # 모든 유형 조합
-    df['훈련유형'] = ''
-    for type_array in training_types:
-        df['훈련유형'] = df.apply(
-            lambda row: '&'.join(filter(None, [row['훈련유형'], type_array[row.name]])) 
-            if type_array[row.name] else row['훈련유형'],
-            axis=1
-        )
-    
-    # 빈 문자열인 경우 기본값 설정
-    df.loc[df['훈련유형'] == '', '훈련유형'] = '신기술 훈련'
-    
+    df['훈련유형'] = df.apply(combine_types, axis=1)
     return df
 
 def preprocess_data(df):
-    if '과정종료일' in df.columns:
-        df['과정종료일'] = pd.to_datetime(df['과정종료일'])
-        df['회차'] = df['회차'].astype(int)
-    
-    year_columns = [col for col in df.columns if re.match(r'20\d{2}년', col)]
-    
-    # 파트너기관이 있는 모든 과정에 대해 매출 분배 처리
-    partner_courses = df[df['파트너기관'].notna()].copy()
-    
-    if not partner_courses.empty:
-        partner_courses['훈련기관_원본'] = partner_courses['훈련기관']
-        partner_courses['훈련기관'] = partner_courses['파트너기관']
+    try:
+        if '과정종료일' in df.columns:
+            df['과정종료일'] = pd.to_datetime(df['과정종료일'])
+            df['회차'] = pd.to_numeric(df['회차'], errors='coerce').fillna(0).astype(int)
         
-        # 파트너기관용 매출 계산 (90%)
+        year_columns = [col for col in df.columns if re.match(r'20\d{2}년', col)]
+        
+        # 파트너기관이 있는 과정 처리
+        partner_courses = df[df['파트너기관'].notna()].copy()
+        
+        if not partner_courses.empty:
+            partner_courses['훈련기관_원본'] = partner_courses['훈련기관']
+            partner_courses['훈련기관'] = partner_courses['파트너기관']
+            
+            # 파트너기관용 매출 계산 (90%)
+            for year in year_columns:
+                partner_courses[year] = pd.to_numeric(partner_courses[year], errors='coerce')
+                partner_courses[year] *= 0.9
+            
+            # 원본 데이터의 매출 조정 (10%)
+            for year in year_columns:
+                df[year] = pd.to_numeric(df[year], errors='coerce')
+            df.loc[df['파트너기관'].notna(), year_columns] *= 0.1
+            
+            # 데이터 합치기
+            df = pd.concat([df, partner_courses], ignore_index=True)
+        
+        # 훈련유형 분류 적용
+        df = classify_training_type(df)
+        
+        # 누적매출 계산 (숫자형으로 변환 후)
         for year in year_columns:
-            partner_courses[year] *= 0.9
+            df[year] = pd.to_numeric(df[year], errors='coerce').fillna(0)
+        df['누적매출'] = df[year_columns].sum(axis=1)
         
-        # 원본 데이터의 매출 조정 (10%)
-        df.loc[df['파트너기관'].notna(), year_columns] *= 0.1
+        return df
         
-        # 데이터 합치기
-        df = pd.concat([df, partner_courses], ignore_index=True)
-    
-    # 훈련유형 분류 적용
-    df = classify_training_type(df)
-    
-    # 누적매출 계산
-    df['누적매출'] = df[year_columns].sum(axis=1)
-    
-    return df
+    except Exception as error:
+        print(f"Error details: {error}")  # 디버깅을 위한 에러 출력
+        raise ValueError(f"데이터 전처리 중 오류 발생: {str(error)}")
 
 def create_ranking_component(df, yearly_data):
     institution_revenue = df.groupby('훈련기관').agg({
