@@ -121,7 +121,7 @@ def create_ranking_component(df, yearly_data):
                             fontSize: '20px',
                             color: '#888'
                         }}>첨단산업 디지털 핵심 실무인재 양성 훈련 과정 개괄표</p>
-                 
+                        
                         <div style={{
                             margin: '20px 0',
                             display: 'flex',
