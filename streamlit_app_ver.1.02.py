@@ -846,41 +846,47 @@ def prepare_ranking_data(course_revenue):
 
 def preprocess_data(df):
     try:
-        if '과정종료일' in df.columns:
-            df['과정종료일'] = pd.to_datetime(df['과정종료일'], errors='coerce')
+        # 날짜 열 처리
+        date_columns = ['과정시작일', '과정종료일']
+        for col in date_columns:
+            if col in df.columns:
+                df[col] = pd.to_datetime(df[col], errors='coerce')
         
+        # 회차 처리
         df['회차'] = pd.to_numeric(df['회차'].astype(str).str.extract('(\d+)', expand=False), errors='coerce').fillna(0).astype('Int64')
         
-        year_columns = [col for col in df.columns if re.match(r'20\d{2}년', col)]
-        
-        # 파트너기관이 있는 과정 처리
-        partner_courses = df[df['파트너기관'].notna()].copy()
-        if not partner_courses.empty:
-            partner_courses['훈련기관_원본'] = partner_courses['훈련기관']
-            partner_courses['훈련기관'] = partner_courses['파트너기관']
-            
-            # 파트너기관용 매출 계산 (90%)
-            for year in year_columns:
-                partner_courses[year] = pd.to_numeric(partner_courses[year].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
-                partner_courses[year] *= 0.9
-            
-            # 원본 데이터의 매출 조정 (10%)
-            for year in year_columns:
-                df[year] = pd.to_numeric(df[year].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
-                df.loc[df['파트너기관'].notna(), year_columns] *= 0.1
-            
-            # 데이터 합치기
-            df = pd.concat([df, partner_courses], ignore_index=True)
-        else:
-            # 파트너기관이 없는 경우에도 연도별 매출을 숫자로 변환
-            for year in year_columns:
+        # 연도별 매출 열 처리
+        year_columns = ['2021', '2022', '2023', '2024', '2025']
+        for year in year_columns:
+            if year in df.columns:
                 df[year] = pd.to_numeric(df[year].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
         
-        # 훈련유형 분류 적용
-        df = classify_training_type(df)
+        # 파트너기관 처리
+        if '파트너기관' in df.columns:
+            partner_courses = df[df['파트너기관'].notna()].copy()
+            if not partner_courses.empty:
+                # 파트너기관용 매출 계산 (90%)
+                for year in year_columns:
+                    if year in partner_courses.columns:
+                        partner_courses[year] *= 0.9
+                
+                # 원본 데이터의 매출 조정 (10%)
+                for year in year_columns:
+                    if year in df.columns:
+                        df.loc[df['파트너기관'].notna(), year] *= 0.1
+                
+                # 데이터 합치기
+                df = pd.concat([df, partner_courses], ignore_index=True)
+        
+        # 수치형 열 처리
+        numeric_columns = ['총 훈련일수', '총 훈련시간', '훈련비', '정원', '수강신청 인원', '수료인원', '수료율', '만족도']
+        for col in numeric_columns:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
         
         # 누적매출 계산
-        df['누적매출'] = df[year_columns].sum(axis=1)
+        if all(year in df.columns for year in year_columns):
+            df['누적매출'] = df[year_columns].sum(axis=1)
         
         return df
     except Exception as error:
