@@ -50,7 +50,7 @@ def group_institutions(df):
         df.loc[mask, '훈련기관'] = group_name
     return df
 
-def create_ranking_component(df):
+def create_ranking_component(df, yearly_data):
     institution_revenue = df.groupby('훈련기관').agg({
         '누적매출': 'sum',
         '과정명': 'count',
