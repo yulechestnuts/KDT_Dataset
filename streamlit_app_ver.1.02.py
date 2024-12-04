@@ -26,7 +26,7 @@ def load_data():
 
 def calculate_yearly_revenue(df):
     # 연도 컬럼 찾기
-    year_columns = [col for col in df.columns if re.match(r'20\d{2}년', col)]
+    year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'20\d{2}년?', col)]
     
     # 각 연도별 매출액 계산
     df['누적매출'] = df[year_columns].sum(axis=1)
