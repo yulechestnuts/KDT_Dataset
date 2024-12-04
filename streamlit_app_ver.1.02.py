@@ -1038,20 +1038,51 @@ def analyze_training_institution(df, yearly_data):
             )
             
 def main():
-    st.set_page_config(page_title="K-Digital Training 분석", layout="wide")
+    st.set_page_config(layout="wide")
+    
+    # CSS 수정: HTML 컴포넌트 내부 스크롤 설정
+    st.markdown("""
+        <style>
+        .stHtmlFrame-container {
+            height: 800px;
+            overflow-y: scroll !important;  /* 세로 스크롤 활성화 */
+        }
+        iframe {
+            height: 100% !important;
+            min-height: 800px !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
     
     df = load_data()
     if df.empty:
-        st.error("데이터를 불러오는데 실패했습니다.")
         return
     
-    df, yearly_data = calculate_yearly_revenue(df)
+    df = preprocess_data(df)
     df = group_institutions(df)
+    df, yearly_data = calculate_yearly_revenue(df)
     
-    js_code = create_ranking_component(df)
-    html(js_code, height=600)
+    # HTML 컴포넌트에 overflow 스타일 추가
+    js_code = create_ranking_component(df, yearly_data)
+    # HTML 컴포넌트에 스크롤 스타일 추가
+    js_code = f"""
+        <div style="height: 800px; overflow-y: auto;">
+            {js_code}
+        </div>
+    """
+    html(js_code, height=800)
     
-    # 여기에 다른 분석 함수들을 호출합니다.
+    analysis_type = st.sidebar.selectbox(
+        "분석 유형 선택",
+        ["훈련기관 분석", "과정 분석", "NCS 분석"]
+    )
+    
+    if analysis_type == "훈련기관 분석":
+        analyze_training_institution(df, yearly_data)
+    elif analysis_type == "과정 분석":
+        analyze_course(df, yearly_data)
+    else:
+        analyze_ncs(df, yearly_data)
 
 if __name__ == "__main__":
     main()
