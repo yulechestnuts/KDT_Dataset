@@ -845,37 +845,48 @@ def prepare_ranking_data(course_revenue):
     return ranking_data
 
 def preprocess_data(df):
-    """데이터 전처리 함수"""
     try:
-        # 날짜 형식 변환
         if '과정종료일' in df.columns:
             df['과정종료일'] = pd.to_datetime(df['과정종료일'], errors='coerce')
-            df['회차'] = pd.to_numeric(df['회차'].astype(str).str.extract('(\d+)', expand=False), errors='coerce').fillna(0).astype('Int64')
         
-        # 연도 컬럼 식별
+        df['회차'] = pd.to_numeric(df['회차'].astype(str).str.extract('(\d+)', expand=False), errors='coerce').fillna(0).astype('Int64')
+        
         year_columns = [col for col in df.columns if re.match(r'20\d{2}년', col)]
-        if not year_columns:
-            raise ValueError("연도 데이터가 포함된 열을 찾을 수 없습니다.")
         
-        # 특수 기관 처리
-        special_orgs = ['대한상공회의소', '한국표준협회']
+        # 파트너기관이 있는 과정 처리
+        partner_courses = df[df['파트너기관'].notna()].copy()
+        if not partner_courses.empty:
+            partner_courses['훈련기관_원본'] = partner_courses['훈련기관']
+            partner_courses['훈련기관'] = partner_courses['파트너기관']
+            
+            # 파트너기관용 매출 계산 (90%)
+            for year in year_columns:
+                partner_courses[year] = pd.to_numeric(partner_courses[year].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+                partner_courses[year] *= 0.9
+            
+            # 원본 데이터의 매출 조정 (10%)
+            for year in year_columns:
+                df[year] = pd.to_numeric(df[year].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+                df.loc[df['파트너기관'].notna(), year_columns] *= 0.1
+            
+            # 데이터 합치기
+            df = pd.concat([df, partner_courses], ignore_index=True)
+        else:
+            # 파트너기관이 없는 경우에도 연도별 매출을 숫자로 변환
+            for year in year_columns:
+                df[year] = pd.to_numeric(df[year].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
         
-        # 파트너 과정 처리
-        partner_courses = process_partner_courses(df, special_orgs, year_columns)
+        # 훈련유형 분류 적용
+        df = classify_training_type(df)
         
-        # 특수 기관 매출 조정
-        df.loc[df['훈련기관'].isin(special_orgs), year_columns] *= 0.1
-        
-        # 데이터 병합
-        df = pd.concat([df, partner_courses], ignore_index=True)
-        
-        # 누적 매출 계산
+        # 누적매출 계산
         df['누적매출'] = df[year_columns].sum(axis=1)
         
         return df
-        
     except Exception as error:
-        raise ValueError(f"데이터 전처리 중 오류 발생: {str(error)}")
+        st.error(f"데이터 전처리 중 오류 발생: {str(error)}")
+        print(f"Error details: {error}")  # 디버깅을 위한 에러 출력
+        return pd.DataFrame()
 
 def process_partner_courses(df, special_orgs, year_columns):
     """파트너 과정 처리"""
