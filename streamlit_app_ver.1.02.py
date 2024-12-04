@@ -11,7 +11,6 @@ import re
 from PIL import Image
 import plotly.express as px
 
-
 @st.cache_data
 def load_data():
     url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202410_2.xlsx?raw=true"
@@ -25,20 +24,13 @@ def load_data():
     return pd.DataFrame()
 
 def calculate_yearly_revenue(df):
-    # 연도 컬럼 찾기
     year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'20\d{2}년?', col)]
-    
-    # 각 연도별 매출액 계산
     df['누적매출'] = df[year_columns].sum(axis=1)
-    
-    # 연도별 매출 데이터 생성
     yearly_data = df[year_columns].copy()
     yearly_data.columns = [int(col.replace('년', '')) for col in yearly_data.columns]
-    
     return df, yearly_data
 
 def group_institutions(df):
-    # 기관 그룹화 규칙 정의
     institution_groups = {
         '이젠아카데미': ['이젠', '이젠컴퓨터학원', '이젠아이티아카데미'],
         '그린컴퓨터아카데미': ['그린', '그린컴퓨터아카데미', '그린아카데미컴퓨터학원'],
@@ -48,79 +40,15 @@ def group_institutions(df):
         '하이미디어': ['하이미디어', '하이미디어아카데미', '하이미디어컴퓨터학원'],
         '아이티윌': ['아이티윌', 'IT Will', '아이티윌부산교육센터'],
         '메가스터디': ['메가스터디'],
-        '에이콘아카데미' : ['에이콘'],
-        '한국ICT인재개발원' : ['ICT'],
-        '엠비씨(MBC)아카데미 컴퓨터 교육센터' : ['(MBC)']
+        '에이콘아카데미': ['에이콘'],
+        '한국ICT인재개발원': ['ICT'],
+        '엠비씨(MBC)아카데미 컴퓨터 교육센터': ['(MBC)']
     }
-    
     df = df.copy()
-    
     for group_name, keywords in institution_groups.items():
-        mask = df['훈련기관'].str.contains('|'.join(keywords), case=False, na=False)
+        mask = df['훈련기관'].str.contains('|'.join(map(re.escape, keywords)), case=False, na=False)
         df.loc[mask, '훈련기관'] = group_name
-    
     return df
-
-def classify_training_type(df):
-    """K-디지털 유형별 분류 함수"""
-    df = df.copy()
-    
-    # 기본 분류 컬럼 생성
-    df['훈련유형'] = '신기술 훈련'
-    
-    def combine_types(row):
-        types = []
-        
-        # 과정명이 문자열인 경우에만 검사
-        if isinstance(row.get('과정명', ''), str):
-            if '재직자_' in row['과정명']:
-                types.append('재직자 훈련')
-            if '심화_' in row['과정명']:
-                types.append('심화 훈련')
-            if '융합_' in row['과정명']:
-                types.append('융합 훈련')
-        
-        # 훈련기관이 문자열인 경우에만 검사
-        if isinstance(row.get('훈련기관', ''), str):
-            if '학교' in row['훈련기관']:
-                types.append('대학주도형 훈련')
-        
-        # 선도기업 또는 파트너기관이 있는 경우
-        if pd.notna(row.get('선도기업')) or pd.notna(row.get('파트너기관')):
-            types.append('선도기업형 훈련')
-        
-        # 유형이 없으면 기본값 반환
-        return '&'.join(types) if types else '신기술 훈련'
-    
-    df['훈련유형'] = df.apply(combine_types, axis=1)
-    return df
-
-def preprocess_data(df):
-    if '과정종료일' in df.columns:
-        df['과정종료일'] = pd.to_datetime(df['과정종료일'])
-        df['회차'] = df['회차'].astype(int)
-    
-    year_columns = [col for col in df.columns if re.match(r'20\d{2}년', col)]
-    
-    special_orgs = ['대한상공회의소', '한국표준협회']
-    
-    partner_courses = df[
-        (df['훈련기관'].isin(special_orgs)) & 
-        (df['파트너기관'].notna())
-    ].copy()
-    
-    partner_courses['훈련기관'] = partner_courses['파트너기관']
-    for year in year_columns:
-        partner_courses[year] = pd.to_numeric(partner_courses[year], errors='coerce') * 0.9
-    
-    df.loc[df['훈련기관'].isin(special_orgs), year_columns] = df.loc[df['훈련기관'].isin(special_orgs), year_columns].apply(pd.to_numeric, errors='coerce') * 0.1
-    
-    df = pd.concat([df, partner_courses], ignore_index=True)
-    
-    df['누적매출'] = df[year_columns].apply(pd.to_numeric, errors='coerce').sum(axis=1)
-    
-    return df
-
 
 def create_ranking_component(df):
     institution_revenue = df.groupby('훈련기관').agg({
@@ -135,9 +63,7 @@ def create_ranking_component(df):
     
     ranking_data = []
     for _, row in institution_revenue.iterrows():
-        yearly_revenues = {str(year): float(yearly_sums[year][row['훈련기관']]) 
-                         for year in year_columns}
-        
+        yearly_revenues = {str(year): float(yearly_sums[year][row['훈련기관']]) for year in year_columns}
         ranking_data.append({
             "institution": row['훈련기관'],
             "revenue": float(row['누적매출']),
@@ -1112,51 +1038,20 @@ def analyze_training_institution(df, yearly_data):
             )
             
 def main():
-    st.set_page_config(layout="wide")
-    
-    # CSS 수정: HTML 컴포넌트 내부 스크롤 설정
-    st.markdown("""
-        <style>
-        .stHtmlFrame-container {
-            height: 800px;
-            overflow-y: scroll !important;  /* 세로 스크롤 활성화 */
-        }
-        iframe {
-            height: 100% !important;
-            min-height: 800px !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
+    st.set_page_config(page_title="K-Digital Training 분석", layout="wide")
     
     df = load_data()
     if df.empty:
+        st.error("데이터를 불러오는데 실패했습니다.")
         return
     
-    df = preprocess_data(df)
-    df = group_institutions(df)
     df, yearly_data = calculate_yearly_revenue(df)
+    df = group_institutions(df)
     
-    # HTML 컴포넌트에 overflow 스타일 추가
-    js_code = create_ranking_component(df, yearly_data)
-    # HTML 컴포넌트에 스크롤 스타일 추가
-    js_code = f"""
-        <div style="height: 800px; overflow-y: auto;">
-            {js_code}
-        </div>
-    """
-    html(js_code, height=800)
+    js_code = create_ranking_component(df)
+    html(js_code, height=600)
     
-    analysis_type = st.sidebar.selectbox(
-        "분석 유형 선택",
-        ["훈련기관 분석", "과정 분석", "NCS 분석"]
-    )
-    
-    if analysis_type == "훈련기관 분석":
-        analyze_training_institution(df, yearly_data)
-    elif analysis_type == "과정 분석":
-        analyze_course(df, yearly_data)
-    else:
-        analyze_ncs(df, yearly_data)
+    # 여기에 다른 분석 함수들을 호출합니다.
 
 if __name__ == "__main__":
     main()
