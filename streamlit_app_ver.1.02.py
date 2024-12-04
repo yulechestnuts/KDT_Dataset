@@ -57,10 +57,10 @@ def create_ranking_component(df):
         '과정시작일': 'min',
         '과정종료일': 'max'
     }).reset_index()
-    
+
     year_columns = [str(col) for col in df.columns if isinstance(col, (int, str)) and re.match(r'20\d{2}년', str(col))]
     yearly_sums = {year: df.groupby('훈련기관')[year].sum() for year in year_columns}
-    
+
     ranking_data = []
     for _, row in institution_revenue.iterrows():
         yearly_revenues = {str(year): float(yearly_sums[year][row['훈련기관']]) for year in year_columns}
@@ -72,7 +72,7 @@ def create_ranking_component(df):
             "startDate": row['과정시작일'].strftime('%Y-%m'),
             "endDate": row['과정종료일'].strftime('%Y-%m')
         })
-    
+
     js_code = """
     <div id="ranking-root"></div>
     <script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
@@ -121,7 +121,7 @@ def create_ranking_component(df):
                             fontSize: '20px',
                             color: '#888'
                         }}>첨단산업 디지털 핵심 실무인재 양성 훈련 과정 개괄표</p>
-                        
+                 
                         <div style={{
                             margin: '20px 0',
                             display: 'flex',
