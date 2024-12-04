@@ -765,7 +765,7 @@ def analyze_course(df, yearly_data):
             for year in years:
                 year_col = f'{year}년'
                 yearly_sum = course_data[year_col].sum() / 100000000  # 억 단위로 변환
-                yearly_count = len(course_data[course_data[year_col] > 0])  # 해당 연도 개강 횟수
+                yearly_count = len(course_data[pd.to_numeric(course_data[year_col], errors='coerce') > 0])  # 해당 연도 개강 횟수
                 
                 course_yearly_data = pd.concat([course_yearly_data, pd.DataFrame({
                     '연도': [year],
@@ -850,7 +850,7 @@ def preprocess_data(df):
         # 날짜 형식 변환
         if '과정종료일' in df.columns:
             df['과정종료일'] = pd.to_datetime(df['과정종료일'], errors='coerce')
-            df['회차'] = pd.to_numeric(df['회차'], errors='coerce').fillna(0).astype(int)
+            df['회차'] = pd.to_numeric(df['회차'].astype(str).str.extract('(\d+)', expand=False), errors='coerce').fillna(0).astype('Int64')
         
         # 연도 컬럼 식별
         year_columns = [col for col in df.columns if re.match(r'20\d{2}년', col)]
