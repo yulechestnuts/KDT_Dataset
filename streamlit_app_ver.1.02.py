@@ -58,7 +58,7 @@ def create_ranking_component(df):
         '과정종료일': 'max'
     }).reset_index()
     
-    year_columns = [col for col in df.columns if re.match(r'20\d{2}', col)]
+    year_columns = [str(col) for col in df.columns if isinstance(col, (int, str)) and re.match(r'20\d{2}', str(col))]
     yearly_sums = {year: df.groupby('훈련기관')[year].sum() for year in year_columns}
     
     ranking_data = []
