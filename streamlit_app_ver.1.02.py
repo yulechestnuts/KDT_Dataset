@@ -1061,13 +1061,11 @@ def main():
     
     df = preprocess_data(df)
     df = group_institutions(df)
-    df, yearly_data = calculate_yearly_revenue(df)
     
-    # 금액 계산 문제 해결
-    year_columns = [col for col in df.columns if re.match(r'20\d{2}년?', col)]
-    for col in year_columns:
-        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-    df['누적매출'] = df[year_columns].sum(axis=1)
+    # 연도 컬럼 찾기 수정
+    year_columns = [str(col) for col in df.columns if isinstance(col, (int, str)) and re.match(r'20\d{2}년?', str(col))]
+    
+    df, yearly_data = calculate_yearly_revenue(df)
     
     # HTML 컴포넌트에 overflow 스타일 추가
     js_code = create_ranking_component(df, yearly_data)
