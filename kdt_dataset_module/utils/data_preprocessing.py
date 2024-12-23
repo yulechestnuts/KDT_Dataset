@@ -1,4 +1,5 @@
 import pandas as pd
+from utils.data import classify_training_type
 
 def preprocess_data(df):
     """데이터 전처리 함수"""
