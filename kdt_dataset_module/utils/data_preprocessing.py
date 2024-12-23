@@ -1,6 +1,7 @@
 import pandas as pd
 from difflib import SequenceMatcher
 import re
+from datetime import datetime
 
 def calculate_yearly_revenue(df):
     year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'20\d{2}년', col)]
@@ -9,7 +10,72 @@ def calculate_yearly_revenue(df):
     return df, yearly_data
 
 def group_institutions_advanced(df, similarity_threshold=0.6):
-    # ... (group_institutions_advanced 함수 코드는 이전 답변과 동일)
+    """
+    훈련기관명을 분석하여 유사한 기관들을 그룹화합니다.
+
+    Args:
+        df: 훈련기관명이 포함된 DataFrame
+        similarity_threshold: 유사도를 판단하는 기준값 (0~1, 기본값 0.6)
+
+    Returns:
+        DataFrame: '훈련기관' 열의 훈련기관명이 그룹화된 DataFrame
+    """
+
+    df = df.copy()
+    df['훈련기관'] = df['훈련기관'].astype(str)  # '훈련기관' 열을 문자열로 변환
+    
+    # 전처리: 특수문자, 공백, "(주)" 등 제거 (수정됨)
+    df['clean_name'] = df['훈련기관'].str.replace(r'[^가-힣A-Za-z0-9()]', '', regex=True)  # 괄호는 남겨둡니다.
+    df['clean_name'] = df['clean_name'].str.replace(r'\s+', '', regex=True)
+    df['clean_name'] = df['clean_name'].str.replace(r'주식회사', '', regex=True) # 주식회사만 제거.
+    df['clean_name'] = df['clean_name'].str.upper()  # 대문자로 통일
+
+    # 그룹 정보를 담을 딕셔너리
+    groups = {}
+    group_id = 0
+
+    # 기관명을 순회하며 그룹화
+    for idx, row in df.iterrows():
+        name = row['clean_name']
+        
+        if not name:  # 빈 문자열인 경우 건너뛰기
+            continue
+
+        found_group = False
+        for group_name, members in groups.items():
+            for member in members:
+                if SequenceMatcher(None, name, member).ratio() >= similarity_threshold:
+                    groups[group_name].append(name)
+                    found_group = True
+                    break
+            if found_group:
+                break
+
+        if not found_group:
+            group_id += 1
+            groups[f'기관_{group_id}'] = [name]
+
+    # 훈련기관명을 그룹명으로 매핑
+    name_to_group = {}
+    for group_name, members in groups.items():
+        for member in members:
+            name_to_group[member] = group_name
+
+    # 원본 데이터프레임에 그룹 정보 추가
+    df['group'] = df['clean_name'].map(name_to_group)
+
+    # 'clean_name' 및 'group' 열이 모두 존재하는지 확인 후 처리
+    if 'clean_name' in df.columns and 'group' in df.columns:
+        # 그룹 대표 이름 설정 (가장 많이 등장하는 이름)
+        group_repr = df.groupby('group')['clean_name'].agg(lambda x: x.value_counts().index[0]).to_dict()
+        df['group_name'] = df['group'].map(group_repr)
+    
+        # '훈련기관' 열을 그룹 대표 이름으로 업데이트
+        df['훈련기관'] = df['group_name']
+    
+    # 불필요한 열 제거
+    df.drop(columns=['clean_name', 'group'], inplace=True)
+
     return df
 
 def classify_training_type(row):
@@ -29,15 +95,6 @@ def classify_training_type(row):
     return '&'.join(types)
 
 def preprocess_data(df):
-    """
-    데이터프레임을 전처리합니다.
-
-    Args:
-        df (pd.DataFrame): 전처리할 데이터프레임
-
-    Returns:
-        pd.DataFrame: 전처리된 데이터프레임, 실패 시 빈 데이터프레임 반환
-    """
     try:
         # 날짜 열 처리
         date_columns = ['과정시작일', '과정종료일']
@@ -56,20 +113,13 @@ def preprocess_data(df):
 
         # 파트너기관 처리 (기존 로직 유지)
         if '파트너기관' in df.columns:
-            # 파트너기관이 있는 행
             partner_rows = df[df['파트너기관'].notna()].copy()
-
-            # 파트너기관이 없는 행
             non_partner_rows = df[df['파트너기관'].isna()].copy()
-        
-            # 파트너기관이 있는 행에 대해서만 훈련기관을 파트너기관으로 변경하고 매출 조정
             partner_rows['훈련기관'] = partner_rows['파트너기관']
-        
+
             for year in year_columns:
                 if year in df.columns:
-                    # 원본 데이터의 매출 조정 (10%)
                     df.loc[df['파트너기관'].notna(), year] *= 0.1
-                    # 파트너 기관이 있는 행에 대해서만 매출 90% 조정
                     partner_rows[year] = partner_rows[year] * 0.9
 
         # 데이터 합치기
@@ -92,7 +142,8 @@ def preprocess_data(df):
         df['훈련유형'] = df.apply(classify_training_type, axis=1)
 
         return df
-    except Exception as e:
-        print(f"Error: 데이터 전처리 중 오류 발생: {e}") # st.error 대신 print 사용
-        print(f"Error details: {e}")
+
+    except Exception as error:
+        print(f"Error: 데이터 전처리 중 오류 발생: {str(error)}")
+        print(f"Error details: {error}")
         return pd.DataFrame()
