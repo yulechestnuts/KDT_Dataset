@@ -24,12 +24,16 @@ def load_data():
         response.raise_for_status()  # 상태 코드가 200이 아니면 에러 발생
         df = pd.read_excel(io.BytesIO(response.content), engine="openpyxl")
         print("load_data 컬럼 확인:", df.columns)
-        return df
+        if df.empty:
+            st.error("데이터를 불러오는데 실패했습니다.")
+            return pd.DataFrame(), True  # 변경: 빈 DataFrame과 stop 여부를 반환
+        return df, False # 변경: 데이터프레임과 stop 여부 반환
     except requests.exceptions.RequestException as e:
         st.error(f"데이터를 불러올 수 없습니다: {e}")
+        return pd.DataFrame(), True # 변경: 빈 DataFrame과 stop 여부를 반환
     except Exception as e:
         st.error(f"데이터 처리 중 오류가 발생했습니다: {e}")
-    return pd.DataFrame()
+        return pd.DataFrame(), True # 변경: 빈 DataFrame과 stop 여부를 반환
 
 def create_ranking_component(df, yearly_data):
     institution_revenue = df.groupby('훈련기관').agg({
@@ -270,10 +274,9 @@ def main():
         </style>
     """, unsafe_allow_html=True)
     
-    df = load_data_from_github("https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202411.xlsx?raw=true")
-    if df.empty:
-        st.error("데이터를 불러오는데 실패했습니다.")
-        return
+    df, stop = load_data()
+    if stop:
+      return
     
     df = preprocess_data(df)
     
@@ -298,7 +301,7 @@ def main():
     )
     
     if analysis_type == "훈련기관 분석":
-         analyze_training_institution(df, yearly_data)
+        analyze_training_institution(df, yearly_data)
     elif analysis_type == "과정 분석":
         analyze_course(df, yearly_data)
     else:

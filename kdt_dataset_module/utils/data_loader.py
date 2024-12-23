@@ -1,44 +1,50 @@
 import pandas as pd
 import requests
 import io
+import streamlit as st
 from difflib import SequenceMatcher
+
 
 def load_data_from_github(url):
     """
-    GitHub URL에서 엑셀 파일을 로드하고, 에러를 처리하며,
+    GitHub URL에서 엑셀 또는 CSV 파일을 로드하고, 에러를 처리하며,
     데이터를 정제하는 함수입니다.
     """
     try:
-        response = requests.get(url, timeout=20)
+        response = requests.get(url, timeout=30)
         response.raise_for_status()
         if url.lower().endswith('.xlsx'):
             df = pd.read_excel(io.BytesIO(response.content), engine="openpyxl")
         elif url.lower().endswith('.csv'):
-             df = pd.read_csv(io.StringIO(response.content.decode('utf-8')))
+            df = pd.read_csv(io.StringIO(response.content.decode('utf-8')))
         else:
-            print(f"Error: 지원하지 않는 파일 형식입니다: {url}")
+            st.error(f"Error: 지원하지 않는 파일 형식입니다: {url}")
             return pd.DataFrame()
+        
         df = df.dropna(axis=0, how='all')
         df = df.dropna(axis=1, how='all')
-        if '고유값' not in df.columns:
-            print("Error: '고유값' 열이 존재하지 않습니다. 데이터 파일을 확인해주세요.")
-            return pd.DataFrame()
-        df = df[df['고유값'].notna()]
-        df = df.fillna(0)
         
-        # 컬럼 이름에서 공백 제거
-        # df.columns = [str(col).replace(' ', '').strip() for col in df.columns]
+        if '고유값' not in df.columns:
+           st.error("Error: '고유값' 열이 존재하지 않습니다. 데이터 파일을 확인해주세요.")
+           return pd.DataFrame()
+        df = df[df['고유값'].notna()]
+        
+        df = df.fillna(0)
         print("load_data_from_github 컬럼 확인:", df.columns)
-
+        
+        if df.empty:
+           st.error("데이터 로딩 후 빈 데이터프레임이 생성되었습니다.")
+           return pd.DataFrame()
         return df
+    
     except requests.exceptions.RequestException as e:
-        print(f"Error: 데이터 로딩 실패 - 네트워크 오류가 발생했습니다. \n\n {e}")
+        st.error(f"Error: 데이터 로딩 실패 - 네트워크 오류가 발생했습니다. \n\n {e}")
         return pd.DataFrame()
     except pd.errors.ParserError as e:
-        print(f"Error: 엑셀 또는 CSV 파일 파싱 오류 - 유효하지 않은 파일입니다. \n\n {e}")
+        st.error(f"Error: 엑셀 또는 CSV 파일 파싱 오류 - 유효하지 않은 파일입니다. \n\n {e}")
         return pd.DataFrame()
     except Exception as e:
-        print(f"Error: 데이터 처리 중 오류 발생: \n\n {e}")
+        st.error(f"Error: 데이터 처리 중 오류 발생: \n\n {e}")
         return pd.DataFrame()
 
 def calculate_yearly_revenue(df):
@@ -127,7 +133,6 @@ def group_institutions_advanced(df, similarity_threshold=0.6):
     except Exception as error:
         print(f"Error in group_institutions_advanced: {error}")
         return pd.DataFrame()
-
 
 def classify_training_type(row):
     types = []
