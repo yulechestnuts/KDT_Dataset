@@ -29,8 +29,6 @@ def create_yearly_revenue_chart(yearly_data):
     )
     return line_chart
 
-# ... (ncs 분석, 과정 분석 등에 사용되는 차트 생성 함수들도 이곳에 작성)
-# 예시: ncs 분석
 def create_ncs_revenue_bar_chart(ncs_stats):
     """NCS별 누적매출 바 차트를 생성합니다."""
     base_chart = alt.Chart(ncs_stats).encode(
@@ -81,24 +79,17 @@ def create_ncs_yearly_revenue_line_chart(yearly_data_long):
     )
     return line_chart
 
-# 예시: 과정 분석
 def create_course_ranking_bar_chart(course_metrics, selected_year, sort_metric, years):
     """과정 순위 분석"""
-    # Create a two-column layout
-   
-    # 정렬 기준에 따라 데이터 정렬
     sort_column = {
         "매출액": "매출액_정렬용",
         "수료율": "유효_수료율",
         "만족도": "유효_만족도"
     }[sort_metric]
-
+    
     sorted_courses = course_metrics.sort_values(sort_column, ascending=False)
-
-    # 상위 5개 과정 데이터 준비
     top_5 = sorted_courses.head(5)
-
-    # 선택된 메트릭에 따라 차트 데이터 준비
+    
     if sort_metric == "매출액":
         chart_value = top_5['총매출']
         format_str = '.1f'
@@ -109,10 +100,10 @@ def create_course_ranking_bar_chart(course_metrics, selected_year, sort_metric, 
         value_suffix = ''
 
     chart_data = pd.DataFrame({
-        '과정명': top_5['과정명'] + ' (' + top_5['훈련기관'] + ')', # 이 부분에서 훈련기관 열이 없을 수도 있음.
+        '과정명': top_5['과정명'] + ' (' + top_5['훈련기관'] + ')',
         sort_metric: chart_value
     })
-    # Altair 바 차트 생성
+    
     bar_chart = alt.Chart(chart_data).mark_bar().encode(
         x=alt.X(f'{sort_metric}:Q',
                 title=f'{sort_metric} ({value_suffix})',
@@ -130,10 +121,9 @@ def create_course_ranking_bar_chart(course_metrics, selected_year, sort_metric, 
     ).properties(
         height=300
     )
-
     return bar_chart
 
-def create_course_revenue_chart(course_yearly_data):
+def create_course_revenue_chart(course_yearly_data, selected_course):
     """과정별 연도별 매출 추이 차트 생성 함수"""
     course_chart = alt.Chart(course_yearly_data).mark_bar().encode(
         x=alt.X('연도:N',

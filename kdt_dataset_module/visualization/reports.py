@@ -3,8 +3,9 @@ import pandas as pd
 from visualization.charts import *
 import streamlit.components.v1 as components
 import json
-
-# ... (다른 import 문)
+from datetime import datetime
+import numpy as np
+import altair as alt
 
 def analyze_training_institution(df, yearly_data):
     """훈련기관 분석을 수행하고 결과를 시각화하는 함수"""
@@ -15,7 +16,7 @@ def analyze_training_institution(df, yearly_data):
         '과정명': 'count',
         '과정시작일': 'min',
         '과정종료일': 'max',
-        '수강신청 인원': 'sum'
+        '수강신청인원': 'sum'
     }).reset_index()
 
     # 연도별 매출 추가
@@ -28,12 +29,12 @@ def analyze_training_institution(df, yearly_data):
 
     yearly_courses = df.groupby(['훈련기관', '개강연도']).agg({
         '과정명': 'count',
-        '수강신청 인원': 'sum'
+        '수강신청인원': 'sum'
     }).reset_index()
 
     monthly_courses = df.groupby(['훈련기관', '개강월']).agg({
         '과정명': 'count',
-        '수강신청 인원': 'sum'
+        '수강신청인원': 'sum'
     }).reset_index()
 
     # 전체 시장 규모 계산
@@ -85,10 +86,10 @@ def analyze_training_institution(df, yearly_data):
             col1, col2 = st.columns(2)
             with col1:
                 st.dataframe(
-                    inst_yearly_courses.set_index('개강연도')[['과정명', '수강신청 인원']],
+                    inst_yearly_courses.set_index('개강연도')[['과정명', '수강신청인원']],
                     column_config={
                         '과정명': st.column_config.Column('개설 과정 수', help='해당 연도에 개설된 과정 수'),
-                        '수강신청 인원': st.column_config.Column('수강신청 인원 수', help='해당 연도의 총 수강신청 인원 수')
+                        '수강신청인원': st.column_config.Column('수강신청 인원 수', help='해당 연도의 총 수강신청 인원 수')
                     },
                     use_container_width=True
                 )
@@ -101,10 +102,10 @@ def analyze_training_institution(df, yearly_data):
                 ]
 
                 st.dataframe(
-                    inst_monthly_courses.set_index('개강월')[['과정명', '수강신청 인원']],
+                    inst_monthly_courses.set_index('개강월')[['과정명', '수강신청인원']],
                     column_config={
                         '과정명': st.column_config.Column('개설 과정 수', help='해당 월에 개설된 과정 수'),
-                        '수강신청 인원': st.column_config.Column('수강신청 인원 수', help='해당 월의 총 수강신청 인원 수')
+                        '수강신청인원': st.column_config.Column('수강신청 인원 수', help='해당 월의 총 수강신청 인원 수')
                     },
                     use_container_width=True
                 )
@@ -117,7 +118,7 @@ def analyze_training_institution(df, yearly_data):
 
             # 과정별 상세 정보 테이블
             course_detail_columns = [
-                '과정명', '누적매출', '수료율', '만족도', '수강신청 인원'
+                '과정명', '누적매출', '수료율', '만족도', '수강신청인원'
             ]
 
             course_details = inst_courses[course_detail_columns].copy()
@@ -138,7 +139,7 @@ def analyze_training_institution(df, yearly_data):
                     '누적매출': st.column_config.Column('누적매출 (억원)'),
                     '수료율': st.column_config.Column('수료율 (%)'),
                     '만족도': st.column_config.Column('만족도'),
-                    '수강신청 인원': st.column_config.Column('수강신청 인원 수')
+                    '수강신청인원': st.column_config.Column('수강신청 인원 수')
                 }
             )
 
@@ -437,7 +438,7 @@ def analyze_ncs(df, yearly_data):
     # 연도별 매출 데이터를 long format으로 변환
     yearly_data_long = pd.DataFrame({
         'NCS명': ncs_stats['NCS명'].repeat(len(yearly_data.columns)),
-        '연도': ncs_stats(yearly_data.columns, len(ncs_stats)),
+        '연도': np.tile(yearly_data.columns, len(ncs_stats)),
         '매출': ncs_stats[[f'{year}' for year in yearly_data.columns]].values.flatten()
     })
 
@@ -487,24 +488,220 @@ def format_currency(value):
     """금액을 억 원 단위로 포맷팅"""
     return f"{value/100000000:.1f}"
 
-# 예시: React 컴포넌트 생성 및 삽입 함수
-def create_institution_analysis_component(filtered_institutions, yearly_data, total_market, avg_revenue):
-    js_code = f"""
+def create_institution_analysis_component(df, yearly_data):
+    institution_stats = df.groupby('훈련기관').agg({
+        '누적매출': 'sum',
+        '과정명': 'count',
+        '과정시작일': 'min',
+        '과정종료일': 'max',
+        '수강신청인원': 'sum'
+    }).reset_index()
+
+    # 연도별 매출 추가
+    for year in yearly_data.columns:
+        institution_stats[year] = df.groupby('훈련기관')[year].sum().values
+
+    # 연도별, 월별 과정 수와 수강신청 인원 수 계산
+    df['개강연도'] = pd.to_datetime(df['과정시작일']).dt.year
+    df['개강월'] = pd.to_datetime(df['과정시작일']).dt.month
+
+    yearly_courses = df.groupby(['훈련기관', '개강연도']).agg({
+        '과정명': 'count',
+        '수강신청인원': 'sum'
+    }).reset_index()
+
+    monthly_courses = df.groupby(['훈련기관', '개강월']).agg({
+        '과정명': 'count',
+        '수강신청인원': 'sum'
+    }).reset_index()
+
+    # 전체 시장 규모 계산
+    total_market = institution_stats['누적매출'].sum()
+
+    # 시장 점유율이 가장 높은 기관 추출
+    top_institution = institution_stats.nlargest(1, '누적매출').iloc[0]
+
+    # 평균 기관별 매출 계산
+    avg_revenue = institution_stats['누적매출'].mean()
+
+    # 필터링된 기관 데이터 추출 (검색어 적용)
+    search_term = st.session_state.get("institution_search", "")  # 세션 상태에서 검색어 가져오기
+    if search_term:
+        filtered_institutions = institution_stats[institution_stats['훈련기관'].str.contains(search_term, case=False)]
+    else:
+        filtered_institutions = institution_stats.nlargest(5, '누적매출')
+
+    # 리포트 데이터 생성
+    report_data = []
+    for _, inst in filtered_institutions.iterrows():
+        yearly_revenue_data = {
+            str(year): float(inst[year])
+            for year in yearly_data.columns
+        }
+        
+        # 연도별 매출 데이터에 해당 연도의 총 매출 대비 비율 추가
+        total_revenue = sum(yearly_revenue_data.values())
+        for year in yearly_revenue_data:
+            yearly_revenue_data[year] = {
+                'amount': yearly_revenue_data[year],
+                'percentage': (yearly_revenue_data[year] / total_revenue) * 100 if total_revenue else 0
+            }
+
+    js_code = """
         <div id="institution-analysis-root"></div>
         <script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
         <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
         <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
         <script type="text/babel">
+            const reportData = %s;
+            const totalMarket = %s;
+            const avgRevenue = %s;
 
-            const totalMarket = {json.dumps(total_market)};
-            const avgRevenue = {json.dumps(avg_revenue)};
+            function MarketOverview({ yearlyRevenueData }) {
+            const years = Object.keys(yearlyRevenueData).sort();
 
-            // ... (InstitutionAnalysis 컴포넌트 코드)
+            return (
+                <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
+                <h2 style={{ color: '#007bff', marginBottom: '10px' }}>연도별 총 시장 규모</h2>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {years.map(year => (
+                    <div key={year} style={{ background: '#e9ecef', padding: '15px', borderRadius: '8px' }}>
+                        <h4 style={{ color: '#007bff', marginBottom: '5px' }}>{year}</h4>
+                        <p style={{ fontSize: '1.2em', fontWeight: 'bold', color: '#343a40' }}>
+                        {(yearlyRevenueData[year].amount / 100000000).toLocaleString('ko-KR', {
+                            minimumFractionDigits: 1,
+                            maximumFractionDigits: 1,
+                        })}억원
+                        </p>
+                    </div>
+                    ))}
+                </div>
+                </div>
+            );
+            }
+
+            function InstitutionPerformance({ institution, yearlyRevenueData, yearlyCourses, monthlyCourses, courseDetails }) {
+              const years = Object.keys(yearlyRevenueData).sort();
+
+              // 연도별 매출 추이 차트
+              const chartData = years.map(year => ({
+                연도: year,
+                매출: yearlyRevenueData[year].amount / 100000000
+              }));
+
+              const maxRevenue = Math.max(...chartData.map(data => data.매출));
+
+              const formatRevenue = (revenue) => {
+                return (revenue).toLocaleString('ko-KR', {
+                  minimumFractionDigits: 1,
+                  maximumFractionDigits: 1,
+                }) + '억원';
+              };
+
+              return (
+                <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
+                  <h3 style={{ color: '#007bff', marginBottom: '10px' }}>{institution} 상세 분석</h3>
+
+                  {/* 연도별 매출 추이 */}
+                  <h4 style={{ color: '#007bff', marginTop: '20px' }}>연도별 매출 추이</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {chartData.map((data, index) => (
+                      <div key={data.연도} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ fontWeight: 'bold', minWidth: '60px' }}>{data.연도}:</span>
+                         <div style={{
+                          height: '20px',
+                          width: `${data.매출 / maxRevenue * 100}%`,
+                          background: '#007bff',
+                          borderRadius: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          paddingLeft: '8px',
+                          color: 'white',
+                           transition: 'width 1s ease-out'
+                        }}>
+                         {formatRevenue(data.매출)}
+                         </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* 연도별 과정 및 수강신청 인원 현황 */}
+                  <h4 style={{ color: '#007bff', marginTop: '20px' }}>연도별 과정 및 수강신청 인원 현황</h4>
+                  <div style={{ display: 'flex', gap: '20px' }}>
+                    <div style={{ flex: 1, background: '#e9ecef', padding: '15px', borderRadius: '8px' }}>
+                      <h5 style={{ color: '#007bff', marginBottom: '5px' }}>연도별</h5>
+                      {/* 연도별 데이터 테이블 (yearlyCourses) */}
+                      {/* ... (구현 필요) ... */}
+                    </div>
+                    <div style={{ flex: 1, background: '#e9ecef', padding: '15px', borderRadius: '8px' }}>
+                      <h5 style={{ color: '#007bff', marginBottom: '5px' }}>월별</h5>
+                      {/* 월별 데이터 테이블 (monthlyCourses) */}
+                      {/* ... (구현 필요) ... */}
+                    </div>
+                  </div>
+
+                  {/* 기관별 과정 상세 정보 */}
+                  <h4 style={{ color: '#007bff', marginTop: '20px' }}>과정별 세부 정보</h4>
+                  {/* 과정별 상세 정보 테이블 (courseDetails) */}
+                  {/* ... (구현 필요) ... */}
+                </div>
+              );
+            }
+
+            function InstitutionAnalysis() {
+                const [searchTerm, setSearchTerm] = React.useState('');
+
+                const filteredReportData = reportData.filter(item =>
+                    item.institution.toLowerCase().includes(searchTerm.toLowerCase())
+                );
+
+                return (
+                    <div style={{ padding: '20px' }}>
+                        <div style={{
+                            margin: '20px 0',
+                            display: 'flex',
+                            justifyContent: 'center',
+                            gap: '10px',
+                            flexWrap: 'wrap'
+                        }}>
+                            <input
+                                type="text"
+                                placeholder="기관명 검색..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                style={{
+                                    padding: '8px 16px',
+                                    background: '#f8f9fa',
+                                    border: '1px solid #ced4da',
+                                    borderRadius: '4px',
+                                    color: 'black',
+                                    marginRight: '10px'
+                                }}
+                            />
+                        </div>
+                       {/* 검색 결과 표시 */}
+                       {filteredReportData.length > 0 && (
+                           <MarketOverview yearlyRevenueData={filteredReportData[0].yearlyRevenueData} />
+                        )}
+                        {filteredReportData.map(data => (
+                            <InstitutionPerformance
+                                key={data.institution}
+                                institution={data.institution}
+                                yearlyRevenueData={data.yearlyRevenueData}
+                                yearlyCourses={data.yearlyCourses}
+                                monthlyCourses={data.monthlyCourses}
+                                courseDetails={data.courseDetails}
+                            />
+                        ))}
+                    </div>
+                );
+            }
 
             ReactDOM.render(
                 <InstitutionAnalysis />,
                 document.getElementById('institution-analysis-root')
             );
         </script>
-    """
+    """ % (json.dumps(report_data), total_market, avg_revenue)
+
     return js_code
