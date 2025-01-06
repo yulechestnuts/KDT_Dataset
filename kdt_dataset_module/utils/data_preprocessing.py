@@ -5,7 +5,7 @@ def preprocess_data(df):
     """데이터 전처리 함수"""
     try:
         # 1. 숫자형 열 변환 (먼저 문자열로 변환 후 숫자형으로 변환)
-        numeric_columns = ['총훈련일수', '총훈련시간', '훈련비', '정원', '수강신청인원', '수료인원', '수료율', '만족도']
+        numeric_columns = ['총훈련일수', '총훈련시간', '훈련비', '정원', '수강신청 인원', '수료인원', '수료율', '만족도']
         for col in numeric_columns:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col].astype(str), errors='coerce').fillna(0)
@@ -16,11 +16,13 @@ def preprocess_data(df):
             if year in df.columns:
                df[year] = pd.to_numeric(df[year].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
         
-        # 3. 날짜 관련 열 처리
+        # 3. 날짜 관련 열 처리 및 '훈련연도' 컬럼 생성
         date_columns = ['과정시작일', '과정종료일']
         for col in date_columns:
             if col in df.columns:
                 df[col] = pd.to_datetime(df[col], errors='coerce')
+        if '과정시작일' in df.columns:
+            df['훈련연도'] = df['과정시작일'].dt.year
 
         # 4. 파트너기관 처리 (기존 로직 유지)
         if '파트너기관' in df.columns:
@@ -51,16 +53,18 @@ def preprocess_data(df):
             df['누적매출'] = df[year_columns].fillna(0).sum(axis=1)
 
         # 7. 수강신청인원 컬럼 강제 생성 및 결측치 처리
-        if '수강신청인원' not in df.columns:
-           df['수강신청인원'] = 0  # 컬럼이 없는 경우 0으로 채움
+        if '수강신청 인원' not in df.columns:
+           df['수강신청 인원'] = 0  # 컬럼이 없는 경우 0으로 채움
         
         if '훈련기관' not in df.columns:
             df['훈련기관'] = ''  # 컬럼이 없는 경우 빈 문자열로 채움
             print("Error: 데이터프레임에 '훈련기관' 컬럼이 없습니다.")
 
-        # 8. 훈련유형 처리
-        if '훈련과정분류' in df.columns:
-            df['훈련유형'] = df.apply(classify_training_type, axis=1)
+        # 8. 훈련유형 처리 (수정됨)
+        print("preprocess_data - before classify_training_type, 파트너기관 (head):")  # Debug
+        if '파트너기관' in df.columns:
+           print(df['파트너기관'].head())
+        df['훈련유형'] = df.apply(classify_training_type, axis=1)
 
         df = df.fillna(0)
 

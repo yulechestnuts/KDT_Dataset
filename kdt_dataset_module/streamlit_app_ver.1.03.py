@@ -14,7 +14,7 @@ from difflib import SequenceMatcher
 from utils.data_loader import load_data_from_github
 from utils.data_preprocessing import preprocess_data
 from utils.data import calculate_yearly_revenue, group_institutions_advanced, classify_training_type
-from visualization.reports import analyze_training_institution, analyze_course, analyze_ncs
+from visualization.reports import analyze_training_institution, analyze_course, analyze_ncs, analyze_top5_institutions
 
 @st.cache_data
 def load_data():
@@ -259,13 +259,12 @@ def create_ranking_component(df, yearly_data):
 
 def main():
     st.set_page_config(layout="wide")
-    
-    # CSS 수정: HTML 컴포넌트 내부 스크롤 설정
+
     st.markdown("""
         <style>
         .stHtmlFrame-container {
             height: 800px;
-            overflow-y: scroll !important;  /* 세로 스크롤 활성화 */
+            overflow-y: scroll !important;
         }
         iframe {
             height: 100% !important;
@@ -273,35 +272,43 @@ def main():
         }
         </style>
     """, unsafe_allow_html=True)
-    
+
     df, stop = load_data()
     if stop:
-      return
-    
+        return
+
     df = preprocess_data(df)
-    
-    # 연도 컬럼 찾기 수정
+    print("Preprocessed DataFrame Columns:", df.columns) # Added for debugging
+
     year_columns = [str(col) for col in df.columns if isinstance(col, (int, str)) and re.match(r'20\d{2}년?', str(col))]
-    
+
     df, yearly_data = calculate_yearly_revenue(df)
-    
-    # HTML 컴포넌트에 overflow 스타일 추가
+
     js_code = create_ranking_component(df, yearly_data)
-    # HTML 컴포넌트에 스크롤 스타일 추가
     js_code = f"""
         <div style="height: 800px; overflow-y: auto;">
             {js_code}
         </div>
     """
     html(js_code, height=800)
-    
+
     analysis_type = st.sidebar.selectbox(
         "분석 유형 선택",
         ["훈련기관 분석", "과정 분석", "NCS 분석"]
     )
-    
+
     if analysis_type == "훈련기관 분석":
+        st.subheader("훈련기관별 훈련 유형별 비중")
+        total_courses = df.groupby(['훈련기관', '훈련연도']).size().reset_index(name='총 과정 수')
+        type_courses = df.groupby(['훈련기관', '훈련연도', '훈련유형']).size().reset_index(name='유형별 과정 수')
+        merged_df = pd.merge(total_courses, type_courses, on=['훈련기관', '훈련연도'], how='left')
+        merged_df['유형별 과정 수'] = merged_df['유형별 과정 수'].fillna(0)
+        merged_df['유형별 비중'] = merged_df['유형별 과정 수'] / merged_df['총 과정 수']
+        st.dataframe(merged_df)
+
         analyze_training_institution(df, yearly_data)
+        analyze_top5_institutions(df, yearly_data)
+
     elif analysis_type == "과정 분석":
         analyze_course(df, yearly_data)
     else:
