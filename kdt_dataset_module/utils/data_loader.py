@@ -32,6 +32,10 @@ def load_data_from_github(url):
         df = df.fillna(0)
         print("load_data_from_github 컬럼 확인:", df.columns)
         
+        if '파트너기관' in df.columns: # Debugging here
+            print("load_data_from_github 파트너기관 컬럼 값 샘플:")
+            print(df['파트너기관'].head()) # Print first few rows of the column for inspection
+
         if df.empty:
            st.error("데이터 로딩 후 빈 데이터프레임이 생성되었습니다.")
            return pd.DataFrame()
@@ -140,12 +144,16 @@ def classify_training_type(row):
         types.append('재직자 훈련')
     if pd.notna(row.get('훈련기관')) and '학교' in str(row['훈련기관']):
         types.append('대학주도형 훈련')
-    if pd.notna(row.get('선도기업')) or pd.notna(row.get('파트너기관')):
-        types.append('선도기업형 훈련')
     if row['과정명'].startswith('심화_'):
         types.append('심화 훈련')
     if row['과정명'].startswith('융합_'):
         types.append('융합 훈련')
     if not types:
         types.append('신기술 훈련')
+        
+    # Overwrite logic: If '파트너기관' is not null, change the training type to "선도기업형 훈련"
+    if not pd.isna(row.get('파트너기관')) and str(row.get('파트너기관')).strip() != '':
+      types = ['선도기업형 훈련']
+
+    print(f"classify_training_type - 과정명: {row['과정명']}, 파트너기관: {row.get('파트너기관')}, types before return: {types}, type of 파트너기관: {type(row.get('파트너기관'))}")
     return '&'.join(types)
