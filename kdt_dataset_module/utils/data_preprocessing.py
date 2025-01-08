@@ -48,7 +48,8 @@ def preprocess_data(df):
 
         # 5. 회차 처리
         if '회차' in df.columns:
-            df['회차'] = pd.to_numeric(df['회차'].astype(str).str.extract('(\d+)', expand=False), errors='coerce').fillna(0).astype('Int64')
+            # 수정된 부분: '\d'를 '\\d'로 변경
+            df['회차'] = pd.to_numeric(df['회차'].astype(str).str.extract('(\\d+)', expand=False), errors='coerce').fillna(0).astype('Int64')
 
         # 6. 누적매출 계산
         df['누적매출'] = df[year_columns].sum(axis=1)
@@ -60,10 +61,11 @@ def preprocess_data(df):
         # 8. 훈련기관 그룹화 (훈련 유형 분류 전에 수행)
         if '훈련기관' in df.columns:
             print("group_institutions_advanced 함수 시작")
-            df = group_institutions_advanced(df)
+            df = group_institutions_advanced(df, similarity_threshold=0.75)
             print("group_institutions_advanced 함수 종료")
             print("preprocess_data 후 group_institutions_advanced:")
             print(df.columns)
+            
         else:
             print("Error: '훈련기관' 컬럼이 DataFrame에 없습니다.")
             return pd.DataFrame() # '훈련기관' 컬럼이 없으면 빈 DataFrame 반환

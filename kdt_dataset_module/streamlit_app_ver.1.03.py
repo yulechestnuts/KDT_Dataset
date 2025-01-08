@@ -38,6 +38,8 @@ def load_data():
     except Exception as e:
         st.error(f"데이터 처리 중 오류가 발생했습니다: {e}")
         return pd.DataFrame()
+
+@st.cache_data
 def create_ranking_component(df, yearly_data):
     """훈련기관별 랭킹 컴포넌트 생성"""
     if '훈련기관' not in df.columns:
@@ -260,7 +262,108 @@ def create_ranking_component(df, yearly_data):
     """ % json.dumps(ranking_data)
 
     return js_code
+@st.cache_data
+def calculate_and_visualize_revenue(df):
+    """선도기업 비중 및 SSAFY 사업 분류 시각화"""
+    year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'^\d{4}년$', col)]
+    
+    # 전체 매출 계산
+    total_revenue = df[year_columns].sum().sum()
 
+    # 선도기업 매출 계산
+    leading_company_revenue = df[df['훈련유형'].str.contains('선도기업형 훈련')][year_columns].sum().sum()
+    
+    # SSAFY 매출 계산
+    ssafy_revenue = df[df['과정명'].str.contains(r'\[삼성\] 청년 SW 아카데미', na=False)][year_columns].sum().sum()
+
+    # 신기술 훈련 매출 계산
+    new_tech_revenue = df[~df['훈련유형'].str.contains('선도기업형 훈련')][year_columns].sum().sum()
+
+    # 비선도기업, 비SSAFY 사업 매출 계산
+    non_leading_non_ssafy_revenue = total_revenue - leading_company_revenue - ssafy_revenue - new_tech_revenue
+
+    # 데이터 준비
+    revenue_data = {
+        '유형': ['신기술 훈련', '선도기업형 훈련', 'SSAFY', '기타'],
+        '매출액': [new_tech_revenue, leading_company_revenue, ssafy_revenue, max(0, non_leading_non_ssafy_revenue)]  # 음수 값 0으로 처리
+    }
+
+    revenue_df = pd.DataFrame(revenue_data)
+    
+    # 매출 비중 시각화
+    pie_chart = alt.Chart(revenue_df).mark_arc().encode(
+        theta=alt.Theta(field="매출액", type="quantitative"),
+        color=alt.Color(field="유형", type="nominal", 
+                         scale=alt.Scale(domain=['신기술 훈련', '선도기업형 훈련', 'SSAFY', '기타'], 
+                                        range=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728'])),
+        tooltip=['유형', alt.Tooltip('매출액', format=",.2f")]
+    ).properties(
+        title="전체 사업 유형별 매출 비중"
+    )
+
+    st.altair_chart(pie_chart, use_container_width=True)
+    
+    
+    # 연도별 매출 비중 계산 및 시각화 (막대 그래프 및 원 그래프)
+    for year in year_columns:
+       total_year_revenue = df[year].sum()
+        
+       leading_company_year_revenue = df[df['훈련유형'].str.contains('선도기업형 훈련')][year].sum()
+       ssafy_year_revenue = df[df['과정명'].str.contains(r'\[삼성\] 청년 SW 아카데미', na=False)][year].sum()
+       new_tech_year_revenue = df[~df['훈련유형'].str.contains('선도기업형 훈련')][year].sum()
+       non_leading_non_ssafy_year_revenue = max(0,total_year_revenue - leading_company_year_revenue - ssafy_year_revenue - new_tech_year_revenue)
+    
+       yearly_data = {
+           '유형': ['신기술 훈련', '선도기업형 훈련', 'SSAFY', '기타'],
+           '매출액': [new_tech_year_revenue, leading_company_year_revenue, ssafy_year_revenue, non_leading_non_ssafy_year_revenue]
+       }
+    
+       yearly_revenue_df = pd.DataFrame(yearly_data)
+    
+       pie_chart = alt.Chart(yearly_revenue_df).mark_arc().encode(
+            theta=alt.Theta(field="매출액", type="quantitative"),
+            color=alt.Color(field="유형", type="nominal", 
+                             scale=alt.Scale(domain=['신기술 훈련', '선도기업형 훈련', 'SSAFY', '기타'], 
+                                            range=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728'])),
+             tooltip = ['유형', alt.Tooltip('매출액', format=",.2f")]
+        ).properties(
+              title=f"{year} 사업 유형별 매출 비중"
+        )
+       st.altair_chart(pie_chart, use_container_width=True)
+
+    yearly_data = {}
+    for year in year_columns:
+        total_year_revenue = df[year].sum()
+        
+        leading_company_year_revenue = df[df['훈련유형'].str.contains('선도기업형 훈련')][year].sum()
+        ssafy_year_revenue = df[df['과정명'].str.contains(r'\[삼성\] 청년 SW 아카데미', na=False)][year].sum()
+        new_tech_year_revenue = df[~df['훈련유형'].str.contains('선도기업형 훈련')][year].sum()
+        non_leading_non_ssafy_year_revenue = max(0, total_year_revenue - leading_company_year_revenue - ssafy_year_revenue - new_tech_year_revenue)
+
+        yearly_data[year] = {
+            '신기술 훈련': new_tech_year_revenue,
+            '선도기업형 훈련': leading_company_year_revenue,
+            'SSAFY': ssafy_year_revenue,
+             '기타': non_leading_non_ssafy_year_revenue,
+        }
+
+    yearly_revenue_df = pd.DataFrame(yearly_data).T.reset_index()
+    yearly_revenue_df.rename(columns={'index': '연도'}, inplace=True)
+
+    yearly_revenue_df_melted = yearly_revenue_df.melt(id_vars=['연도'], var_name='유형', value_name='매출액')
+    
+    bar_chart = alt.Chart(yearly_revenue_df_melted).mark_bar().encode(
+        x=alt.X('연도', title="연도"),
+        y=alt.Y('매출액', title="매출액 (억원)", axis=alt.Axis(format="~s")),
+        color=alt.Color(field="유형", type="nominal", 
+                         scale=alt.Scale(domain=['신기술 훈련', '선도기업형 훈련', 'SSAFY', '기타'], 
+                                        range=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728'])),
+         tooltip = ['연도','유형',alt.Tooltip('매출액', format=",.2f")]
+    ).properties(
+        title="연도별 사업 유형별 매출 비중"
+    )
+    
+    st.altair_chart(bar_chart, use_container_width=True)
 
 def main():
     st.set_page_config(layout="wide")
@@ -292,8 +395,7 @@ def main():
     # 연도별 매출 계산 (전처리 후 수행)
     year_columns = [str(col) for col in df.columns if re.match(r'^\d{4}년$', str(col))]
     df, yearly_data = calculate_yearly_revenue(df)
-
-
+    
     # 랭킹 컴포넌트 생성 및 표시
     js_code = create_ranking_component(df, yearly_data)
     if js_code is None:
@@ -305,6 +407,9 @@ def main():
         </div>
     """
     html(js_code, height=800)
+    
+    # 선도기업 비중 및 SSAFY 사업 분류 시각화
+    calculate_and_visualize_revenue(df)
 
     # 사이드바에서 분석 유형 선택
     analysis_type = st.sidebar.selectbox(
@@ -313,15 +418,17 @@ def main():
     )
 
     if analysis_type == "훈련기관 분석":
-        st.subheader("훈련기관별 훈련 유형별 비중")
-        total_courses = df.groupby(['훈련기관', '훈련연도']).size().reset_index(name='총 과정 수')
-        type_courses = df.groupby(['훈련기관', '훈련연도', '훈련유형']).size().reset_index(name='유형별 과정 수')
-        merged_df = pd.merge(total_courses, type_courses, on=['훈련기관', '훈련연도'], how='left')
-        merged_df['유형별 과정 수'] = merged_df['유형별 과정 수'].fillna(0)
-        merged_df['유형별 비중'] = merged_df['유형별 과정 수'] / merged_df['총 과정 수']
-        st.dataframe(merged_df)
-
-        analyze_training_institution(df, yearly_data)
+        selected_institution = st.selectbox("훈련기관 선택", df['훈련기관'].unique(), key='selectbox')
+        if selected_institution:
+            st.subheader("훈련기관별 훈련 유형별 비중")
+            total_courses = df.groupby(['훈련기관', '훈련연도']).size().reset_index(name='총 과정 수')
+            type_courses = df.groupby(['훈련기관', '훈련연도', '훈련유형']).size().reset_index(name='유형별 과정 수')
+            merged_df = pd.merge(total_courses, type_courses, on=['훈련기관', '훈련연도'], how='left')
+            merged_df['유형별 과정 수'] = merged_df['유형별 과정 수'].fillna(0)
+            merged_df['유형별 비중'] = merged_df['유형별 과정 수'] / merged_df['총 과정 수']
+            st.dataframe(merged_df)
+            analyze_training_institution(df, yearly_data, selected_institution)
+        
         analyze_top5_institutions(df, yearly_data)
 
     elif analysis_type == "과정 분석":
