@@ -38,9 +38,11 @@ def load_data():
     except Exception as e:
         st.error(f"데이터 처리 중 오류가 발생했습니다: {e}")
         return pd.DataFrame()
-
 def create_ranking_component(df, yearly_data):
     """훈련기관별 랭킹 컴포넌트 생성"""
+    if '훈련기관' not in df.columns:
+       print("Error: '훈련기관' 컬럼이 DataFrame에 없습니다. (create_ranking_component)")
+       return None
     institution_revenue = df.groupby('훈련기관').agg({
         '누적매출': 'sum',
         '과정명': 'count',
@@ -259,6 +261,7 @@ def create_ranking_component(df, yearly_data):
 
     return js_code
 
+
 def main():
     st.set_page_config(layout="wide")
 
@@ -281,14 +284,21 @@ def main():
 
     # 데이터 전처리
     df = preprocess_data(df)
+    if df.empty:  # preprocess_data에서 '훈련기관' 컬럼이 없는 경우
+      return
+
     print("Preprocessed DataFrame Columns:", df.columns)
 
     # 연도별 매출 계산 (전처리 후 수행)
     year_columns = [str(col) for col in df.columns if re.match(r'^\d{4}년$', str(col))]
     df, yearly_data = calculate_yearly_revenue(df)
 
+
     # 랭킹 컴포넌트 생성 및 표시
     js_code = create_ranking_component(df, yearly_data)
+    if js_code is None:
+      st.error("랭킹 컴포넌트 생성에 실패했습니다. '훈련기관' 컬럼이 없는지 확인해주세요.")
+      return
     js_code = f"""
         <div style="height: 800px; overflow-y: auto;">
             {js_code}
@@ -318,6 +328,7 @@ def main():
         analyze_course(df, yearly_data)
     else:
         analyze_ncs(df, yearly_data)
+
 
 if __name__ == "__main__":
     main()

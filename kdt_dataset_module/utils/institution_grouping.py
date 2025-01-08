@@ -52,6 +52,7 @@ def group_institutions_advanced(df, similarity_threshold=0.6):
                 group_repr[group] = group_counts.index[0] if not group_counts.empty else ""
 
             df['group_name'] = df['group'].map(group_repr)
+            # '훈련기관' 컬럼을 'group_name'으로 변경합니다.
             df['훈련기관'] = df['group_name']
 
         df.drop(columns=['clean_name', 'group'], inplace=True, errors='ignore')

@@ -1,5 +1,8 @@
 import pandas as pd
-from utils.data import classify_training_type, group_institutions_advanced
+# 올바른 파일에서 함수 임포트
+from utils.training_type_classification import classify_training_type
+from utils.institution_grouping import group_institutions_advanced
+
 
 def preprocess_data(df):
     """데이터 전처리 함수"""
@@ -14,7 +17,10 @@ def preprocess_data(df):
         year_columns = ['2021년', '2022년', '2023년', '2024년', '2025년']
         for year in year_columns:
             if year in df.columns:
-                df[year] = pd.to_numeric(df[year].astype(str).str.replace(',', ''), errors='coerce').fillna(0).astype('Int64')
+                # 먼저 소수점 제거 및 정수형으로 변환
+                df[year] = pd.to_numeric(df[year].astype(str).str.replace(',', ''), errors='coerce').fillna(0).astype(int)
+                # 그 후 Int64로 변환
+                df[year] = df[year].astype('Int64')
             else:
                 df[year] = pd.Series([0] * len(df), dtype='Int64') # 누락된 컬럼 생성 및 0으로 채우기
 
@@ -35,8 +41,8 @@ def preprocess_data(df):
             partner_rows['훈련기관'] = partner_rows['파트너기관']
             for year in year_columns:
                 if year in partner_rows.columns:
-                    df.loc[partner_mask, year] = (df.loc[partner_mask, year] * 0.1).astype('Int64')
-                    partner_rows[year] = (partner_rows[year] * 0.9).astype('Int64')
+                    df.loc[partner_mask, year] = (df.loc[partner_mask, year] * 0.1).fillna(0).astype(int).astype('Int64')
+                    partner_rows[year] = (partner_rows[year] * 0.9).fillna(0).astype(int).astype('Int64')
 
             df = pd.concat([non_partner_rows, partner_rows], ignore_index=True)
 
@@ -51,9 +57,18 @@ def preprocess_data(df):
         if '수강신청 인원' not in df.columns:
             df['수강신청 인원'] = 0
 
-        # 8. 훈련유형 처리
-        print("preprocess_data - before group_institutions_advanced, 컬럼:")
-        print(df.columns)
+        # 8. 훈련기관 그룹화 (훈련 유형 분류 전에 수행)
+        if '훈련기관' in df.columns:
+            print("group_institutions_advanced 함수 시작")
+            df = group_institutions_advanced(df)
+            print("group_institutions_advanced 함수 종료")
+            print("preprocess_data 후 group_institutions_advanced:")
+            print(df.columns)
+        else:
+            print("Error: '훈련기관' 컬럼이 DataFrame에 없습니다.")
+            return pd.DataFrame() # '훈련기관' 컬럼이 없으면 빈 DataFrame 반환
+    
+        # 9. 훈련유형 처리
         print("preprocess_data - before classify_training_type, 파트너기관 (head):")
         if '파트너기관' in df.columns:
             print(df['파트너기관'].head())
@@ -63,16 +78,6 @@ def preprocess_data(df):
         print("preprocess_data 후 데이터샘플: ")
         print(f"데이터 타입:\n{df.dtypes}")
         print(df.head())
-
-        # 훈련기관 그룹화
-        if '훈련기관' in df.columns:
-            print("group_institutions_advanced 함수 시작")
-            df = group_institutions_advanced(df)
-            print("group_institutions_advanced 함수 종료")
-            print("preprocess_data 후 group_institutions_advanced:")
-            print(df.columns)
-        else:
-            print("Error: '훈련기관' 컬럼이 DataFrame에 없습니다.")
 
         df = df.fillna(0)
 
