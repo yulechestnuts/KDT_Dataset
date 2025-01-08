@@ -1,5 +1,5 @@
 import pandas as pd
-from utils.data import classify_training_type
+from utils.data import classify_training_type, group_institutions_advanced
 
 def preprocess_data(df):
     """데이터 전처리 함수"""
@@ -10,11 +10,13 @@ def preprocess_data(df):
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col].astype(str), errors='coerce').fillna(0)
         
-        # 2. 연도별 매출 관련 열 변환
+        # 2. 연도별 매출 관련 열 변환, 누락된 연도 컬럼을 0으로 채움
         year_columns = ['2021년', '2022년', '2023년', '2024년', '2025년']
         for year in year_columns:
             if year in df.columns:
-               df[year] = pd.to_numeric(df[year].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+                df[year] = pd.to_numeric(df[year].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+            else:
+                df[year] = 0  # 누락된 연도 컬럼을 0으로 채움
         
         # 3. 날짜 관련 열 처리 및 '훈련연도' 컬럼 생성
         date_columns = ['과정시작일', '과정종료일']
@@ -23,6 +25,7 @@ def preprocess_data(df):
                 df[col] = pd.to_datetime(df[col], errors='coerce')
         if '과정시작일' in df.columns:
             df['훈련연도'] = df['과정시작일'].dt.year
+            df['훈련연도'] = df['훈련연도'].fillna(0).astype(int)
 
         # 4. 파트너기관 처리 (기존 로직 유지)
         if '파트너기관' in df.columns:
@@ -56,15 +59,31 @@ def preprocess_data(df):
         if '수강신청 인원' not in df.columns:
            df['수강신청 인원'] = 0  # 컬럼이 없는 경우 0으로 채움
         
-        if '훈련기관' not in df.columns:
-            df['훈련기관'] = ''  # 컬럼이 없는 경우 빈 문자열로 채움
-            print("Error: 데이터프레임에 '훈련기관' 컬럼이 없습니다.")
-
-        # 8. 훈련유형 처리 (수정됨)
+        # 8. 훈련유형 처리
+        print("preprocess_data - before group_institutions_advanced, 컬럼:") # Debugging
+        print(df.columns) # Debugging
         print("preprocess_data - before classify_training_type, 파트너기관 (head):")  # Debug
         if '파트너기관' in df.columns:
            print(df['파트너기관'].head())
-        df['훈련유형'] = df.apply(classify_training_type, axis=1)
+        
+        # 훈련유형 분류 이전에 훈련유형 컬럼을 미리 생성하고, 선도기업형 훈련으로 초기화합니다.
+        df['훈련유형'] = df.apply(lambda row: '선도기업형 훈련' if not pd.isna(row.get('파트너기관')) and str(row.get('파트너기관')).strip() != '' else '', axis=1)
+
+        # 훈련유형이 아직 결정되지 않은 경우에만 classify_training_type 함수를 적용합니다.
+        mask = df['훈련유형'] == ''
+        df.loc[mask, '훈련유형'] = df[mask].apply(classify_training_type, axis=1)
+
+        print("preprocess_data 후 데이터샘플: ")  # Debugging
+        print(f"데이터 타입:\n{df.dtypes}") # Debugging
+        print(df.head())
+        
+        # 훈련기관 컬럼이 있는지 확인 후 처리
+        if '훈련기관' in df.columns:
+            df = group_institutions_advanced(df)
+            print("preprocess_data 후 group_institutions_advanced:")
+            print(df.columns)
+        else:
+            print("Error: '훈련기관' 컬럼이 DataFrame에 없습니다.")
 
         df = df.fillna(0)
 
