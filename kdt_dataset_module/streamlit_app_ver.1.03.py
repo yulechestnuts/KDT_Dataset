@@ -11,31 +11,36 @@ import re
 import plotly.express as px
 from difflib import SequenceMatcher
 
+# utils 모듈에서 함수 직접 임포트 (가독성 및 명시성 향상)
 from utils.data_loader import load_data_from_github
 from utils.data_preprocessing import preprocess_data
-from utils.data import calculate_yearly_revenue, group_institutions_advanced, classify_training_type
+from utils.data import calculate_yearly_revenue
+from utils.institution_grouping import group_institutions_advanced
+from utils.training_type_classification import classify_training_type
 from visualization.reports import analyze_training_institution, analyze_course, analyze_ncs, analyze_top5_institutions
 
 @st.cache_data
 def load_data():
+    """GitHub에서 데이터 로드 및 캐싱"""
     url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202411.xlsx?raw=true"
     try:
         response = requests.get(url, timeout=10)
-        response.raise_for_status()  # 상태 코드가 200이 아니면 에러 발생
+        response.raise_for_status()
         df = pd.read_excel(io.BytesIO(response.content), engine="openpyxl")
         print("load_data 컬럼 확인:", df.columns)
         if df.empty:
             st.error("데이터를 불러오는데 실패했습니다.")
-            return pd.DataFrame(), True  # 변경: 빈 DataFrame과 stop 여부를 반환
-        return df, False # 변경: 데이터프레임과 stop 여부 반환
+            return pd.DataFrame()
+        return df
     except requests.exceptions.RequestException as e:
         st.error(f"데이터를 불러올 수 없습니다: {e}")
-        return pd.DataFrame(), True # 변경: 빈 DataFrame과 stop 여부를 반환
+        return pd.DataFrame()
     except Exception as e:
         st.error(f"데이터 처리 중 오류가 발생했습니다: {e}")
-        return pd.DataFrame(), True # 변경: 빈 DataFrame과 stop 여부를 반환
+        return pd.DataFrame()
 
 def create_ranking_component(df, yearly_data):
+    """훈련기관별 랭킹 컴포넌트 생성"""
     institution_revenue = df.groupby('훈련기관').agg({
         '누적매출': 'sum',
         '과정명': 'count',
@@ -43,15 +48,12 @@ def create_ranking_component(df, yearly_data):
         '과정종료일': 'max'
     }).reset_index()
 
-    # 연도별 매출 합산하기
-    year_columns = [str(col) for col in df.columns if isinstance(col, (int, str)) and re.match(r'20\d{2}년', str(col))]
+    year_columns = [str(col) for col in df.columns if re.match(r'^\d{4}년$', str(col))]
 
-    # 훈련기관별 연도별 매출 합산
     yearly_sums = {}
     for year in year_columns:
         yearly_sums[year] = df.groupby('훈련기관')[year].sum()
 
-    # ranking_data 생성
     ranking_data = []
     for _, row in institution_revenue.iterrows():
         yearly_revenues = {str(year): float(yearly_sums[year].get(row['훈련기관'], 0)) for year in year_columns}
@@ -273,17 +275,19 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
-    df, stop = load_data()
-    if stop:
+    df = load_data()
+    if df.empty:
         return
 
+    # 데이터 전처리
     df = preprocess_data(df)
-    print("Preprocessed DataFrame Columns:", df.columns) # Added for debugging
+    print("Preprocessed DataFrame Columns:", df.columns)
 
-    year_columns = [str(col) for col in df.columns if isinstance(col, (int, str)) and re.match(r'20\d{2}년?', str(col))]
-
+    # 연도별 매출 계산 (전처리 후 수행)
+    year_columns = [str(col) for col in df.columns if re.match(r'^\d{4}년$', str(col))]
     df, yearly_data = calculate_yearly_revenue(df)
 
+    # 랭킹 컴포넌트 생성 및 표시
     js_code = create_ranking_component(df, yearly_data)
     js_code = f"""
         <div style="height: 800px; overflow-y: auto;">
@@ -292,6 +296,7 @@ def main():
     """
     html(js_code, height=800)
 
+    # 사이드바에서 분석 유형 선택
     analysis_type = st.sidebar.selectbox(
         "분석 유형 선택",
         ["훈련기관 분석", "과정 분석", "NCS 분석"]
