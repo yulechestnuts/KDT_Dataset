@@ -17,7 +17,10 @@ def preprocess_data(df):
         year_columns = ['2021년', '2022년', '2023년', '2024년', '2025년']
         for year in year_columns:
             if year in df.columns:
-                df[year] = pd.to_numeric(df[year].astype(str).str.replace(',', ''), errors='coerce').fillna(0).astype('Int64')
+                # 먼저 소수점 제거 및 정수형으로 변환
+                df[year] = pd.to_numeric(df[year].astype(str).str.replace(',', ''), errors='coerce').fillna(0).astype(int)
+                # 그 후 Int64로 변환
+                df[year] = df[year].astype('Int64')
             else:
                 df[year] = pd.Series([0] * len(df), dtype='Int64') # 누락된 컬럼 생성 및 0으로 채우기
 
@@ -38,14 +41,15 @@ def preprocess_data(df):
             partner_rows['훈련기관'] = partner_rows['파트너기관']
             for year in year_columns:
                 if year in partner_rows.columns:
-                    df.loc[partner_mask, year] = (df.loc[partner_mask, year] * 0.1).astype('Int64')
-                    partner_rows[year] = (partner_rows[year] * 0.9).astype('Int64')
+                    df.loc[partner_mask, year] = (df.loc[partner_mask, year] * 0.1).fillna(0).astype(int).astype('Int64')
+                    partner_rows[year] = (partner_rows[year] * 0.9).fillna(0).astype(int).astype('Int64')
 
             df = pd.concat([non_partner_rows, partner_rows], ignore_index=True)
 
         # 5. 회차 처리
         if '회차' in df.columns:
-            df['회차'] = pd.to_numeric(df['회차'].astype(str).str.extract('(\d+)', expand=False), errors='coerce').fillna(0).astype('Int64')
+            # 수정된 부분: '\d'를 '\\d'로 변경
+            df['회차'] = pd.to_numeric(df['회차'].astype(str).str.extract('(\\d+)', expand=False), errors='coerce').fillna(0).astype('Int64')
 
         # 6. 누적매출 계산
         df['누적매출'] = df[year_columns].sum(axis=1)
@@ -63,7 +67,8 @@ def preprocess_data(df):
             print(df.columns)
         else:
             print("Error: '훈련기관' 컬럼이 DataFrame에 없습니다.")
-
+            return pd.DataFrame() # '훈련기관' 컬럼이 없으면 빈 DataFrame 반환
+    
         # 9. 훈련유형 처리
         print("preprocess_data - before classify_training_type, 파트너기관 (head):")
         if '파트너기관' in df.columns:
