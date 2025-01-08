@@ -1,5 +1,5 @@
 import pandas as pd
-# 올바른 파일에서 함수 임포트
+# 올바른 파일에서 함수 직접 임포트
 from utils.training_type_classification import classify_training_type
 from utils.institution_grouping import group_institutions_advanced
 
@@ -37,13 +37,17 @@ def preprocess_data(df):
             partner_mask = df['파트너기관'].notna()
             non_partner_rows = df[~partner_mask].copy()
             partner_rows = df[partner_mask].copy()
-
+            
+            # 파트너 기관이 있는 경우 훈련기관을 파트너기관으로 변경
             partner_rows['훈련기관'] = partner_rows['파트너기관']
+            
             for year in year_columns:
-                if year in partner_rows.columns:
+               if year in partner_rows.columns:
+                  # 파트너 기관이 있는 경우 원본 데이터에서 매출액을 10%로 조정
                     df.loc[partner_mask, year] = (df.loc[partner_mask, year] * 0.1).fillna(0).astype(int).astype('Int64')
+                    # 파트너 기관의 매출액을 90%로 조정
                     partner_rows[year] = (partner_rows[year] * 0.9).fillna(0).astype(int).astype('Int64')
-
+            
             df = pd.concat([non_partner_rows, partner_rows], ignore_index=True)
 
         # 5. 회차 처리
@@ -52,7 +56,8 @@ def preprocess_data(df):
             df['회차'] = pd.to_numeric(df['회차'].astype(str).str.extract('(\\d+)', expand=False), errors='coerce').fillna(0).astype('Int64')
 
         # 6. 누적매출 계산
-        df['누적매출'] = df[year_columns].sum(axis=1)
+        if all(year in df.columns for year in year_columns):
+           df['누적매출'] = df[year_columns].fillna(0).sum(axis=1)
 
         # 7. 수강신청인원 컬럼 강제 생성 및 결측치 처리
         if '수강신청 인원' not in df.columns:
@@ -61,11 +66,11 @@ def preprocess_data(df):
         # 8. 훈련기관 그룹화 (훈련 유형 분류 전에 수행)
         if '훈련기관' in df.columns:
             print("group_institutions_advanced 함수 시작")
-            df = group_institutions_advanced(df, similarity_threshold=0.75)
+            df = group_institutions_advanced(df)
             print("group_institutions_advanced 함수 종료")
             print("preprocess_data 후 group_institutions_advanced:")
             print(df.columns)
-            
+
         else:
             print("Error: '훈련기관' 컬럼이 DataFrame에 없습니다.")
             return pd.DataFrame() # '훈련기관' 컬럼이 없으면 빈 DataFrame 반환

@@ -69,7 +69,7 @@ def create_yearly_revenue_pie_charts(df, institution_name, yearly_data):
 
     year_columns = [col for col in yearly_data.columns if isinstance(col, str) and re.match(r'^\d{4}년$', col)]
     if not year_columns:
-       return None
+        return None
 
     charts = []
     for year in year_columns:
@@ -136,7 +136,14 @@ def analyze_training_institution(df, yearly_data, selected_institution):
                      '수료율': '수료율',
                      '만족도': '만족도'
                      })
+    # 매출액 포맷팅을 먼저하고 숫자형으로 변환합니다.
     course_summary['매출액'] = course_summary['매출액'].apply(lambda x: format_revenue(x))
+    course_summary['매출액'] = pd.to_numeric(course_summary['매출액'].str.replace('억', '').fillna(0), errors='coerce')
+    
+    course_summary = course_summary.sort_values(by='매출액', ascending=False)
+    # 매출액을 다시 포맷팅합니다.
+    course_summary['매출액'] = course_summary['매출액'].apply(lambda x: format_revenue(x))
+
     st.dataframe(course_summary)
 
     bar_chart = create_horizontal_bar_chart(institution_df, selected_institution, yearly_data)
