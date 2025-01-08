@@ -4,6 +4,8 @@ import altair as alt
 
 def format_revenue(revenue):
     """Formats revenue to be displayed in 억 단위."""
+    if pd.isna(revenue) or revenue == 0:
+        return "0억"
     return f"{revenue / 100000000:.2f}억"
 
 def create_horizontal_bar_chart(df, institution_name, yearly_data):
@@ -21,12 +23,8 @@ def create_horizontal_bar_chart(df, institution_name, yearly_data):
     # Make a copy to avoid modification of the original dataframe
     df_copy = df.copy()
     df_copy['매출액'] = df_copy[year_columns].sum(axis=1)
-    
-    print("DataFrame before GroupBy:") # Debugging
-    print(df_copy.head()) # Debugging
 
     training_type_revenue = df_copy.groupby('훈련유형')['매출액'].sum().reset_index()
-
 
     if training_type_revenue.empty:
         return None  # Handle empty dataframe
@@ -51,19 +49,18 @@ def create_yearly_revenue_line_chart(df, institution_name, yearly_data):
     if not year_columns:
         return None
     
-    yearly_revenue = df[year_columns].sum().reset_index()
+    yearly_revenue = df[year_columns].fillna(0).sum().reset_index()
     yearly_revenue.columns = ['연도', '매출액']
     yearly_revenue['매출액'] = yearly_revenue['매출액'] / 100000000 # Convert to 억
     
     chart = alt.Chart(yearly_revenue).mark_line(point=True).encode(
-        x=alt.X('연도', title="연도", axis=alt.Axis(labelAngle=0)), # Modified x-axis
-        y=alt.Y('매출액', title="매출액 (억 원)", axis=alt.Axis(format="~s", labelAngle=0)), # Modified y-axis
+        x=alt.X('연도', title="연도"), # Removed labelAngle to get auto-rotation of x-axis
+        y=alt.Y('매출액', title="매출액 (억 원)", axis=alt.Axis(format="~s")), # Modified y-axis
         tooltip = ['연도',alt.Tooltip('매출액', format=",.2f")]
     ).properties(
         title=f"{institution_name} 연도별 매출액 변화"
     )
     return chart
-
 
 def create_yearly_revenue_pie_charts(df, institution_name, yearly_data):
     """Generates a series of pie charts of yearly revenue proportions by training type."""
@@ -91,24 +88,44 @@ def create_yearly_revenue_pie_charts(df, institution_name, yearly_data):
               tooltip=[alt.Tooltip('훈련유형'), alt.Tooltip('매출액', format=",.2f")]
         ).properties(
               title=f"{institution_name} {year} 훈련 유형별 매출 비중"
-        )
+      )
         charts.append(chart)
     return charts
 
 def analyze_training_institution(df, yearly_data):
     st.subheader("훈련기관별 성과 분석")
-    selected_institution = st.selectbox("훈련기관 선택", df['훈련기관'].unique())
+    selected_institution = st.selectbox("훈련기관 선택", df['훈련기관'].unique(), key='selectbox')
 
     if selected_institution:
         institution_df = df[df['훈련기관'] == selected_institution].copy()
 
         st.write("### 연도별 정보")
+        year_columns = [col for col in yearly_data.columns if isinstance(col, str) and col.endswith('년')]
         yearly_summary = institution_df.groupby('훈련연도').agg(
-            {'과정명': 'count', '수강신청 인원': 'sum', '누적매출': 'sum'}
-        ).rename(columns={'과정명': '총 과정 수', '수강신청 인원': '총 수강생', '누적매출': '총 매출'})
-        yearly_summary['총 매출'] = yearly_summary['총 매출'].apply(lambda x: format_revenue(x))
-        st.dataframe(yearly_summary)
+            {'과정명': 'count', '수강신청 인원': 'sum'}
+        ).rename(columns={'과정명': '총 과정 수', '수강신청 인원': '총 수강생'})
+        
+        # '총 매출' 계산
+        if '실 매출 대비 ' in institution_df.columns:
+            # '실 매출 대비' 컬럼을 숫자형으로 변환합니다.
+            institution_df['실 매출 대비 '] = pd.to_numeric(institution_df['실 매출 대비 '], errors='coerce').fillna(0)
+            # 연도별로 '실 매출 대비' 컬럼의 합을 계산합니다.
+            total_revenue = institution_df.groupby('훈련연도')['실 매출 대비 '].sum()
+            yearly_summary['총 매출'] = total_revenue.apply(lambda x: format_revenue(x))
+        else:
+            yearly_summary['총 매출'] = "0억"
+        
+        # 연도별 매출액을 계산합니다.
+        for year in year_columns:
+            if year in institution_df.columns:
+                # 연도별 매출액을 숫자형으로 변환하고, 결측치는 0으로 채웁니다.
+                institution_df[year] = pd.to_numeric(institution_df[year], errors='coerce').fillna(0)
+                # 연도별 매출액 합계를 계산합니다.
+                yearly_summary[year] = institution_df.groupby('훈련연도')[year].sum().apply(lambda x: format_revenue(x))
+            else:
+                yearly_summary[year] = "0억"
 
+        st.dataframe(yearly_summary)
 
         st.write("### 과정별 세부 정보")
         course_summary = institution_df.groupby('과정명', as_index=False).agg(
@@ -148,7 +165,6 @@ def analyze_training_institution(df, yearly_data):
                 st.altair_chart(chart, use_container_width=True)
         else:
              st.write("해당 기관은 연도별 매출 비중을 표시할 데이터가 부족합니다.")
-
 
 def analyze_top5_institutions(df, yearly_data):
     st.subheader("Top 5 훈련기관별 성과 분석")

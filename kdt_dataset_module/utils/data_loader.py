@@ -3,7 +3,7 @@ import requests
 import io
 import streamlit as st
 from difflib import SequenceMatcher
-
+import re # Added import re
 
 def load_data_from_github(url):
     """
@@ -31,14 +31,42 @@ def load_data_from_github(url):
         
         df = df.fillna(0)
         print("load_data_from_github 컬럼 확인:", df.columns)
+        print(f"load_data_from_github 데이터 타입:\n{df.dtypes}")
+        print("load_data_from_github 데이터 샘플:")  # Debugging: print some of the df data
+        print(df.head()) # Debugging
         
-        if '파트너기관' in df.columns: # Debugging here
-            print("load_data_from_github 파트너기관 컬럼 값 샘플:")
-            print(df['파트너기관'].head()) # Print first few rows of the column for inspection
-
+        if '훈련기관' in df.columns:  # Debugging for '훈련기관' column
+          print("load_data_from_github '훈련기관' 컬럼 샘플:")
+          print(df['훈련기관'].head())
+          print(f"Type of '훈련기관' column: {df['훈련기관'].dtype}")
+            
+        if '실 매출 대비 ' in df.columns:  # Debugging for '실 매출 대비 ' column
+            print("load_data_from_github '실 매출 대비' 컬럼 샘플:")
+            print(df['실 매출 대비 '].head())
+            print(f"Type of '실 매출 대비' column: {df['실 매출 대비 '].dtype}")
+        
+        year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'20\d{2}년', col)]
+        for year in year_columns:
+            if year in df.columns:
+                print(f"load_data_from_github '{year}' 컬럼 샘플:")
+                print(df[year].head())
+                print(f"Type of '{year}' column: {df[year].dtype}")
+            
         if df.empty:
            st.error("데이터 로딩 후 빈 데이터프레임이 생성되었습니다.")
            return pd.DataFrame()
+        
+        # '실 매출 대비 ' 및 연도별 매출 컬럼을 숫자형으로 변환
+        if '실 매출 대비 ' in df.columns:
+            df['실 매출 대비 '] = pd.to_numeric(df['실 매출 대비 '].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+
+        for year in year_columns:
+            if year in df.columns:
+                df[year] = pd.to_numeric(df[year].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+
+        # 누적 매출 계산 (연도별 매출 컬럼이 모두 숫자로 변환된 후에 계산)
+        df['누적매출'] = df[year_columns].sum(axis=1)
+        
         return df
     
     except requests.exceptions.RequestException as e:
@@ -53,8 +81,7 @@ def load_data_from_github(url):
 
 def calculate_yearly_revenue(df):
     """연도별 매출 계산 함수"""
-    year_columns = [col for col in df.columns if isinstance(col, str) and col.endswith('년')]
-    df['누적매출'] = df[year_columns].sum(axis=1)
+    year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'20\d{2}년', col)]
     yearly_data = df[year_columns].copy()
     return df, yearly_data
 
@@ -69,8 +96,13 @@ def group_institutions_advanced(df, similarity_threshold=0.6):
     Returns:
         DataFrame: '훈련기관' 열의 훈련기관명이 그룹화된 DataFrame
     """
+    print("group_institutions_advanced 함수 시작")
     try:
         df = df.copy()
+        if '훈련기관' not in df.columns:
+          print("'훈련기관' 컬럼이 DataFrame에 존재하지 않습니다.")
+          return df
+        
         df['훈련기관'] = df['훈련기관'].fillna("").astype(str)  # NaN 값을 빈 문자열로 채우고 문자열로 변환
         
         # 전처리: 특수문자, 공백, "(주)" 등 제거 (수정됨)
@@ -132,6 +164,7 @@ def group_institutions_advanced(df, similarity_threshold=0.6):
         # 불필요한 열 제거
         df.drop(columns=['clean_name', 'group'], inplace=True)
 
+        print("group_institutions_advanced 함수 종료")
         return df
     
     except Exception as error:
@@ -140,6 +173,12 @@ def group_institutions_advanced(df, similarity_threshold=0.6):
 
 def classify_training_type(row):
     types = []
+    
+    # 파트너기관 정보가 있으면 '선도기업형 훈련'으로 분류
+    if not pd.isna(row.get('파트너기관')) and str(row.get('파트너기관')).strip() != '':
+        return '선도기업형 훈련'
+    
+    # 파트너기관 정보가 없으면, 과정명, 훈련기관, 선도기업 정보로 분류
     if row['과정명'].startswith('재직자_'):
         types.append('재직자 훈련')
     if pd.notna(row.get('훈련기관')) and '학교' in str(row['훈련기관']):
@@ -150,10 +189,5 @@ def classify_training_type(row):
         types.append('융합 훈련')
     if not types:
         types.append('신기술 훈련')
-        
-    # Overwrite logic: If '파트너기관' is not null, change the training type to "선도기업형 훈련"
-    if not pd.isna(row.get('파트너기관')) and str(row.get('파트너기관')).strip() != '':
-      types = ['선도기업형 훈련']
 
-    print(f"classify_training_type - 과정명: {row['과정명']}, 파트너기관: {row.get('파트너기관')}, types before return: {types}, type of 파트너기관: {type(row.get('파트너기관'))}")
     return '&'.join(types)

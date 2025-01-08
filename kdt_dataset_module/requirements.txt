@@ -8,3 +8,4 @@ openpyxl
 streamlit-component-lib
 react
 react-dom
+re
