@@ -10,6 +10,8 @@ import json
 import re
 import plotly.express as px
 from difflib import SequenceMatcher
+import os
+from dotenv import load_dotenv
 
 # utils 모듈에서 함수 직접 임포트 (가독성 및 명시성 향상)
 from utils.data_loader import load_data_from_github
@@ -18,26 +20,28 @@ from utils.data import calculate_yearly_revenue
 from utils.institution_grouping import group_institutions_advanced
 from utils.training_type_classification import classify_training_type
 from visualization.reports import analyze_training_institution, analyze_course, analyze_ncs, analyze_top5_institutions
+from utils.database import get_db_engine, load_data_from_db
+
+
+# .env 파일 로드
+load_dotenv()
+
+# 데이터베이스 테이블 이름 (환경 변수에서 가져옴)
+TABLE_NAME = os.getenv('TABLE_NAME')
 
 @st.cache_data
 def load_data():
-    """GitHub에서 데이터 로드 및 캐싱"""
-    url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202411.xlsx?raw=true"
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        df = pd.read_excel(io.BytesIO(response.content), engine="openpyxl")
-        print("load_data 컬럼 확인:", df.columns)
-        if df.empty:
-            st.error("데이터를 불러오는데 실패했습니다.")
-            return pd.DataFrame()
-        return df
-    except requests.exceptions.RequestException as e:
-        st.error(f"데이터를 불러올 수 없습니다: {e}")
+    """데이터베이스에서 데이터를 로드 및 캐싱"""
+    engine = get_db_engine()
+    if engine is None:
+       st.error("데이터베이스 연결에 실패했습니다.")
+       return pd.DataFrame()
+    
+    df = load_data_from_db(engine, TABLE_NAME)
+    if df.empty:
+        st.error("데이터를 불러오는데 실패했습니다.")
         return pd.DataFrame()
-    except Exception as e:
-        st.error(f"데이터 처리 중 오류가 발생했습니다: {e}")
-        return pd.DataFrame()
+    return df
 
 @st.cache_data
 def create_ranking_component(df, yearly_data):
