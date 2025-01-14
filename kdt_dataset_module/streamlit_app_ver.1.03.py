@@ -32,6 +32,8 @@ TABLE_NAME = os.getenv('kdt')
 @st.cache_data
 def load_data():
     """데이터베이스에서 데이터를 로드 및 캐싱"""
+    print("load_data 함수 시작")
+    print("환경 변수 확인:", os.environ) # 환경변수 출력
     engine = get_db_engine()
     if engine is None:
        st.error("데이터베이스 연결에 실패했습니다.")
@@ -41,6 +43,7 @@ def load_data():
     if df.empty:
         st.error("데이터를 불러오는데 실패했습니다.")
         return pd.DataFrame()
+    print("load_data 함수 종료")
     return df
 
 @st.cache_data
