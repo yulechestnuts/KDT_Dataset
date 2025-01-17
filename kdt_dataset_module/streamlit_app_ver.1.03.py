@@ -27,7 +27,7 @@ from utils.database import get_db_engine, load_data_from_db
 load_dotenv()
 
 # 데이터베이스 테이블 이름 (환경 변수에서 가져옴)
-TABLE_NAME = os.getenv('kdt')
+TABLE_NAME = os.getenv('TABLE_NAME')
 
 @st.cache_data
 def load_data():
@@ -38,14 +38,15 @@ def load_data():
     if engine is None:
        st.error("데이터베이스 연결에 실패했습니다.")
        return pd.DataFrame()
-    print("데이터베이스 연결 성공 (load_data 함수 내부)") # 연결 성공 로그 추가
+    
+    print("데이터베이스 연결 성공 (load_data 함수 내부), 데이터 로드 시도")
     df = load_data_from_db(engine, TABLE_NAME)
     
     if df.empty:
         st.error("데이터를 불러오는데 실패했습니다.")
         return pd.DataFrame()
     print("load_data 함수 종료")
-    
+
     if df.empty:
         print("load_data 함수에서 데이터프레임이 비어있습니다.")
         return pd.DataFrame()
@@ -54,6 +55,7 @@ def load_data():
         print(f"데이터프레임 샘플:\n{df.head()}")
 
     return df
+
 @st.cache_data
 def create_ranking_component(df, yearly_data):
     """훈련기관별 랭킹 컴포넌트 생성"""
