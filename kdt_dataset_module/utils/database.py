@@ -3,9 +3,9 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 import pandas as pd
 from dotenv import load_dotenv
+from urllib.parse import quote_plus
 
 load_dotenv()
-
 
 def get_db_engine():
     """데이터베이스 엔진 생성"""
@@ -13,17 +13,29 @@ def get_db_engine():
     db_url = os.getenv("DB_URL")
     try:
         if db_type and db_url:
-            # URL에서 driver부분을 명시적으로 지정합니다.
-            engine = create_engine(f"{db_url}",  
-                                    )
-            print(f"Successfully connected to {db_type} database.")
+           # URL 파싱 및 재구성
             try:
-              with engine.connect() as connection:
-                print("데이터베이스 연결 성공 (get_db_engine 내부)")
-            except Exception as e:
-               print(f"데이터베이스 연결 실패 (get_db_engine 내부): {e}")
-               return None
-            return engine
+                url_parts = db_url.split('://')[1].split('@')
+                user_pass, host_port_db = url_parts[0], url_parts[1]
+                user, password = user_pass.split(':')
+                host_port, db_name = host_port_db.split('/')
+                host, port = host_port.split(':')
+
+                encoded_password = quote_plus(password)
+                # driver 옵션 명시적으로 추가
+                formatted_url = f"mysql+mysqlconnector://{user}:{encoded_password}@{host}:{port}/{db_name}"
+                engine = create_engine(formatted_url)
+                print(f"Successfully connected to {db_type} database.")
+                try:
+                  with engine.connect() as connection:
+                    print("데이터베이스 연결 성공 (get_db_engine 내부)")
+                except Exception as e:
+                  print(f"데이터베이스 연결 실패 (get_db_engine 내부): {e}")
+                  return None
+                return engine
+            except Exception as url_err:
+                print(f"Error during DB_URL parsing: {url_err}")
+                return None
         else:
            print("환경 변수 DB_TYPE 또는 DB_URL이 설정되지 않았습니다.")
            return None
