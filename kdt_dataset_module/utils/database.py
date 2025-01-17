@@ -4,6 +4,7 @@ from sqlalchemy.orm import sessionmaker
 import pandas as pd
 from dotenv import load_dotenv
 from urllib.parse import quote_plus
+import traceback
 
 load_dotenv()
 
@@ -13,29 +14,26 @@ def get_db_engine():
     db_url = os.getenv("DB_URL")
     try:
         if db_type and db_url:
-           # URL 파싱 및 재구성
+            # URL 파싱 및 재구성
+            url_parts = db_url.split('://')[1].split('@')
+            user_pass, host_port_db = url_parts[0], url_parts[1]
+            user, password = user_pass.split(':')
+            host_port, db_name = host_port_db.split('/')
+            host, port = host_port.split(':')
+            
+            encoded_password = quote_plus(password)
+           # driver 옵션 명시적으로 추가
+            formatted_url = f"mysql+mysqlconnector://{user}:{encoded_password}@{host}:{port}/{db_name}"
+           
+            engine = create_engine(formatted_url)
+            print(f"Successfully connected to {db_type} database.")
             try:
-                url_parts = db_url.split('://')[1].split('@')
-                user_pass, host_port_db = url_parts[0], url_parts[1]
-                user, password = user_pass.split(':')
-                host_port, db_name = host_port_db.split('/')
-                host, port = host_port.split(':')
-
-                encoded_password = quote_plus(password)
-                # driver 옵션 명시적으로 추가
-                formatted_url = f"mysql+mysqlconnector://{user}:{encoded_password}@{host}:{port}/{db_name}"
-                engine = create_engine(formatted_url)
-                print(f"Successfully connected to {db_type} database.")
-                try:
-                  with engine.connect() as connection:
-                    print("데이터베이스 연결 성공 (get_db_engine 내부)")
-                except Exception as e:
-                  print(f"데이터베이스 연결 실패 (get_db_engine 내부): {e}")
-                  return None
-                return engine
-            except Exception as url_err:
-                print(f"Error during DB_URL parsing: {url_err}")
-                return None
+              with engine.connect() as connection:
+                print("데이터베이스 연결 성공 (get_db_engine 내부)")
+            except Exception as e:
+               print(f"데이터베이스 연결 실패 (get_db_engine 내부): {e}")
+               return None
+            return engine
         else:
            print("환경 변수 DB_TYPE 또는 DB_URL이 설정되지 않았습니다.")
            return None
@@ -49,36 +47,41 @@ def load_data_from_db(engine, table_name):
     try:
         with engine.connect() as connection:
             print("데이터베이스 연결 성공 (load_data_from_db 내부)")
-            query = text(f"SELECT * FROM {table_name}")
-            df = pd.read_sql_query(query, connection)
-            print(f"Successfully loaded data from '{table_name}' table.")
-            print("load_data_from_db 컬럼 확인:", df.columns)
-            print(f"load_data_from_db 데이터 타입:\n{df.dtypes}")
-            print("load_data_from_db 데이터 샘플:")
-            print(df.head())
-            
-            if '훈련기관' in df.columns:
-                print("load_data_from_db '훈련기관' 컬럼 샘플:")
-                print(df['훈련기관'].head())
-                print(f"Type of '훈련기관' column: {df['훈련기관'].dtype}")
+            try:
+                query = text(f"SELECT * FROM {table_name}")
+                df = pd.read_sql_query(query, connection)
+                print(f"Successfully loaded data from '{table_name}' table.")
+                print("load_data_from_db 컬럼 확인:", df.columns)
+                print(f"load_data_from_db 데이터 타입:\n{df.dtypes}")
+                print("load_data_from_db 데이터 샘플:")
+                print(df.head())
+                
+                if '훈련기관' in df.columns:
+                    print("load_data_from_db '훈련기관' 컬럼 샘플:")
+                    print(df['훈련기관'].head())
+                    print(f"Type of '훈련기관' column: {df['훈련기관'].dtype}")
 
-            if '실 매출 대비 ' in df.columns:
-                print("load_data_from_db '실 매출 대비' 컬럼 샘플:")
-                print(df['실 매출 대비 '].head())
-                print(f"Type of '실 매출 대비' column: {df['실 매출 대비 '].dtype}")
+                if '실 매출 대비 ' in df.columns:
+                    print("load_data_from_db '실 매출 대비' 컬럼 샘플:")
+                    print(df['실 매출 대비 '].head())
+                    print(f"Type of '실 매출 대비' column: {df['실 매출 대비 '].dtype}")
 
-            year_columns = ['2021년', '2022년', '2023년', '2024년', '2025년']
-            for year in year_columns:
-              if year in df.columns:
-                 print(f"load_data_from_db '{year}' 컬럼 샘플:")
-                 print(df[year].head())
-                 print(f"Type of '{year}' column: {df[year].dtype}")
-            
-            if df.empty:
-                 print("데이터 로딩 후 빈 데이터프레임이 생성되었습니다.")
-                 return pd.DataFrame()
-            
-            return df
+                year_columns = ['2021년', '2022년', '2023년', '2024년', '2025년']
+                for year in year_columns:
+                  if year in df.columns:
+                     print(f"load_data_from_db '{year}' 컬럼 샘플:")
+                     print(df[year].head())
+                     print(f"Type of '{year}' column: {df[year].dtype}")
+                
+                if df.empty:
+                    print("데이터 로딩 후 빈 데이터프레임이 생성되었습니다.")
+                    return pd.DataFrame()
+                return df
+            except Exception as e:
+              print(f"Error loading data from the database(query 실행 오류): {e}")
+              traceback.print_exc()  # traceback 정보 출력
+              return pd.DataFrame()
+
     except Exception as e:
-        print(f"Error loading data from the database: {e}")
+        print(f"Error connecting to the database(with engine.connect 에러): {e}")
         return pd.DataFrame()
