@@ -14,7 +14,7 @@ import plotly.express as px
 
 @st.cache_data
 def load_data():
-    url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202410.xlsx?raw=true"
+    url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202412.xlsx?raw=true"
     try:
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
