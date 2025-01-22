@@ -29,18 +29,19 @@ load_dotenv()
 # 데이터베이스 테이블 이름 (환경 변수에서 가져옴)
 TABLE_NAME = os.getenv('TABLE_NAME')
 
-@st.cache_data
+#@st.cache_data
 def load_data():
     """데이터베이스에서 데이터를 로드"""
     print("load_data 함수 시작")
     print("환경 변수 확인:", os.environ)
 
     engine = get_db_engine()
-    if engine is None:
-        st.error("데이터베이스 연결에 실패했습니다.")
-        return pd.DataFrame()
-
-    print("데이터베이스 연결 성공 (load_data 함수 내부), 데이터 로드 시도")
+    if engine:
+        try:
+            df = load_data_from_db(engine, TABLE_NAME)
+            print(f"로드된 데이터 샘플:\n{df.head()}")
+        except Exception as e:
+            print(f"데이터 로드 실패: {e}")
 
     try:
         df = load_data_from_db(engine, TABLE_NAME)
@@ -56,7 +57,7 @@ def load_data():
         st.error(f"데이터 로드 중 오류 발생: {e}")
         print(f"load_data_from_db 함수에서 오류 발생: {e}")
         return pd.DataFrame()
-
+    
 @st.cache_data
 def create_ranking_component(df, yearly_data):
     """훈련기관별 랭킹 컴포넌트 생성"""
