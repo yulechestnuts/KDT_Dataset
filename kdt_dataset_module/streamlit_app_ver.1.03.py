@@ -31,35 +31,36 @@ TABLE_NAME = os.getenv('TABLE_NAME')
 
 #@st.cache_data
 def load_data():
-      """데이터베이스에서 데이터를 로드"""
-      print("load_data 함수 시작")
-      print("환경 변수 확인:", os.environ)
+    """데이터베이스에서 데이터를 로드"""
+    print("load_data 함수 시작")
+    print("환경 변수 확인:", os.environ)
 
-      engine = get_db_engine()
-      if engine is None:
-          st.error("데이터베이스 연결에 실패했습니다.")
-          return pd.DataFrame()
+    engine = get_db_engine()
+    if engine is None:
+        st.error("데이터베이스 연결에 실패했습니다.")
+        return pd.DataFrame()
 
-      print("데이터베이스 연결 성공 (load_data 함수 내부), 데이터 로드 시도")
+    print("데이터베이스 연결 성공 (load_data 함수 내부), 데이터 로드 시도")
 
-      try:
-          df = load_data_from_db(engine, TABLE_NAME)
-          if isinstance(df, pd.DataFrame) and df.empty:
-               st.error("데이터를 불러오는데 실패했습니다.")
-               print("load_data_from_db 함수에서 빈 DataFrame을 반환했습니다.")
-               return pd.DataFrame()
-          elif isinstance(df, pd.DataFrame):
-            print("load_data 함수에서 데이터를 성공적으로 로드했습니다.")
-            print(f"데이터프레임 샘플:\n{df.head()}")
-            return df
-          else:
+    try:
+        df = load_data_from_db(engine, TABLE_NAME)
+        if isinstance(df, pd.DataFrame):
+          if df.empty:
              st.error("데이터를 불러오는데 실패했습니다.")
-             print("load_data_from_db 함수에서 DataFrame이 아닌 값을 반환했습니다")
+             print("load_data_from_db 함수에서 빈 DataFrame을 반환했습니다.")
              return pd.DataFrame()
-      except Exception as e:
-          st.error(f"데이터 로드 중 오류 발생: {e}")
-          print(f"load_data_from_db 함수에서 오류 발생: {e}")
-          return pd.DataFrame()
+          else:
+              print("load_data 함수에서 데이터를 성공적으로 로드했습니다.")
+              print(f"데이터프레임 샘플:\n{df.head()}")
+              return df
+        else:
+             st.error("데이터를 불러오는데 실패했습니다.(유효하지 않은 객체)")
+             print("load_data_from_db 함수에서 DataFrame이 아닌 값을 반환했습니다.")
+             return pd.DataFrame()
+    except Exception as e:
+        st.error(f"데이터 로드 중 오류 발생: {e}")
+        print(f"load_data_from_db 함수에서 오류 발생: {e}")
+        return pd.DataFrame()
     
 @st.cache_data
 def create_ranking_component(df, yearly_data):
