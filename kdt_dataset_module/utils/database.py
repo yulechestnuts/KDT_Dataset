@@ -1,80 +1,98 @@
 import os
 from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
 import pandas as pd
+from dotenv import load_dotenv
 from urllib.parse import quote_plus
 import traceback
-import mysql.connector
+
+load_dotenv()
 
 def get_db_engine():
     """데이터베이스 엔진 생성"""
+    db_type = os.getenv("DB_TYPE")
+    db_url = os.getenv("DB_URL")
     try:
-        # SQLAlchemy 엔진 생성
-        engine = create_engine(
-            "mysql+mysqlconnector://root:alcam2024!@127.0.0.1:3306/kdtdata",
-            echo=True,  # SQL 쿼리 로깅
-            pool_pre_ping=True  # 연결 확인
-        )
-        
-        # 연결 테스트
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-            print("SQLAlchemy 엔진 연결 테스트 성공")
-        
-        return engine
-        
+        if db_type and db_url:
+            url_parts = db_url.split('://')[1].split('@')
+            user_pass, host_port_db = url_parts[0], url_parts[1]
+            user, password = user_pass.split(':')
+            host_port, db_name = host_port_db.split('/')
+            host, port = host_port.split(':')
+
+            encoded_password = quote_plus(password)
+            formatted_url = f"mysql+mysqlconnector://{user}:{encoded_password}@{host}:{port}/{db_name}"
+
+            engine = create_engine(formatted_url)
+            print(f"Successfully connected to {db_type} database.")
+            try:
+              with engine.connect() as connection:
+                print("데이터베이스 연결 성공 (get_db_engine 내부)")
+            except Exception as e:
+                 print(f"데이터베이스 연결 실패 (get_db_engine 내부): {e}")
+                 return None
+            return engine
+        else:
+            print("환경 변수 DB_TYPE 또는 DB_URL이 설정되지 않았습니다.")
+            return None
+
     except Exception as e:
-        print(f"데이터베이스 엔진 생성 중 오류 발생:\n{str(e)}")
-        print("상세 오류 정보:")
-        traceback.print_exc()
+        print(f"Error connecting to the {db_type} database: {e}")
         return None
 
 def load_data_from_db(engine, table_name):
     """데이터베이스에서 데이터를 로드"""
-    if engine is None:
-        print("유효한 데이터베이스 엔진이 제공되지 않았습니다.")
-        return pd.DataFrame()
-        
+    df = None  # df 변수 초기화
     try:
-        # 테이블 존재 여부 확인
-        check_query = text(f"""
-            SELECT COUNT(*) 
-            FROM information_schema.tables 
-            WHERE table_schema = 'kdtdata'
-            AND table_name = :table_name
-        """)
-        
-        with engine.connect() as conn:
-            result = conn.execute(check_query, {"table_name": table_name}).scalar()
-            if result == 0:
-                print(f"테이블 '{table_name}'이 존재하지 않습니다.")
-                return pd.DataFrame()
-        
-            # 데이터 로드
-            print(f"테이블 '{table_name}' 데이터 로드 시도 중...")
-            query = text(f"SELECT * FROM {table_name}")
-            df = pd.read_sql_query(query, conn)
-            
-            if df.empty:
-                print(f"경고: '{table_name}' 테이블에서 데이터를 찾을 수 없습니다.")
-            else:
-                print(f"성공적으로 {len(df)} 행의 데이터를 로드했습니다.")
-                print(f"컬럼 목록: {', '.join(df.columns)}")
-            
-            return df
-        
-    except Exception as e:
-        print(f"데이터 로드 중 오류 발생:\n{str(e)}")
-        print("상세 오류 정보:")
-        traceback.print_exc()
-        return pd.DataFrame()
+        with engine.connect() as connection:
+            print("1. 데이터베이스 연결 성공 (load_data_from_db 내부)")
+            try:
+               print(f"2. 쿼리 실행 시작: SELECT * FROM {table_name} LIMIT 10")
+               query = text(f"SELECT * FROM {table_name} LIMIT 10")
+               result = connection.execute(query)
+               print(f"3. 쿼리 실행 완료: {table_name}")
 
-# 사용 예시
-if __name__ == "__main__":
-    # SQLAlchemy 엔진 생성 및 데이터 로드
-    engine = get_db_engine()
-    if engine:
-        table_name = "kdt_dataset_202412"  # 실제 테이블 이름으로 변경
-        df = load_data_from_db(engine, table_name)
-        if not df.empty:
-            print("\n데이터 로드 성공!")
-            print(f"데이터 샘플:\n{df.head()}")
+               print("3-1. 결과 출력 시작")
+               rows = result.fetchall()
+               for row in rows:
+                 print(row)
+               print("3-2. 결과 출력 완료")
+
+               # DataFrame으로 변환 (수정: result.fetchall() 사용)
+               df = pd.DataFrame(rows, columns=result.keys())
+
+               if df is not None and not df.empty:
+                    print("4. load_data_from_db 컬럼 확인:", df.columns)
+                    print(f"5. load_data_from_db 데이터 타입:\n{df.dtypes}")
+                    print("6. load_data_from_db 데이터 샘플:")
+                    print(df.head())
+    
+                    if '훈련기관' in df.columns:
+                        print("7. load_data_from_db '훈련기관' 컬럼 샘플:")
+                        print(df['훈련기관'].head())
+                        print(f"8. Type of '훈련기관' column: {df['훈련기관'].dtype}")
+    
+                    if '실 매출 대비' in df.columns:
+                       print("9. load_data_from_db '실 매출 대비' 컬럼 샘플:")
+                       print(df['실 매출 대비'].head())
+                       print(f"10. Type of '실 매출 대비' column: {df['실 매출 대비 '].dtype}")
+    
+                    year_columns = ['2021년', '2022년', '2023년', '2024년', '2025년']
+                    for year in year_columns:
+                       if year in df.columns:
+                            print(f"11. load_data_from_db '{year}' 컬럼 샘플:")
+                            print(df[year].head())
+                            print(f"12. Type of '{year}' column: {df[year].dtype}")
+               else:
+                  print("13. DataFrame is None or empty after query.")
+                  return pd.DataFrame()
+               print("14. 데이터 로드 성공, 데이터프레임 반환")
+               return df
+            except Exception as e:
+                print(f"15. Error loading data from the database(query 실행 오류): {e}")
+                traceback.print_exc()
+                return pd.DataFrame()
+
+    except Exception as e:
+        print(f"16. Error connecting to the database(with engine.connect 에러): {e}")
+        return pd.DataFrame()
