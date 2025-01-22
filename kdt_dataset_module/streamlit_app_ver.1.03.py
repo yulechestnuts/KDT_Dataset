@@ -27,7 +27,7 @@ from utils.database import get_db_engine, load_data_from_db
 load_dotenv()
 
 # 데이터베이스 테이블 이름 (환경 변수에서 가져옴)
-TABLE_NAME = os.getenv('TABLE_NAME')
+TABLE_NAME = os.getenv('KDT_TABLE_NAME')
 
 @st.cache_data
 def load_data():
