@@ -5,30 +5,9 @@ from urllib.parse import quote_plus
 import traceback
 import mysql.connector
 
-def test_mysql_connection():
-    """기본 MySQL 연결 테스트"""
-    try:
-        conn = mysql.connector.connect(
-            host="127.0.0.1",
-            user="root",
-            password="alcam2024!",
-            database="kdtdata"
-        )
-        print("기본 MySQL 연결 테스트 성공")
-        conn.close()
-        return True
-    except Exception as e:
-        print(f"기본 MySQL 연결 테스트 실패: {str(e)}")
-        return False
-
 def get_db_engine():
     """데이터베이스 엔진 생성"""
     try:
-        # 먼저 기본 연결 테스트
-        if not test_mysql_connection():
-            print("MySQL 서버 연결 자체가 실패했습니다. MySQL 서버가 실행 중인지 확인하세요.")
-            return None
-
         # SQLAlchemy 엔진 생성
         engine = create_engine(
             "mysql+mysqlconnector://root:alcam2024!@127.0.0.1:3306/kdtdata",
@@ -91,9 +70,6 @@ def load_data_from_db(engine, table_name):
 
 # 사용 예시
 if __name__ == "__main__":
-    # 기본 MySQL 연결 테스트
-    test_mysql_connection()
-    
     # SQLAlchemy 엔진 생성 및 데이터 로드
     engine = get_db_engine()
     if engine:
