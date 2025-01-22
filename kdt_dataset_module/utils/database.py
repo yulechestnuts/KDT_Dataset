@@ -61,9 +61,9 @@ def load_data_from_db(engine, table_name):
                     print(df['훈련기관'].head())
                     print(f"Type of '훈련기관' column: {df['훈련기관'].dtype}")
 
-                if '실 매출 대비 ' in df.columns:
+                if '실 매출 대비' in df.columns:
                     print("load_data_from_db '실 매출 대비' 컬럼 샘플:")
-                    print(df['실 매출 대비 '].head())
+                    print(df['실 매출 대비'].head())
                     print(f"Type of '실 매출 대비' column: {df['실 매출 대비 '].dtype}")
 
                 year_columns = ['2021년', '2022년', '2023년', '2024년', '2025년']

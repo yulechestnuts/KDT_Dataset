@@ -40,10 +40,10 @@ def load_data_from_github(url):
             print(df['훈련기관'].head())
             print(f"Type of '훈련기관' column: {df['훈련기관'].dtype}")
 
-        if '실 매출 대비 ' in df.columns:
+        if '실 매출 대비' in df.columns:
             print("load_data_from_github '실 매출 대비' 컬럼 샘플:")
-            print(df['실 매출 대비 '].head())
-            print(f"Type of '실 매출 대비' column: {df['실 매출 대비 '].dtype}")
+            print(df['실 매출 대비'].head())
+            print(f"Type of '실 매출 대비' column: {df['실 매출 대비'].dtype}")
 
         year_columns = ['2021년', '2022년', '2023년', '2024년', '2025년']
         for year in year_columns:
@@ -56,9 +56,9 @@ def load_data_from_github(url):
             st.error("데이터 로딩 후 빈 데이터프레임이 생성되었습니다.")
             return pd.DataFrame()
 
-        # '실 매출 대비 ' 및 연도별 매출 컬럼을 숫자형으로 변환 (int64)
-        if '실 매출 대비 ' in df.columns:
-            df['실 매출 대비 '] = pd.to_numeric(df['실 매출 대비 '].astype(str).str.replace(',', ''), errors='coerce').fillna(0).astype('Int64')
+        # '실 매출 대비' 및 연도별 매출 컬럼을 숫자형으로 변환 (int64)
+        if '실 매출 대비' in df.columns:
+            df['실 매출 대비'] = pd.to_numeric(df['실 매출 대비'].astype(str).str.replace(',', ''), errors='coerce').fillna(0).astype('Int64')
 
         for year in year_columns:
             if year in df.columns:
