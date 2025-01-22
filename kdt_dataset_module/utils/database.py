@@ -42,57 +42,56 @@ def get_db_engine():
          return None
 
 def load_data_from_db(engine, table_name):
-     """데이터베이스에서 데이터를 로드"""
-     try:
-         with engine.connect() as connection:
-             print("1. 데이터베이스 연결 성공 (load_data_from_db 내부)")
-             try:
-                 print(f"2. 쿼리 실행 시작: SELECT * FROM {table_name} LIMIT 10")
-                 query = text(f"SELECT * FROM {table_name} LIMIT 10")
-                 result = connection.execute(query)
-                 print(f"3. 쿼리 실행 완료: {table_name}")
+    """데이터베이스에서 데이터를 로드"""
+    try:
+        with engine.connect() as connection:
+            print("1. 데이터베이스 연결 성공 (load_data_from_db 내부)")
+            try:
+                print(f"2. 쿼리 실행 시작: SELECT * FROM {table_name} LIMIT 10")
+                query = text(f"SELECT * FROM {table_name} LIMIT 10")
+                result = connection.execute(query)
+                print(f"3. 쿼리 실행 완료: {table_name}")
 
-                 print("3-1. 결과 출력 시작")
-                 rows = result.fetchall()
-                 for row in rows:
-                     print(row)
-                 print("3-2. 결과 출력 완료")
+                print("3-1. 결과 출력 시작")
+                rows = result.fetchall()
+                print(f"3-2. 결과 출력 완료 (총 {len(rows)}행)")
 
+                 # DataFrame으로 변환 ( 수정)
+                if rows:
                  df = pd.DataFrame(rows, columns=result.keys())
-
                  if df is not None and not df.empty:
-                     print("4. load_data_from_db 컬럼 확인:", df.columns)
-                     print(f"5. load_data_from_db 데이터 타입:\n{df.dtypes}")
-                     print("6. load_data_from_db 데이터 샘플:")
-                     print(df.head())
-
-                     if '훈련기관' in df.columns:
-                         print("7. load_data_from_db '훈련기관' 컬럼 샘플:")
-                         print(df['훈련기관'].head())
-                         print(f"8. Type of '훈련기관' column: {df['훈련기관'].dtype}")
-
-                     if '실 매출 대비' in df.columns:
+                      print("4. load_data_from_db 컬럼 확인:", df.columns)
+                      print(f"5. load_data_from_db 데이터 타입:\n{df.dtypes}")
+                      print("6. load_data_from_db 데이터 샘플:")
+                      print(df.head())
+   
+                      if '훈련기관' in df.columns:
+                           print("7. load_data_from_db '훈련기관' 컬럼 샘플:")
+                           print(df['훈련기관'].head())
+                           print(f"8. Type of '훈련기관' column: {df['훈련기관'].dtype}")
+   
+                      if '실 매출 대비' in df.columns:
                          print("9. load_data_from_db '실 매출 대비' 컬럼 샘플:")
                          print(df['실 매출 대비'].head())
                          print(f"10. Type of '실 매출 대비' column: {df['실 매출 대비 '].dtype}")
+   
+                      year_columns = ['2021년', '2022년', '2023년', '2024년', '2025년']
+                      for year in year_columns:
+                           if year in df.columns:
+                               print(f"11. load_data_from_db '{year}' 컬럼 샘플:")
+                               print(df[year].head())
+                               print(f"12. Type of '{year}' column: {df[year].dtype}")
+                else:
+                    print("13. 데이터 로딩 후 빈 데이터프레임이 생성되었습니다.")
+                    return pd.DataFrame()
+                print("14. 데이터 로드 성공, 데이터프레임 반환")
+                return df
 
-                     year_columns = ['2021년', '2022년', '2023년', '2024년', '2025년']
-                     for year in year_columns:
-                         if year in df.columns:
-                             print(f"11. load_data_from_db '{year}' 컬럼 샘플:")
-                             print(df[year].head())
-                             print(f"12. Type of '{year}' column: {df[year].dtype}")
+            except Exception as e:
+                print(f"15. Error loading data from the database(query 실행 오류): {e}")
+                traceback.print_exc()
+                return pd.DataFrame()
 
-                 if df.empty:
-                     print("13. 데이터 로딩 후 빈 데이터프레임이 생성되었습니다.")
-                     return pd.DataFrame()
-                 print("14. 데이터 로드 성공, 데이터프레임 반환")
-                 return df
-             except Exception as e:
-                 print(f"15. Error loading data from the database(query 실행 오류): {e}")
-                 traceback.print_exc()
-                 return pd.DataFrame()
- 
-     except Exception as e:
-         print(f"16. Error connecting to the database(with engine.connect 에러): {e}")
-         return pd.DataFrame()
+    except Exception as e:
+        print(f"16. Error connecting to the database(with engine.connect 에러): {e}")
+        return pd.DataFrame()
