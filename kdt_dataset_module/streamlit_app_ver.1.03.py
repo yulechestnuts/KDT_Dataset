@@ -10,11 +10,9 @@ import json
 import re
 import plotly.express as px
 from difflib import SequenceMatcher
-import os
-from dotenv import load_dotenv
 
-# utils 모듈에서 함수 직접 임포트 (가독성 및 명시성 향상)
-from utils.data_loader import load_data_from_github
+# utils 모듈 import 제거 (utils.data_loader 더 이상 사용 안 함)
+# from utils.data_loader import load_data_from_github
 from utils.data_preprocessing import preprocess_data
 from utils.data import calculate_yearly_revenue
 from utils.institution_grouping import group_institutions_advanced
@@ -23,30 +21,23 @@ from visualization.reports import analyze_training_institution, analyze_course, 
 # from utils.database import get_db_engine, load_data_from_db  # 더 이상 필요 없음
 st.set_page_config(layout="wide")  # 👈  st.set_page_config() 를 script 최상단으로 이동
 
-# .env 파일 로드
-from dotenv import load_dotenv
-load_dotenv()
-
-# 데이터베이스 테이블 이름 (환경 변수에서 가져옴) - CSV 파일 이름으로 사용 가능
-TABLE_NAME = os.getenv('TABLE_NAME') # CSV 파일 이름 설정에 활용 가능
 
 @st.cache_data
 def load_data():
-    """데이터 로드 함수 (GitHub CSV 파일에서 로드)"""
-    url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202412.csv?raw=true" # 👈 GitHub CSV Raw URL로 변경!
+    """데이터 로드 함수 (GitHub 엑셀 파일에서 로드)"""
+    url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202411.xlsx?raw=true" # 👈 GitHub 엑셀 Raw URL
     try:
-        response = requests.get(url, timeout=10) # requests 사용하여 GitHub CSV 파일 다운로드
-        response.raise_for_status()  # HTTP 에러 발생 시(4xx 또는 5xx) 예외 발생
-        df = pd.read_csv(io.StringIO(response.content.decode('utf-8'))) # 다운로드한 CSV 파일을 pandas DataFrame으로 로드
-        st.success("GitHub CSV 데이터 로드 성공!") # 성공 메시지 표시
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()  # HTTP 에러 발생 시 예외 처리
+        df = pd.read_excel(io.BytesIO(response.content), engine="openpyxl") # 엑셀 파일 로드
+        st.success("GitHub 엑셀 데이터 로드 성공!") # 성공 메시지 표시
         st.dataframe(df.head()) # 데이터 미리보기 (처음 몇 줄)
         return df
     except requests.exceptions.RequestException as e:
         st.error(f"GitHub에서 데이터를 불러올 수 없습니다: {e}") # 네트워크 오류, URL 오류 등
     except Exception as e:
-        st.error(f"데이터 처리 중 오류가 발생했습니다: {e}") # CSV 파싱 오류, pandas 처리 오류 등
+        st.error(f"데이터 처리 중 오류가 발생했습니다: {e}") # 엑셀 파싱 오류, pandas 처리 오류 등
     return pd.DataFrame() # 에러 발생 시 빈 DataFrame 반환
-
 
 # 스트림릿 UI에서 데이터 로드
 data = load_data()
@@ -404,12 +395,13 @@ def calculate_and_visualize_revenue(df):
 
 def main():
     st.set_page_config(layout="wide")
-
+    
+    # CSS 수정: HTML 컴포넌트 내부 스크롤 설정
     st.markdown("""
         <style>
         .stHtmlFrame-container {
             height: 800px;
-            overflow-y: scroll !important;
+            overflow-y: scroll !important;  /* 세로 스크롤 활성화 */
         }
         iframe {
             height: 100% !important;
@@ -417,27 +409,22 @@ def main():
         }
         </style>
     """, unsafe_allow_html=True)
-
+    
     df = load_data()
     if df.empty:
+        st.error("데이터를 불러오는데 실패했습니다.")
         return
-
-    # 데이터 전처리
+    
     df = preprocess_data(df)
-    if df.empty:  # preprocess_data에서 '훈련기관' 컬럼이 없는 경우
-      return
-
-    print("Preprocessed DataFrame Columns:", df.columns)
-
-    # 연도별 매출 계산 (전처리 후 수행)
-    year_columns = [str(col) for col in df.columns if re.match(r'^\d{4}년$', str(col))]
+    
+    # 연도 컬럼 찾기 수정
+    year_columns = [str(col) for col in df.columns if isinstance(col, (int, str)) and re.match(r'20\d{2}년?', str(col))]
+    
     df, yearly_data = calculate_yearly_revenue(df)
     
-    # 랭킹 컴포넌트 생성 및 표시
+    # HTML 컴포넌트에 overflow 스타일 추가
     js_code = create_ranking_component(df, yearly_data)
-    if js_code is None:
-      st.error("랭킹 컴포넌트 생성에 실패했습니다. '훈련기관' 컬럼이 없는지 확인해주세요.")
-      return
+    # HTML 컴포넌트에 스크롤 스타일 추가
     js_code = f"""
         <div style="height: 800px; overflow-y: auto;">
             {js_code}
@@ -445,34 +432,17 @@ def main():
     """
     html(js_code, height=800)
     
-    # 선도기업 비중 및 SSAFY 사업 분류 시각화
-    calculate_and_visualize_revenue(df)
-
-    # 사이드바에서 분석 유형 선택
     analysis_type = st.sidebar.selectbox(
         "분석 유형 선택",
         ["훈련기관 분석", "과정 분석", "NCS 분석"]
     )
-
+    
     if analysis_type == "훈련기관 분석":
-        selected_institution = st.selectbox("훈련기관 선택", df['훈련기관'].unique(), key='selectbox')
-        if selected_institution:
-            st.subheader("훈련기관별 훈련 유형별 비중")
-            total_courses = df.groupby(['훈련기관', '훈련연도']).size().reset_index(name='총 과정 수')
-            type_courses = df.groupby(['훈련기관', '훈련연도', '훈련유형']).size().reset_index(name='유형별 과정 수')
-            merged_df = pd.merge(total_courses, type_courses, on=['훈련기관', '훈련연도'], how='left')
-            merged_df['유형별 과정 수'] = merged_df['유형별 과정 수'].fillna(0)
-            merged_df['유형별 비중'] = merged_df['유형별 과정 수'] / merged_df['총 과정 수']
-            st.dataframe(merged_df)
-            analyze_training_institution(df, yearly_data, selected_institution)
-        
-        analyze_top5_institutions(df, yearly_data)
-
+        analyze_training_institution(df, yearly_data)
     elif analysis_type == "과정 분석":
         analyze_course(df, yearly_data)
     else:
         analyze_ncs(df, yearly_data)
-
 
 if __name__ == "__main__":
     main()
