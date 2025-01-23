@@ -25,7 +25,7 @@ def load_data_from_github(url):
         if url.lower().endswith('.xlsx'):
             print("Trying to read as Excel file") # Debug print: Excel path
             df = pd.read_excel(io.BytesIO(response.content), engine="openpyxl")
-        elif url.lower().endswith('.csv'):
+        elif '.csv' in url.lower():  # 수정: endswith('.csv') -> '.csv' in url.lower()
             print("Trying to read as CSV file") # Debug print: CSV path
             df = pd.read_csv(io.StringIO(response.content.decode('utf-8')))
         else:
