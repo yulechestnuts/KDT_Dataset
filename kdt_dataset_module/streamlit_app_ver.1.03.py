@@ -21,7 +21,6 @@ from utils.institution_grouping import group_institutions_advanced
 from utils.training_type_classification import classify_training_type
 from visualization.reports import analyze_training_institution, analyze_course, analyze_ncs, analyze_top5_institutions
 from utils.database import get_db_engine, load_data_from_db
-
 st.set_page_config(layout="wide")  # 👈  st.set_page_config() 를 script 최상단으로 이동
 
 # .env 파일 로드
