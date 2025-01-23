@@ -5,20 +5,31 @@ import streamlit as st
 from difflib import SequenceMatcher
 import re
 
+@st.cache_data
 def load_data_from_github(url):
     """
     GitHub URL에서 엑셀 또는 CSV 파일을 로드하고, 에러를 처리하며,
     데이터를 정제하는 함수입니다.
     """
+    print(f"load_data_from_github called with URL: {url}")  # Debug print: URL 확인
+
     try:
         response = requests.get(url, timeout=30)
         response.raise_for_status()
 
+        print(f"URL lowercased: {url.lower()}") # Debug print: Lowercased URL
+        print(f"Does URL end with '.xlsx'? {url.lower().endswith('.xlsx')}") # Debug print: .xlsx check
+        print(f"Does URL end with '.csv'? {url.lower().endswith('.csv')}")   # Debug print: .csv check
+
+
         if url.lower().endswith('.xlsx'):
+            print("Trying to read as Excel file") # Debug print: Excel path
             df = pd.read_excel(io.BytesIO(response.content), engine="openpyxl")
         elif url.lower().endswith('.csv'):
+            print("Trying to read as CSV file") # Debug print: CSV path
             df = pd.read_csv(io.StringIO(response.content.decode('utf-8')))
         else:
+            print("Unsupported file format detected") # Debug print: Unsupported format path
             st.error(f"Error: 지원하지 않는 파일 형식입니다: {url}")
             return pd.DataFrame()
 
@@ -66,14 +77,14 @@ def load_data_from_github(url):
 
         # 누적 매출 계산 (연도별 매출 컬럼이 모두 숫자로 변환된 후에 계산)
         df['누적매출'] = df[year_columns].sum(axis=1)
-        
+
         # 데이터 로딩 후 특정 훈련기관 데이터 확인
         smart_data = df[df['훈련기관'].str.contains('스마트인재개발원', na=False)]
         if not smart_data.empty:
             print("\n'스마트인재개발원' 데이터 샘플 (로딩 직후):")
             print(smart_data)
             print(smart_data.to_markdown(index=False)) # 마크다운 표 형태로 출력
-            
+
 
         return df
 
