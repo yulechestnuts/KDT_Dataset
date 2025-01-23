@@ -1,105 +1,52 @@
 import os
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 import pandas as pd
+import streamlit as st
 from dotenv import load_dotenv
-from urllib.parse import quote_plus
-import traceback
+import urllib.parse  # urllib.parse 모듈 import 추가
 
+# .env 파일 로드
 load_dotenv()
 
+# 환경변수에서 DB 정보 가져오기
+db_url_env = os.getenv("DB_URL")  # DB_URL 환경 변수 원본 값 가져오기
+table_name = os.getenv("TABLE_NAME")
+
+# DB_URL 파싱 및 비밀번호 URL 디코딩
+parsed_url = urllib.parse.urlparse(db_url_env)
+decoded_password = urllib.parse.unquote(parsed_url.password) # 비밀번호 URL 디코딩
+db_url = db_url_env.replace(parsed_url.password, decoded_password) # 디코딩된 비밀번호로 DB_URL 재구성
+
+# 디버깅: 환경 변수 확인
+if not db_url:
+    raise ValueError("DB_URL is not set. Please check your .env file.")
+if not table_name:
+    raise ValueError("TABLE_NAME is not set. Please check your .env file.")
+
 def get_db_engine():
-    """데이터베이스 엔진 생성"""
-    db_type = os.getenv("DB_TYPE")
-    db_url = os.getenv("DB_URL")
+    """DB 연결 엔진을 생성합니다."""
     try:
-        if db_type and db_url:
-            # URL 파싱 및 재구성
-            url_parts = db_url.split('://')[1].split('@')
-            user_pass, host_port_db = url_parts[0], url_parts[1]
-            user, password = user_pass.split(':')
-            host_port, db_name = host_port_db.split('/')
-            host, port = host_port.split(':')
-
-            encoded_password = quote_plus(password)
-            # driver 옵션 명시적으로 추가
-            formatted_url = f"mysql+mysqlconnector://{user}:{encoded_password}@{host}:{port}/{db_name}"
-
-            engine = create_engine(formatted_url, pool_pre_ping=True, pool_recycle=3600)
-            print(f"Successfully connected to {db_type} database.")
-            try:
-                with engine.connect() as connection:
-                    print("데이터베이스 연결 성공 (get_db_engine 내부)")
-                    return engine
-            except Exception as e:
-               print(f"데이터베이스 연결 실패 (get_db_engine 내부): {e}")
-               return None
-        else:
-            print("환경 변수 DB_TYPE 또는 DB_URL이 설정되지 않았습니다.")
-            return None
-
+        engine = create_engine(db_url, pool_pre_ping=True, pool_recycle=3600) # 수정된 db_url 사용
+        with engine.connect() as connection:
+            st.success(f"DB 연결 성공: {db_url}") # st.write -> st.success 로 변경 (성공 메시지 강조)
+        return engine
     except Exception as e:
-        print(f"Error connecting to the {db_type} database: {e}")
+        st.error(f"DB 연결 실패: {e}")
         return None
-
 
 def load_data_from_db(engine, table_name):
     """데이터베이스에서 데이터를 로드"""
-    df = None
     try:
-        with engine.connect() as connection:
-            print("1. 데이터베이스 연결 성공 (load_data_from_db 내부)")
-            try:
-                print(f"2. 쿼리 실행 시작: SELECT * FROM {table_name} LIMIT 10")
-                query = text(f"SELECT * FROM {table_name} LIMIT 10")
-                result = connection.execute(query)
-                print(f"3. 쿼리 실행 완료: {table_name}")
-
-                print("3-1. 결과 출력 시작")
-                rows = result.fetchall()
-                print(f"3-2. 결과 출력 완료 (총 {len(rows)}행)")
-                
-                # DataFrame으로 변환 (수정: result.fetchall() 사용)
-                if rows:
-                  df = pd.DataFrame(rows, columns=result.keys())
-                  if df is not None and not df.empty:
-                      print("4. load_data_from_db 컬럼 확인:", df.columns)
-                      print(f"5. load_data_from_db 데이터 타입:\n{df.dtypes}")
-                      print("6. load_data_from_db 데이터 샘플:")
-                      print(df.head())
-
-                      if '훈련기관' in df.columns:
-                            print("7. load_data_from_db '훈련기관' 컬럼 샘플:")
-                            print(df['훈련기관'].head())
-                            print(f"8. Type of '훈련기관' column: {df['훈련기관'].dtype}")
-
-                      if '실 매출 대비' in df.columns:
-                           print("9. load_data_from_db '실 매출 대비' 컬럼 샘플:")
-                           print(df['실 매출 대비'].head())
-                           print(f"10. Type of '실 매출 대비' column: {df['실 매출 대비 '].dtype}")
-
-                      year_columns = ['2021년', '2022년', '2023년', '2024년', '2025년']
-                      for year in year_columns:
-                        if year in df.columns:
-                             print(f"11. load_data_from_db '{year}' 컬럼 샘플:")
-                             print(df[year].head())
-                             print(f"12. Type of '{year}' column: {df[year].dtype}")
-                  else:
-                       print("13. DataFrame is None or empty after query")
-                       return pd.DataFrame()
-
-                  print("14. 데이터 로드 성공, 데이터프레임 반환")
-                  return df
-                else:
-                   print("13-1. rows is empty after query.")
-                   return pd.DataFrame()
-
-            except Exception as e:
-                print(f"15. Error loading data from the database(query 실행 오류): {e}")
-                traceback.print_exc()
-                print(f"15-1. 상세오류 내용: {str(e)}")
-                return pd.DataFrame()
-
+        query = f"SELECT * FROM {table_name} LIMIT 10"  # 예시 쿼리
+        df = pd.read_sql(query, engine)
+        st.success("데이터 로드 성공") # st.write -> st.success 로 변경 (성공 메시지 강조)
+        st.dataframe(df.head())  # st.write -> st.dataframe 으로 변경 (DataFrame 출력)
+        return df
     except Exception as e:
-        print(f"16. Error connecting to the database(with engine.connect 에러): {e}")
-        print(f"16-1. 상세오류 내용: {str(e)}")
+        st.error(f"쿼리 실행 중 오류 발생: {e}")
         return pd.DataFrame()
+
+# DB 연결 및 데이터 로드 (streamlit_app_ver.1.03.py 에서는 이 부분은 필요 없음. utils.database.py 는 모듈로 사용됨)
+# engine = get_db_engine()
+# if engine:
+#     df = load_data_from_db(engine, table_name)
