@@ -22,6 +22,7 @@ from utils.training_type_classification import classify_training_type
 from visualization.reports import analyze_training_institution, analyze_course, analyze_ncs, analyze_top5_institutions
 from utils.database import get_db_engine, load_data_from_db
 
+st.set_page_config(layout="wide")  # 👈  st.set_page_config() 를 script 최상단으로 이동
 
 # .env 파일 로드
 load_dotenv()
@@ -29,45 +30,52 @@ load_dotenv()
 # 데이터베이스 테이블 이름 (환경 변수에서 가져옴)
 TABLE_NAME = os.getenv('TABLE_NAME')
 
-#@st.cache_data
 def load_data():
-    """데이터베이스에서 데이터를 로드"""
-    print("load_data 함수 시작")
-    print("환경 변수 확인:", os.environ)
-
+    """데이터 로드 함수"""
     engine = get_db_engine()
     if engine is None:
-        st.error("데이터베이스 연결에 실패했습니다.")
         return pd.DataFrame()
 
-    print("데이터베이스 연결 성공 (load_data 함수 내부), 데이터 로드 시도")
+    # 데이터베이스에서 데이터 로드
+    df = load_data_from_db(engine, TABLE_NAME)
 
-    try:
-        df = load_data_from_db(engine, TABLE_NAME)
-        if isinstance(df, pd.DataFrame):
-          if df.empty:
-             st.error("데이터를 불러오는데 실패했습니다.")
-             print("load_data_from_db 함수에서 빈 DataFrame을 반환했습니다.")
-             return pd.DataFrame()
-          else:
-              print("load_data 함수에서 데이터를 성공적으로 로드했습니다.")
-              print(f"데이터프레임 샘플:\n{df.head()}")
-              return df
-        else:
-             st.error("데이터를 불러오는데 실패했습니다.(유효하지 않은 객체)")
-             print("load_data_from_db 함수에서 DataFrame이 아닌 값을 반환했습니다.")
-             return pd.DataFrame()
-    except Exception as e:
-        st.error(f"데이터 로드 중 오류 발생: {e}")
-        print(f"load_data_from_db 함수에서 오류 발생: {e}")
+    # 데이터가 비어 있지 않으면 반환
+    if df.empty:
+        st.error("데이터프레임이 비어 있습니다.")
         return pd.DataFrame()
-    
+
+    # '훈련기관' 컬럼이 있는지 확인
+    if '훈련기관' not in df.columns:
+        st.error("'훈련기관' 컬럼이 데이터에 존재하지 않습니다.")
+        return pd.DataFrame()
+
+    return df
+
+# 스트림릿 UI에서 데이터 로드
+data = load_data()
+
+# 데이터가 있으면 표시
+if not data.empty:
+    st.write(data.head())
+
 @st.cache_data
 def create_ranking_component(df, yearly_data):
     """훈련기관별 랭킹 컴포넌트 생성"""
-    if '훈련기관' not in df.columns:
-       print("Error: '훈련기관' 컬럼이 DataFrame에 없습니다. (create_ranking_component)")
-       return None
+    required_columns = ['훈련기관', '누적매출', '과정명', '과정시작일', '과정종료일']
+    missing_columns = [col for col in required_columns if col not in df.columns]
+    if missing_columns:
+        print(f"Error: 다음 컬럼이 없습니다: {missing_columns} (create_ranking_component)")
+        return None
+
+    # 날짜 형식 검증 및 변환
+    try:
+        df['과정시작일'] = pd.to_datetime(df['과정시작일'])
+        df['과정종료일'] = pd.to_datetime(df['과정종료일'])
+    except Exception as e:
+        print(f"Error: 날짜 형식 변환 실패 - {e} (create_ranking_component)")
+        return None
+
+    # 데이터 그룹화 및 연도별 매출 계산
     institution_revenue = df.groupby('훈련기관').agg({
         '누적매출': 'sum',
         '과정명': 'count',
@@ -76,23 +84,26 @@ def create_ranking_component(df, yearly_data):
     }).reset_index()
 
     year_columns = [str(col) for col in df.columns if re.match(r'^\d{4}년$', str(col))]
-
-    yearly_sums = {}
-    for year in year_columns:
-        yearly_sums[year] = df.groupby('훈련기관')[year].sum()
+    yearly_sums = {year: df.groupby('훈련기관')[year].sum() for year in year_columns}
 
     ranking_data = []
     for _, row in institution_revenue.iterrows():
-        yearly_revenues = {str(year): float(yearly_sums[year].get(row['훈련기관'], 0)) for year in year_columns}
+        yearly_revenues = {
+            year: float(yearly_sums[year].get(row['훈련기관'], 0)) for year in year_columns
+        }
 
-        ranking_data.append({
-            "institution": row['훈련기관'],
-            "revenue": float(row['누적매출']),
-            "courses": int(row['과정명']),
-            "yearlyRevenue": yearly_revenues,
-            "startDate": row['과정시작일'].strftime('%Y-%m'),
-            "endDate": row['과정종료일'].strftime('%Y-%m')
-        })
+        try:
+            ranking_data.append({
+                "institution": row['훈련기관'],
+                "revenue": float(row['누적매출']),
+                "courses": int(row['과정명']),
+                "yearlyRevenue": yearly_revenues,
+                "startDate": row['과정시작일'].strftime('%Y-%m'),
+                "endDate": row['과정종료일'].strftime('%Y-%m')
+            })
+        except Exception as e:
+            print(f"Error: 랭킹 데이터 생성 중 오류 발생 - {e} (create_ranking_component)")
+            return None
 
     js_code = """
     <div id="ranking-root"></div>
