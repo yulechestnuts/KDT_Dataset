@@ -20,23 +20,40 @@ from utils.data import calculate_yearly_revenue
 from utils.institution_grouping import group_institutions_advanced
 from utils.training_type_classification import classify_training_type
 from visualization.reports import analyze_training_institution, analyze_course, analyze_ncs, analyze_top5_institutions
-from utils.database import get_db_engine, load_data_from_db
+# from utils.database import get_db_engine, load_data_from_db  # 더 이상 필요 없음
 st.set_page_config(layout="wide")  # 👈  st.set_page_config() 를 script 최상단으로 이동
+
+# .env 파일 로드
+from dotenv import load_dotenv
+load_dotenv()
+
+# 데이터베이스 테이블 이름 (환경 변수에서 가져옴) - CSV 파일 이름으로 사용 가능
+TABLE_NAME = os.getenv('TABLE_NAME') # CSV 파일 이름 설정에 활용 가능
 
 @st.cache_data
 def load_data():
-    url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202412.csv?raw=true"
+    """데이터 로드 함수 (GitHub CSV 파일에서 로드)"""
+    url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202412.csv?raw=true" # 👈 GitHub CSV Raw URL로 변경!
     try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()  # 상태 코드가 200이 아니면 에러 발생
-        df = pd.read_excel(io.BytesIO(response.content), engine="openpyxl")
+        response = requests.get(url, timeout=10) # requests 사용하여 GitHub CSV 파일 다운로드
+        response.raise_for_status()  # HTTP 에러 발생 시(4xx 또는 5xx) 예외 발생
+        df = pd.read_csv(io.StringIO(response.content.decode('utf-8'))) # 다운로드한 CSV 파일을 pandas DataFrame으로 로드
+        st.success("GitHub CSV 데이터 로드 성공!") # 성공 메시지 표시
+        st.dataframe(df.head()) # 데이터 미리보기 (처음 몇 줄)
         return df
     except requests.exceptions.RequestException as e:
-        st.error(f"데이터를 불러올 수 없습니다: {e}")
+        st.error(f"GitHub에서 데이터를 불러올 수 없습니다: {e}") # 네트워크 오류, URL 오류 등
     except Exception as e:
-        st.error(f"데이터 처리 중 오류가 발생했습니다: {e}")
-    return pd.DataFrame()
+        st.error(f"데이터 처리 중 오류가 발생했습니다: {e}") # CSV 파싱 오류, pandas 처리 오류 등
+    return pd.DataFrame() # 에러 발생 시 빈 DataFrame 반환
 
+
+# 스트림릿 UI에서 데이터 로드
+data = load_data()
+
+# 데이터가 있으면 표시
+if not data.empty:
+    st.write(data.head())
 
 @st.cache_data
 def create_ranking_component(df, yearly_data):
