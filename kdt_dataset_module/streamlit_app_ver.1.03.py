@@ -19,25 +19,25 @@ from utils.institution_grouping import group_institutions_advanced
 from utils.training_type_classification import classify_training_type
 from visualization.reports import analyze_training_institution, analyze_course, analyze_ncs, analyze_top5_institutions
 
-@st.cache_data
-def load_data():
-    """GitHub에서 데이터 로드 및 캐싱"""
-    url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202412.csv?raw=true"
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        df = pd.read_excel(io.BytesIO(response.content), engine="openpyxl")
-        print("load_data 컬럼 확인:", df.columns)
-        if df.empty:
-            st.error("데이터를 불러오는데 실패했습니다.")
-            return pd.DataFrame()
-        return df
-    except requests.exceptions.RequestException as e:
-        st.error(f"데이터를 불러올 수 없습니다: {e}")
-        return pd.DataFrame()
-    except Exception as e:
-        st.error(f"데이터 처리 중 오류가 발생했습니다: {e}")
-        return pd.DataFrame()
+# @st.cache_data  <- Remove this entire function
+# def load_data():
+#     """GitHub에서 데이터 로드 및 캐싱"""
+#     url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202412.csv?raw=true"
+#     try:
+#         response = requests.get(url, timeout=10)
+#         response.raise_for_status()
+#         df = pd.read_excel(io.BytesIO(response.content), engine="openpyxl")
+#         print("load_data 컬럼 확인:", df.columns)
+#         if df.empty:
+#             st.error("데이터를 불러오는데 실패했습니다.")
+#             return pd.DataFrame()
+#         return df
+#     except requests.exceptions.RequestException as e:
+#         st.error(f"데이터를 불러올 수 없습니다: {e}")
+#         return pd.DataFrame()
+#     except Exception as e:
+#         st.error(f"데이터 처리 중 오류가 발생했습니다: {e}")
+#         return pd.DataFrame()
 
 @st.cache_data
 def create_ranking_component(df, yearly_data):
@@ -268,7 +268,7 @@ def create_ranking_component(df, yearly_data):
 def calculate_and_visualize_revenue(df):
     """선도기업 비중 및 SSAFY 사업 분류 시각화"""
     year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'^\d{4}년$', col)]
-    
+
     # 각 유형별 매출액 계산 함수
     def calculate_revenue_by_type(df, year=None):
          if year:
@@ -295,12 +295,12 @@ def calculate_and_visualize_revenue(df):
     # 전체 매출 데이터 생성
     total_revenue_data = calculate_revenue_by_type(df)
     total_revenue_df = pd.DataFrame(total_revenue_data)
-    
+
     # 매출 비중 시각화
     pie_chart = alt.Chart(total_revenue_df).mark_arc().encode(
         theta=alt.Theta(field="매출액", type="quantitative"),
-        color=alt.Color(field="유형", type="nominal", 
-                         scale=alt.Scale(domain=['신기술 훈련', '선도기업형 훈련', 'SSAFY', '기타'], 
+        color=alt.Color(field="유형", type="nominal",
+                         scale=alt.Scale(domain=['신기술 훈련', '선도기업형 훈련', 'SSAFY', '기타'],
                                         range=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728'])),
         tooltip=['유형', alt.Tooltip('매출액', format=",.2f")]
     ).properties(
@@ -308,15 +308,15 @@ def calculate_and_visualize_revenue(df):
     )
 
     st.altair_chart(pie_chart, use_container_width=True)
-    
+
     # 연도별 매출 비중 계산 및 시각화 (막대 그래프 및 원 그래프)
     for year in year_columns:
       yearly_revenue_data = calculate_revenue_by_type(df, year)
       yearly_revenue_df = pd.DataFrame(yearly_revenue_data)
-      
+
       # 파이 차트에 표시할 퍼센트 계산을 위한 컬럼 추가
       yearly_revenue_df['매출액_퍼센트'] = yearly_revenue_df['매출액'] / yearly_revenue_df['매출액'].sum() * 100
-      
+
       pie_chart = alt.Chart(yearly_revenue_df).mark_arc().encode(
             theta=alt.Theta(field="매출액", type="quantitative"),
             color=alt.Color(field="유형", type="nominal",
@@ -326,7 +326,7 @@ def calculate_and_visualize_revenue(df):
           ).properties(
               title=f"{year} 사업 유형별 매출 비중 (억 원)"
           )
-      
+
       # 텍스트 레이블 추가
       text = alt.Chart(yearly_revenue_df).mark_text(
              align='center',
@@ -344,7 +344,7 @@ def calculate_and_visualize_revenue(df):
              x = "if(datum.sum_매출액 < 0, -25, 0)" ,
               y = "if(datum.sum_매출액 < 0, -25, -2)" ,
           )
-      
+
       st.altair_chart(pie_chart + text, use_container_width=True)
 
     yearly_data = {}
@@ -357,18 +357,18 @@ def calculate_and_visualize_revenue(df):
     yearly_revenue_df.rename(columns={'index': '연도'}, inplace=True)
 
     yearly_revenue_df_melted = yearly_revenue_df.melt(id_vars=['연도'], var_name='유형', value_name='매출액')
-    
+
     bar_chart = alt.Chart(yearly_revenue_df_melted).mark_bar().encode(
         x=alt.X('연도', title="연도"),
         y=alt.Y('매출액', title="매출액 (억원)", axis=alt.Axis(format="~s")),
-        color=alt.Color(field="유형", type="nominal", 
-                         scale=alt.Scale(domain=['신기술 훈련', '선도기업형 훈련', 'SSAFY', '기타'], 
+        color=alt.Color(field="유형", type="nominal",
+                         scale=alt.Scale(domain=['신기술 훈련', '선도기업형 훈련', 'SSAFY', '기타'],
                                         range=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728'])),
          tooltip = ['연도','유형',alt.Tooltip('매출액', format=",.2f")]
     ).properties(
         title="연도별 사업 유형별 매출 비중"
     )
-    
+
     st.altair_chart(bar_chart, use_container_width=True)
 
 def main():
@@ -387,7 +387,8 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
-    df = load_data()
+    url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202412.csv?raw=true" # Define URL here
+    df = load_data_from_github(url) # Use load_data_from_github
     if df.empty:
         return
 
@@ -401,7 +402,7 @@ def main():
     # 연도별 매출 계산 (전처리 후 수행)
     year_columns = [str(col) for col in df.columns if re.match(r'^\d{4}년$', str(col))]
     df, yearly_data = calculate_yearly_revenue(df)
-    
+
     # 랭킹 컴포넌트 생성 및 표시
     js_code = create_ranking_component(df, yearly_data)
     if js_code is None:
@@ -413,7 +414,7 @@ def main():
         </div>
     """
     html(js_code, height=800)
-    
+
     # 선도기업 비중 및 SSAFY 사업 분류 시각화
     calculate_and_visualize_revenue(df)
 
@@ -434,7 +435,7 @@ def main():
             merged_df['유형별 비중'] = merged_df['유형별 과정 수'] / merged_df['총 과정 수']
             st.dataframe(merged_df)
             analyze_training_institution(df, yearly_data, selected_institution)
-        
+
         analyze_top5_institutions(df, yearly_data)
 
     elif analysis_type == "과정 분석":
