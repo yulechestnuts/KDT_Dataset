@@ -23,39 +23,20 @@ from visualization.reports import analyze_training_institution, analyze_course, 
 from utils.database import get_db_engine, load_data_from_db
 st.set_page_config(layout="wide")  # 👈  st.set_page_config() 를 script 최상단으로 이동
 
-# .env 파일 로드
-load_dotenv()
-
-# 데이터베이스 테이블 이름 (환경 변수에서 가져옴)
-TABLE_NAME = os.getenv('TABLE_NAME')
-
+@st.cache_data
 def load_data():
-    """데이터 로드 함수"""
-    engine = get_db_engine()
-    if engine is None:
-        return pd.DataFrame()
+    url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202412.csv?raw=true"
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()  # 상태 코드가 200이 아니면 에러 발생
+        df = pd.read_excel(io.BytesIO(response.content), engine="openpyxl")
+        return df
+    except requests.exceptions.RequestException as e:
+        st.error(f"데이터를 불러올 수 없습니다: {e}")
+    except Exception as e:
+        st.error(f"데이터 처리 중 오류가 발생했습니다: {e}")
+    return pd.DataFrame()
 
-    # 데이터베이스에서 데이터 로드
-    df = load_data_from_db(engine, TABLE_NAME)
-
-    # 데이터가 비어 있지 않으면 반환
-    if df.empty:
-        st.error("데이터프레임이 비어 있습니다.")
-        return pd.DataFrame()
-
-    # '훈련기관' 컬럼이 있는지 확인
-    if '훈련기관' not in df.columns:
-        st.error("'훈련기관' 컬럼이 데이터에 존재하지 않습니다.")
-        return pd.DataFrame()
-
-    return df
-
-# 스트림릿 UI에서 데이터 로드
-data = load_data()
-
-# 데이터가 있으면 표시
-if not data.empty:
-    st.write(data.head())
 
 @st.cache_data
 def create_ranking_component(df, yearly_data):
