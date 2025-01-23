@@ -19,26 +19,6 @@ from utils.institution_grouping import group_institutions_advanced
 from utils.training_type_classification import classify_training_type
 from visualization.reports import analyze_training_institution, analyze_course, analyze_ncs, analyze_top5_institutions
 
-# @st.cache_data  <- Remove this entire function
-# def load_data():
-#     """GitHub에서 데이터 로드 및 캐싱"""
-#     url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202412.csv?raw=true"
-#     try:
-#         response = requests.get(url, timeout=10)
-#         response.raise_for_status()
-#         df = pd.read_excel(io.BytesIO(response.content), engine="openpyxl")
-#         print("load_data 컬럼 확인:", df.columns)
-#         if df.empty:
-#             st.error("데이터를 불러오는데 실패했습니다.")
-#             return pd.DataFrame()
-#         return df
-#     except requests.exceptions.RequestException as e:
-#         st.error(f"데이터를 불러올 수 없습니다: {e}")
-#         return pd.DataFrame()
-#     except Exception as e:
-#         st.error(f"데이터 처리 중 오류가 발생했습니다: {e}")
-#         return pd.DataFrame()
-
 @st.cache_data
 def create_ranking_component(df, yearly_data):
     """훈련기관별 랭킹 컴포넌트 생성"""
