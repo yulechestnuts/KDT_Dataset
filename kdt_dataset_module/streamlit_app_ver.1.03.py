@@ -11,59 +11,31 @@ import re
 import plotly.express as px
 from difflib import SequenceMatcher
 
-# utils 모듈 import 제거 (utils.data_loader 더 이상 사용 안 함)
-# from utils.data_loader import load_data_from_github
+from utils.data_loader import load_data_from_github
 from utils.data_preprocessing import preprocess_data
-from utils.data import calculate_yearly_revenue
-from utils.institution_grouping import group_institutions_advanced
-from utils.training_type_classification import classify_training_type
-from visualization.reports import analyze_training_institution, analyze_course, analyze_ncs, analyze_top5_institutions
-# from utils.database import get_db_engine, load_data_from_db  # 더 이상 필요 없음
-st.set_page_config(layout="wide")  # 👈  st.set_page_config() 를 script 최상단으로 이동
-
+from utils.data import calculate_yearly_revenue, group_institutions_advanced, classify_training_type
+from visualization.reports import analyze_training_institution, analyze_course, analyze_ncs
 
 @st.cache_data
 def load_data():
-    """데이터 로드 함수 (GitHub 엑셀 파일에서 로드)"""
-    url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202411.xlsx?raw=true" # 👈 GitHub 엑셀 Raw URL
+    url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202412.csv?raw=true"
     try:
         response = requests.get(url, timeout=10)
-        response.raise_for_status()  # HTTP 에러 발생 시 예외 처리
-        df = pd.read_excel(io.BytesIO(response.content), engine="openpyxl") # 엑셀 파일 로드
-        st.success("GitHub 엑셀 데이터 로드 성공!") # 성공 메시지 표시
-        st.dataframe(df.head()) # 데이터 미리보기 (처음 몇 줄)
-        return df
+        response.raise_for_status()  # 상태 코드가 200이 아니면 에러 발생
+        df = pd.read_excel(io.BytesIO(response.content), engine="openpyxl")
+        print("load_data 컬럼 확인:", df.columns)
+        if df.empty:
+            st.error("데이터를 불러오는데 실패했습니다.")
+            return pd.DataFrame(), True  # 변경: 빈 DataFrame과 stop 여부를 반환
+        return df, False # 변경: 데이터프레임과 stop 여부 반환
     except requests.exceptions.RequestException as e:
-        st.error(f"GitHub에서 데이터를 불러올 수 없습니다: {e}") # 네트워크 오류, URL 오류 등
+        st.error(f"데이터를 불러올 수 없습니다: {e}")
+        return pd.DataFrame(), True # 변경: 빈 DataFrame과 stop 여부를 반환
     except Exception as e:
-        st.error(f"데이터 처리 중 오류가 발생했습니다: {e}") # 엑셀 파싱 오류, pandas 처리 오류 등
-    return pd.DataFrame() # 에러 발생 시 빈 DataFrame 반환
+        st.error(f"데이터 처리 중 오류가 발생했습니다: {e}")
+        return pd.DataFrame(), True # 변경: 빈 DataFrame과 stop 여부를 반환
 
-# 스트림릿 UI에서 데이터 로드
-data = load_data()
-
-# 데이터가 있으면 표시
-if not data.empty:
-    st.write(data.head())
-
-@st.cache_data
 def create_ranking_component(df, yearly_data):
-    """훈련기관별 랭킹 컴포넌트 생성"""
-    required_columns = ['훈련기관', '누적매출', '과정명', '과정시작일', '과정종료일']
-    missing_columns = [col for col in required_columns if col not in df.columns]
-    if missing_columns:
-        print(f"Error: 다음 컬럼이 없습니다: {missing_columns} (create_ranking_component)")
-        return None
-
-    # 날짜 형식 검증 및 변환
-    try:
-        df['과정시작일'] = pd.to_datetime(df['과정시작일'])
-        df['과정종료일'] = pd.to_datetime(df['과정종료일'])
-    except Exception as e:
-        print(f"Error: 날짜 형식 변환 실패 - {e} (create_ranking_component)")
-        return None
-
-    # 데이터 그룹화 및 연도별 매출 계산
     institution_revenue = df.groupby('훈련기관').agg({
         '누적매출': 'sum',
         '과정명': 'count',
@@ -71,27 +43,27 @@ def create_ranking_component(df, yearly_data):
         '과정종료일': 'max'
     }).reset_index()
 
-    year_columns = [str(col) for col in df.columns if re.match(r'^\d{4}년$', str(col))]
-    yearly_sums = {year: df.groupby('훈련기관')[year].sum() for year in year_columns}
+    # 연도별 매출 합산하기
+    year_columns = [str(col) for col in df.columns if isinstance(col, (int, str)) and re.match(r'20\d{2}년', str(col))]
 
+    # 훈련기관별 연도별 매출 합산
+    yearly_sums = {}
+    for year in year_columns:
+        yearly_sums[year] = df.groupby('훈련기관')[year].sum()
+
+    # ranking_data 생성
     ranking_data = []
     for _, row in institution_revenue.iterrows():
-        yearly_revenues = {
-            year: float(yearly_sums[year].get(row['훈련기관'], 0)) for year in year_columns
-        }
+        yearly_revenues = {str(year): float(yearly_sums[year].get(row['훈련기관'], 0)) for year in year_columns}
 
-        try:
-            ranking_data.append({
-                "institution": row['훈련기관'],
-                "revenue": float(row['누적매출']),
-                "courses": int(row['과정명']),
-                "yearlyRevenue": yearly_revenues,
-                "startDate": row['과정시작일'].strftime('%Y-%m'),
-                "endDate": row['과정종료일'].strftime('%Y-%m')
-            })
-        except Exception as e:
-            print(f"Error: 랭킹 데이터 생성 중 오류 발생 - {e} (create_ranking_component)")
-            return None
+        ranking_data.append({
+            "institution": row['훈련기관'],
+            "revenue": float(row['누적매출']),
+            "courses": int(row['과정명']),
+            "yearlyRevenue": yearly_revenues,
+            "startDate": row['과정시작일'].strftime('%Y-%m'),
+            "endDate": row['과정종료일'].strftime('%Y-%m')
+        })
 
     js_code = """
     <div id="ranking-root"></div>
@@ -285,114 +257,6 @@ def create_ranking_component(df, yearly_data):
 
     return js_code
 
-
-@st.cache_data
-def calculate_and_visualize_revenue(df):
-    """선도기업 비중 및 SSAFY 사업 분류 시각화"""
-    year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'^\d{4}년$', col)]
-    
-    # 각 유형별 매출액 계산 함수
-    def calculate_revenue_by_type(df, year=None):
-         if year:
-           total_year_revenue = df[year].sum()
-           leading_company_year_revenue = df[df['훈련유형'].str.contains('선도기업형 훈련')][year].sum()
-           ssafy_year_revenue = df[df['과정명'].str.contains(r'\[삼성\] 청년 SW 아카데미', na=False)][year].sum()
-           new_tech_year_revenue = df[~df['훈련유형'].str.contains('선도기업형 훈련')][year].sum()
-           non_leading_non_ssafy_year_revenue = max(0, total_year_revenue - leading_company_year_revenue - ssafy_year_revenue - new_tech_year_revenue)
-           return {
-                '유형': ['신기술 훈련', '선도기업형 훈련', 'SSAFY', '기타'],
-                '매출액': [new_tech_year_revenue / 100000000, leading_company_year_revenue / 100000000, ssafy_year_revenue / 100000000, non_leading_non_ssafy_year_revenue / 100000000]
-            }
-
-         else:
-           total_revenue = df[year_columns].sum().sum()
-           leading_company_revenue = df[df['훈련유형'].str.contains('선도기업형 훈련')][year_columns].sum().sum()
-           ssafy_revenue = df[df['과정명'].str.contains(r'\[삼성\] 청년 SW 아카데미', na=False)][year_columns].sum().sum()
-           new_tech_revenue = df[~df['훈련유형'].str.contains('선도기업형 훈련')][year_columns].sum().sum()
-           non_leading_non_ssafy_revenue = max(0, total_revenue - leading_company_revenue - ssafy_revenue - new_tech_revenue)
-           return {
-                 '유형': ['신기술 훈련', '선도기업형 훈련', 'SSAFY', '기타'],
-                '매출액': [new_tech_revenue / 100000000, leading_company_revenue / 100000000, ssafy_revenue / 100000000, non_leading_non_ssafy_revenue / 100000000]
-             }
-    # 전체 매출 데이터 생성
-    total_revenue_data = calculate_revenue_by_type(df)
-    total_revenue_df = pd.DataFrame(total_revenue_data)
-    
-    # 매출 비중 시각화
-    pie_chart = alt.Chart(total_revenue_df).mark_arc().encode(
-        theta=alt.Theta(field="매출액", type="quantitative"),
-        color=alt.Color(field="유형", type="nominal", 
-                         scale=alt.Scale(domain=['신기술 훈련', '선도기업형 훈련', 'SSAFY', '기타'], 
-                                        range=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728'])),
-        tooltip=['유형', alt.Tooltip('매출액', format=",.2f")]
-    ).properties(
-        title="전체 사업 유형별 매출 비중 (억 원)"
-    )
-
-    st.altair_chart(pie_chart, use_container_width=True)
-    
-    # 연도별 매출 비중 계산 및 시각화 (막대 그래프 및 원 그래프)
-    for year in year_columns:
-      yearly_revenue_data = calculate_revenue_by_type(df, year)
-      yearly_revenue_df = pd.DataFrame(yearly_revenue_data)
-      
-      # 파이 차트에 표시할 퍼센트 계산을 위한 컬럼 추가
-      yearly_revenue_df['매출액_퍼센트'] = yearly_revenue_df['매출액'] / yearly_revenue_df['매출액'].sum() * 100
-      
-      pie_chart = alt.Chart(yearly_revenue_df).mark_arc().encode(
-            theta=alt.Theta(field="매출액", type="quantitative"),
-            color=alt.Color(field="유형", type="nominal",
-                            scale=alt.Scale(domain=['신기술 훈련', '선도기업형 훈련', 'SSAFY', '기타'],
-                                            range=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728'])),
-            tooltip=[alt.Tooltip('유형'), alt.Tooltip('매출액', format=",.2f"), alt.Tooltip('매출액_퍼센트', format=".2f", title="비율(%)")]
-          ).properties(
-              title=f"{year} 사업 유형별 매출 비중 (억 원)"
-          )
-      
-      # 텍스트 레이블 추가
-      text = alt.Chart(yearly_revenue_df).mark_text(
-             align='center',
-             color='black',
-             dy=0
-      ).encode(
-            text=alt.Text('매출액_퍼센트', format=".1f"),
-            theta=alt.Theta(field="매출액", type="quantitative"),
-            ).transform_calculate(
-                    y_pos = "datum.매출액"
-            ).transform_aggregate(
-              sum_매출액='sum(매출액)',
-              groupby=['유형']
-          ).transform_calculate(
-             x = "if(datum.sum_매출액 < 0, -25, 0)" ,
-              y = "if(datum.sum_매출액 < 0, -25, -2)" ,
-          )
-      
-      st.altair_chart(pie_chart + text, use_container_width=True)
-
-    yearly_data = {}
-    for year in year_columns:
-        yearly_revenue_data = calculate_revenue_by_type(df, year)
-        yearly_data[year] = {item['유형']: item['매출액'] for item in  [{"유형": yearly_revenue_data['유형'][i] , "매출액": yearly_revenue_data['매출액'][i]} for i in range(len(yearly_revenue_data['유형']))] }
-
-
-    yearly_revenue_df = pd.DataFrame(yearly_data).T.reset_index()
-    yearly_revenue_df.rename(columns={'index': '연도'}, inplace=True)
-
-    yearly_revenue_df_melted = yearly_revenue_df.melt(id_vars=['연도'], var_name='유형', value_name='매출액')
-    
-    bar_chart = alt.Chart(yearly_revenue_df_melted).mark_bar().encode(
-        x=alt.X('연도', title="연도"),
-        y=alt.Y('매출액', title="매출액 (억원)", axis=alt.Axis(format="~s")),
-        color=alt.Color(field="유형", type="nominal", 
-                         scale=alt.Scale(domain=['신기술 훈련', '선도기업형 훈련', 'SSAFY', '기타'], 
-                                        range=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728'])),
-         tooltip = ['연도','유형',alt.Tooltip('매출액', format=",.2f")]
-    ).properties(
-        title="연도별 사업 유형별 매출 비중"
-    )
-    
-    st.altair_chart(bar_chart, use_container_width=True)
-
 def main():
     st.set_page_config(layout="wide")
     
@@ -410,10 +274,9 @@ def main():
         </style>
     """, unsafe_allow_html=True)
     
-    df = load_data()
-    if df.empty:
-        st.error("데이터를 불러오는데 실패했습니다.")
-        return
+    df, stop = load_data()
+    if stop:
+      return
     
     df = preprocess_data(df)
     
