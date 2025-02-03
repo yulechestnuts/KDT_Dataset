@@ -1,7 +1,6 @@
 from difflib import SequenceMatcher
 import pandas as pd
 from collections import defaultdict
-import re
 
 def group_institutions_advanced(df, similarity_threshold=0.75):
     """훈련기관명을 분석하여 유사한 기관들을 그룹화"""
@@ -13,12 +12,10 @@ def group_institutions_advanced(df, similarity_threshold=0.75):
 
         df['훈련기관'] = df['훈련기관'].fillna("").astype(str)
 
-        # 전처리 로직 수정: 특수문자, 공백 제거, "주식회사" 처리
+        # 전처리 로직 수정: 특수문자, 공백 제거, "주식회사" -> "주"로 변경
         df['clean_name'] = df['훈련기관'].str.replace(r'[^가-힣A-Za-z0-9\s()]', '', regex=True).fillna("") #특수문자 제거
         df['clean_name'] = df['clean_name'].str.replace(r'\s+', ' ', regex=True).fillna("") # 공백 여러개를 하나로
-        
-         # "주식회사"를 조건부로 처리
-        df['clean_name'] = df['clean_name'].apply(lambda x: re.sub(r'^주식회사', '(주)', x) if re.match(r'^주식회사', x) else x).fillna("")
+        df['clean_name'] = df['clean_name'].str.replace(r'주식회사', '주', regex=True).fillna("") # "주식회사" 를 "주" 로 변경
         df['clean_name'] = df['clean_name'].str.strip().str.upper().fillna("")
 
         # 그룹 정보를 담을 딕셔너리
