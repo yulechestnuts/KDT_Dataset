@@ -25,9 +25,9 @@ def load_data_from_github(url):
         if url.lower().endswith('.xlsx'):
             print("Trying to read as Excel file") # Debug print: Excel path
             df = pd.read_excel(io.BytesIO(response.content), engine="openpyxl")
-        elif '.csv' in url.lower():  # 수정: endswith('.csv') -> '.csv' in url.lower()
-            print("Trying to read as CSV file") # Debug print: CSV path
-            df = pd.read_csv(io.StringIO(response.content.decode('utf-8')))
+        elif '.csv' in url.lower():
+            print("Trying to read as CSV file with index_col=0") # Debug print: CSV with index_col=0 path
+            df = pd.read_csv(io.StringIO(response.content.decode('utf-8')), index_col=0) # index_col=0 추가
         else:
             print("Unsupported file format detected") # Debug print: Unsupported format path
             st.error(f"Error: 지원하지 않는 파일 형식입니다: {url}")
