@@ -65,28 +65,32 @@ def preprocess_data(df):
 
         # 8. 훈련기관 그룹화 (훈련 유형 분류 전에 수행)
         if '훈련기관' in df.columns:
+            print("group_institutions_advanced 함수 시작 전 기관 빈도:") # 디버깅 출력 추가
+            print(df['훈련기관'].value_counts().head(10)) # 상위 10개 기관명 및 빈도수 출력
+
             print("group_institutions_advanced 함수 시작")
             df = group_institutions_advanced(df)
             print("group_institutions_advanced 함수 종료")
+
+            print("group_institutions_advanced 함수 후 기관 빈도:") # 디버깅 출력 추가
+            print(df['훈련기관'].value_counts().head(10)) # 상위 10개 기관명 및 빈도수 출력
             print("preprocess_data 후 group_institutions_advanced:")
             print(df.columns)
 
         else:
             print("Error: '훈련기관' 컬럼이 DataFrame에 없습니다.")
             return pd.DataFrame() # '훈련기관' 컬럼이 없으면 빈 DataFrame 반환
-    
-        # 9. 훈련유형 처리
-        print("preprocess_data - before classify_training_type, 파트너기관 (head):")
-        if '파트너기관' in df.columns:
-            print(df['파트너기관'].head())
 
-        df['훈련유형'] = df.apply(classify_training_type, axis=1)
+        # ... (나머지 코드) ...
 
-        print("preprocess_data 후 데이터샘플: ")
-        print(f"데이터 타입:\n{df.dtypes}")
-        print(df.head())
+        print("preprocess_data 함수 마지막 fillna(0) 적용 전 '훈련기관' 컬럼 dtype:", df['훈련기관'].dtype) # 디버깅 출력 추가
+        print("preprocess_data 함수 마지막 fillna(0) 적용 전 '훈련기관' 컬럼 결측치 개수:", df['훈련기관'].isnull().sum()) # 디버깅 출력 추가
+
 
         df = df.fillna(0)
+
+        print("preprocess_data 함수 마지막 fillna(0) 적용 후 '훈련기관' 컬럼에 '0' 값 있는지 확인:") # 디버깅 출력 추가
+        print(df[df['훈련기관'] == '0']['훈련기관'].value_counts()) # '훈련기관' 값이 '0'인 행의 '훈련기관' 빈도수 출력
 
         return df
 
