@@ -20,7 +20,7 @@ from utils.training_type_classification import classify_training_type
 from visualization.reports import analyze_training_institution, analyze_course, analyze_ncs, analyze_top5_institutions
 
 @st.cache_data
-def create_ranking_component(df, yearly_data):
+def create_ranking_component(df):
     """훈련기관별 랭킹 컴포넌트 생성"""
     if '훈련기관' not in df.columns:
        print("Error: '훈련기관' 컬럼이 DataFrame에 없습니다. (create_ranking_component)")
@@ -46,177 +46,178 @@ def create_ranking_component(df, yearly_data):
             "institution": row['훈련기관'],
             "revenue": float(row['누적매출']),
             "courses": int(row['과정명']),
-            "yearlyRevenue": yearly_revenues,
+            "yearlyRevenue": yearly_revenues,  # Include yearly revenues
             "startDate": row['과정시작일'].strftime('%Y-%m'),
             "endDate": row['과정종료일'].strftime('%Y-%m')
         })
 
     js_code = """
-    <div id="ranking-root"></div>
-    <script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
-    <script type="text/babel">
-        const rankingData = %s;
+        <div id="ranking-root"></div>
+        <script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
+        <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
+        <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+        <script type="text/babel">
+            const rankingData = %s;
 
-        function RankingDisplay() {
-            const [selectedYear, setSelectedYear] = React.useState('all');
-            const [searchTerm, setSearchTerm] = React.useState('');
-            const years = Object.keys(rankingData[0].yearlyRevenue).sort();
+            function RankingDisplay() {
+                const [selectedYear, setSelectedYear] = React.useState('all'); // State for selected year
+                const [searchTerm, setSearchTerm] = React.useState('');
+                const years = Object.keys(rankingData[0].yearlyRevenue).sort(); // Get years from data
 
-             const getRevenueForDisplay = (item) => {
-                if (selectedYear === 'all') {
-                    return item.revenue;
-                }
-                return item.yearlyRevenue[selectedYear] || 0;
-             };
+                const getRevenueForDisplay = (item) => {
+                    if (selectedYear === 'all') {
+                        return item.revenue; // Total revenue
+                    }
+                    return item.yearlyRevenue[selectedYear] || 0; // Revenue for selected year
+                };
 
-            const filteredAndSortedData = [...rankingData]
-                .filter(item =>
-                    item.institution.toLowerCase().includes(searchTerm.toLowerCase())
-                )
-                .sort((a, b) => getRevenueForDisplay(b) - getRevenueForDisplay(a));
+                const filteredAndSortedData = [...rankingData]
+                    .filter(item =>
+                        item.institution.toLowerCase().includes(searchTerm.toLowerCase())
+                    )
+                    .sort((a, b) => getRevenueForDisplay(b) - getRevenueForDisplay(a));
 
-            const maxRevenue = Math.max(...filteredAndSortedData.map(getRevenueForDisplay));
+                const maxRevenue = Math.max(...filteredAndSortedData.map(getRevenueForDisplay));
 
-            const formatRevenue = (revenue) => {
-                return (revenue / 100000000).toLocaleString('ko-KR', {
-                  minimumFractionDigits: 1,
-                  maximumFractionDigits: 1,
-                }) + '억원';
-            };
+                const formatRevenue = (revenue) => {
+                    return (revenue / 100000000).toLocaleString('ko-KR', {
+                      minimumFractionDigits: 1,
+                      maximumFractionDigits: 1,
+                    }) + '억원';
+                };
 
-            return (
-                <div style={{
-                    minHeight: '100vh',
-                    background: 'black',
-                    color: 'white',
-                    padding: '20px'
-                }}>
+                return (
                     <div style={{
-                        textAlign: 'center',
-                        padding: '40px 0'
+                        minHeight: '100vh',
+                        background: 'black',
+                        color: 'white',
+                        padding: '20px'
                     }}>
-                        <h1 style={{
-                            fontSize: '48px',
-                            fontWeight: 'bold',
-                            marginBottom: '16px'
-                        }}>KDT 훈련현황</h1>
-                        <p style={{
-                            fontSize: '20px',
-                            color: '#888'
-                        }}>첨단산업 디지털 핵심 실무인재 양성 훈련 과정 개괄표</p>
-
                         <div style={{
-                            margin: '20px 0',
-                            display: 'flex',
-                            justifyContent: 'center',
-                            gap: '10px',
-                            flexWrap: 'wrap'
+                            textAlign: 'center',
+                            padding: '40px 0'
                         }}>
-                            <input
-                                type="text"
-                                placeholder="기관명 검색..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                style={{
-                                    padding: '8px 16px',
-                                    background: '#333',
-                                    border: '1px solid #666',
-                                    borderRadius: '4px',
-                                    color: 'white',
-                                    marginRight: '10px'
-                                }}
-                            />
-                            <button
-                                onClick={() => setSelectedYear('all')}
-                                style={{
-                                    padding: '8px 16px',
-                                    background: selectedYear === 'all' ? '#4299e1' : '#333',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    color: 'white',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                전체
-                            </button>
-                            {years.map(year => (
-                                <button
-                                    key={year}
-                                    onClick={() => setSelectedYear(year)}
+                            <h1 style={{
+                                fontSize: '48px',
+                                fontWeight: 'bold',
+                                marginBottom: '16px'
+                            }}>KDT 훈련현황</h1>
+                            <p style={{
+                                fontSize: '20px',
+                                color: '#888'
+                            }}>첨단산업 디지털 핵심 실무인재 양성 훈련 과정 개괄표</p>
+
+                            <div style={{
+                                margin: '20px 0',
+                                display: 'flex',
+                                justifyContent: 'center',
+                                gap: '10px',
+                                flexWrap: 'wrap'
+                            }}>
+                                <input
+                                    type="text"
+                                    placeholder="기관명 검색..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
                                     style={{
                                         padding: '8px 16px',
-                                        background: selectedYear === year ? '#4299e1' : '#333',
+                                        background: '#333',
+                                        border: '1px solid #666',
+                                        borderRadius: '4px',
+                                        color: 'white',
+                                        marginRight: '10px'
+                                    }}
+                                />
+                                <button // All years button
+                                    onClick={() => setSelectedYear('all')}
+                                    style={{
+                                        padding: '8px 16px',
+                                        background: selectedYear === 'all' ? '#4299e1' : '#333',
                                         border: 'none',
                                         borderRadius: '4px',
                                         color: 'white',
                                         cursor: 'pointer'
                                     }}
                                 >
-                                    {year}
+                                    전체
                                 </button>
-                            ))}
+                                {years.map(year => ( // Year selection buttons
+                                    <button
+                                        key={year}
+                                        onClick={() => setSelectedYear(year)}
+                                        style={{
+                                            padding: '8px 16px',
+                                            background: selectedYear === year ? '#4299e1' : '#333',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            color: 'white',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        {year}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
-                    </div>
 
-                    <div style={{
-                        maxWidth: '1200px',
-                        margin: '0 auto'
-                    }}>
-                        {filteredAndSortedData.map((item, index) => {
-                            const revenue = getRevenueForDisplay(item);
-                            const width = (revenue / maxRevenue * 100) + '%%';
-                            return (
-                                <div key={item.institution}
-                                    style={{
-                                        background: '#222',
-                                        borderRadius: '8px',
-                                        padding: '16px',
-                                        marginBottom: '8px',
-                                        position: 'relative',
-                                        animation: `slideIn 0.5s ease-out ${index * 0.1}s both`
-                                    }}
-                                >
-                                    <div style={{
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        position: 'relative',
-                                        zIndex: 1
-                                    }}>
-                                        <div>
-                                            <span style={{color: '#4299e1', marginRight: '16px'}}>
-                                                #{index + 1}
+                        <div style={{
+                            maxWidth: '1200px',
+                            margin: '0 auto'
+                        }}>
+                            {filteredAndSortedData.map((item, index) => {
+                                const revenue = getRevenueForDisplay(item); // Get revenue based on selection
+                                const width = (revenue / maxRevenue * 100) + '%%';
+                                return (
+                                    <div key={item.institution}
+                                        style={{
+                                            background: '#222',
+                                            borderRadius: '8px',
+                                            padding: '16px',
+                                            marginBottom: '8px',
+                                            position: 'relative',
+                                            animation: `slideIn 0.5s ease-out ${index * 0.1}s both`
+                                        }}
+                                    >
+                                        <div style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            position: 'relative',
+                                            zIndex: 1
+                                        }}>
+                                            <div>
+                                                <span style={{color: '#4299e1', marginRight: '16px'}}>
+                                                    #{index + 1}
+                                                </span>
+                                                <span style={{marginRight: '16px'}}>
+                                                    {item.institution}
+                                                </span>
+                                                <span style={{color: '#888', fontSize: '14px'}}>
+                                                    ({item.courses}개 과정)
+                                                </span>
+                                            </div>
+                                            <div>
+                                            <span style={{ marginRight: '16px', color: '#4299e1' }}>
+                                              {formatRevenue(revenue)}
                                             </span>
-                                            <span style={{marginRight: '16px'}}>
-                                                {item.institution}
-                                            </span>
-                                            <span style={{color: '#888', fontSize: '14px'}}>
-                                                ({item.courses}개 과정)
-                                            </span>
+                                                <span style={{color: '#888', fontSize: '14px'}}>
+                                                    {item.startDate} ~ {item.endDate}
+                                                </span>
+                                            </div>
                                         </div>
-                                        <div>
-                                        <span style={{ marginRight: '16px', color: '#4299e1' }}>
-                                          {formatRevenue(revenue)}
-                                        </span>
-                                            <span style={{color: '#888', fontSize: '14px'}}>
-                                                {item.startDate} ~ {item.endDate}
-                                            </span>
-                                        </div>
+                                        <div style={{
+                                            position: 'absolute',
+                                            bottom: 0,
+                                            left: 0,
+                                            height: '4px',
+                                            width: width,
+                                            background: '#4299e1',
+                                            transition: 'width 1s ease-out',
+                                            opacity: 0.5
+                                        }}/>
                                     </div>
-                                    <div style={{
-                                        position: 'absolute',
-                                        bottom: 0,
-                                        left: 0,
-                                        height: '4px',
-                                        width: width,
-                                        background: '#4299e1',
-                                        transition: 'width 1s ease-out',
-                                        opacity: 0.5
-                                    }}/>
-                                </div>
-                            );
-                        })}
+                                );
+                            })}
+                        </div>
                     </div>
                 </div>
             );
@@ -227,22 +228,9 @@ def create_ranking_component(df, yearly_data):
             document.getElementById('ranking-root')
         );
     </script>
-    <style>
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateX(-50px);
-            }
-            to {
-                opacity: 1;
-                transform: translateX(0);
-            }
-        }
-    </style>
     """ % json.dumps(ranking_data)
 
     return js_code
-
 
 @st.cache_data
 def calculate_and_visualize_revenue(df):
