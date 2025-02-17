@@ -56,13 +56,12 @@ def preprocess_data(df):
             df['회차'] = pd.to_numeric(df['회차'].astype(str).str.extract('(\\d+)', expand=False), errors='coerce').fillna(0).astype('Int64')
 
         # 6. 누적매출 계산 (수정: "실 매출 대비" 컬럼 사용)
-        if '실 매출 대비' in df.columns: # "실 매출 대비" 컬럼 있는지 확인 (안전하게)
-           # df['누적매출'] = df[year_columns].fillna(0).sum(axis=1) # 기존 코드 (연도별 매출 합계) -> 제거
-           df['누적매출'] = pd.to_numeric(df['실 매출 대비'].astype(str).str.replace(',', ''), errors='coerce').fillna(0) # "실 매출 대비" 컬럼 사용 (수정!)
-        else: # "실 매출 대비" 컬럼이 없는 경우 (예외 처리)
-           df['누적매출'] = 0 # 누적 매출 0으로 초기화 (또는 다른 적절한 처리)
-           print("Warning: '실 매출 대비' 컬럼이 없어 누적 매출을 0으로 설정했습니다.") # 경고 메시지 출력
-
+        if '실 매출 대비' in df.columns:
+            # 쉼표 제거, 공백 제거 후 숫자 변환
+            df['누적매출'] = pd.to_numeric(df['실 매출 대비'].astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0)
+        else:
+            df['누적매출'] = 0  # 컬럼이 없으면 0으로 설정
+            
         # 7. 수강신청인원 컬럼 강제 생성 및 결측치 처리
         if '수강신청 인원' not in df.columns:
             df['수강신청 인원'] = 0
