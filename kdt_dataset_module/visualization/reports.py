@@ -92,6 +92,7 @@ def create_yearly_revenue_pie_charts(df, institution_name, yearly_data):
        charts.append(chart)
     return charts
 
+@st.cache_data
 def analyze_training_institution(df, yearly_data, selected_institution):
     """Analyzes training institution performance"""
     if not selected_institution:
@@ -103,45 +104,54 @@ def analyze_training_institution(df, yearly_data, selected_institution):
     st.write("### 연도별 정보")
     year_columns = [col for col in yearly_data.columns if isinstance(col, str) and re.match(r'^\d{4}년$', col)]
     yearly_summary = institution_df.groupby('훈련연도').agg(
-            {'과정명': 'count', '수강신청 인원': 'sum'}
-        ).rename(columns={'과정명': '총 과정 수', '수강신청 인원': '총 수강생'})
+        {'과정명': 'count', '수강신청 인원': 'sum'}
+    ).rename(columns={'과정명': '총 과정 수', '수강신청 인원': '총 수강생'})
 
     if '실 매출 대비' in institution_df.columns:
         institution_df['실 매출 대비'] = pd.to_numeric(institution_df['실 매출 대비'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
-        total_revenue = institution_df.groupby('훈련연도')['실 매출 대비'].sum()
-        yearly_summary['총 매출'] = total_revenue.apply(lambda x: format_revenue(x))
+        total_revenue = institution_df.groupby('훈련연도')['실 매출 대비'].sum() / 100000000
+        yearly_summary['총 매출'] = total_revenue
     else:
-        yearly_summary['총 매출'] = "0억"
+        yearly_summary['총 매출'] = 0  # 숫자 0으로 초기화
 
-    # 연도별 매출액 처리
+    # column_config 설정
+    column_config = {'총 매출': st.column_config.NumberColumn(format="%.2f억")}
+    for year in year_columns:
+        column_config[year] = st.column_config.NumberColumn(format="%.2f억")
+
+    # 연도별 매출액 처리 및 column_config 적용
     for year in year_columns:
         if year in institution_df.columns:
             # 연도별 매출액을 숫자형으로 변환 후 합산
             institution_df[year] = pd.to_numeric(institution_df[year].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
-            yearly_summary[year] = institution_df.groupby('훈련연도')[year].sum().apply(lambda x: format_revenue(x))
+            yearly_summary[year] = institution_df.groupby('훈련연도')[year].sum() / 100000000
         else:
-            yearly_summary[year] = "0억"
+            yearly_summary[year] = 0
 
-    st.dataframe(yearly_summary)
+    st.dataframe(yearly_summary, column_config=column_config)
+
 
     st.write("### 과정별 세부 정보")
     course_summary = institution_df.groupby('과정명', as_index=False).agg(
-            {'회차': 'count',
-            '수강신청 인원': 'sum',
-            '누적매출': 'sum',
-            '만족도': 'mean'
-            }
-        ).rename(columns={'회차': '총 횟수',
-                        '수강신청 인원': '총 수강생',
-                        '누적매출': '매출액',
-                        '만족도': '만족도'
-                        })
+        {'회차': 'count',
+         '수강신청 인원': 'sum',
+         '누적매출': 'sum',
+         '만족도': 'mean'
+         }
+    ).rename(columns={'회차': '총 횟수',
+                     '수강신청 인원': '총 수강생',
+                     '누적매출': '매출액',
+                     '만족도': '만족도'
+                     })
 
-        # 매출액 포맷팅을 먼저하고 숫자형으로 변환합니다.
-    course_summary['매출액'] = pd.to_numeric(course_summary['매출액'], errors='coerce').fillna(0)    
-    course_summary['매출액'] = course_summary['매출액'].apply(lambda x: format_revenue(x))    
-    course_summary = course_summary.sort_values(by='매출액', ascending=False, key=lambda x: x.str.replace('억', '').astype(float))
-    st.dataframe(course_summary)
+    # column_config 설정 (과정별 세부 정보)
+    course_column_config = {'매출액': st.column_config.NumberColumn(format="%.2f억")}
+
+    # 매출액을 억 단위로 변환
+    course_summary['매출액'] = course_summary['매출액'] / 100000000
+
+    st.dataframe(course_summary.sort_values(by='매출액', ascending=False),
+    column_config=course_column_config)
 
     bar_chart = create_horizontal_bar_chart(institution_df, selected_institution, yearly_data)
     if bar_chart:
