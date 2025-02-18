@@ -351,6 +351,255 @@ def calculate_and_visualize_revenue(df):
 
     st.altair_chart(bar_chart, use_container_width=True)
 
+def aggregate_ncs_data(df):
+    """NCS별 데이터를 집계하여 랭킹 컴포넌트에 필요한 형식으로 변환"""
+    if 'NCS명' not in df.columns or 'NCS코드' not in df.columns:
+        print("Error: 'NCS명' 또는 'NCS코드' 컬럼이 DataFrame에 없습니다.")
+        return None
+
+    ncs_revenue = df.groupby(['NCS명', 'NCS코드']).agg({
+        '누적매출': 'sum',
+        '과정명': 'count',
+        '과정시작일': 'min',
+        '과정종료일': 'max'
+    }).reset_index()
+
+    year_columns = [str(col) for col in df.columns if re.match(r'^\d{4}년$', str(col))]
+
+    # yearly_sums 계산 방식 수정
+    yearly_sums = {}
+    for year in year_columns:
+        yearly_sums[year] = df.groupby(['NCS명', 'NCS코드'])[year].sum().to_dict()
+
+    ranking_data = []
+    for _, row in ncs_revenue.iterrows():
+        yearly_revenues = {}
+        for year in year_columns:
+            key = (row['NCS명'], row['NCS코드'])
+            if key in yearly_sums[year]:
+                yearly_revenues[str(year)] = float(yearly_sums[year][key])
+            else:
+                yearly_revenues[str(year)] = 0.0
+
+        ranking_data.append({
+            "ncsName": f"{row['NCS명']} ({row['NCS코드']})",  # NCS명 (NCS코드) 형식
+            "revenue": float(row['누적매출']),
+            "courses": int(row['과정명']),
+            "yearlyRevenue": yearly_revenues,
+            "startDate": row['과정시작일'].strftime('%Y-%m'),
+            "endDate": row['과정종료일'].strftime('%Y-%m')
+        })
+
+    return ranking_data
+
+def create_ncs_ranking_component(df):
+    """NCS별 랭킹 컴포넌트 생성"""
+    ncs_ranking_data = aggregate_ncs_data(df)
+    if ncs_ranking_data is None:
+        st.error("NCS 랭킹 컴포넌트 생성에 실패했습니다. 'NCS명' 또는 'NCS코드' 컬럼이 없는지 확인해주세요.")
+        return None
+
+    js_code = """
+    <div id="ranking-root"></div>
+    <script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+    <script type="text/babel">
+        const rankingData = %s;
+
+        function RankingDisplay() {
+            const [selectedYear, setSelectedYear] = React.useState('all');
+            const [searchTerm, setSearchTerm] = React.useState('');
+            const years = Object.keys(rankingData[0].yearlyRevenue).sort();
+
+             const getRevenueForDisplay = (item) => {
+                if (selectedYear === 'all') {
+                    return item.revenue;
+                }
+                return item.yearlyRevenue[selectedYear] || 0;
+             };
+
+            const filteredAndSortedData = [...rankingData]
+                .filter(item =>
+                    item.ncsName.toLowerCase().includes(searchTerm.toLowerCase())
+                )
+                .sort((a, b) => getRevenueForDisplay(b) - getRevenueForDisplay(a));
+
+            const maxRevenue = Math.max(...filteredAndSortedData.map(getRevenueForDisplay));
+
+            const formatRevenue = (revenue) => {
+                return (revenue / 100000000).toLocaleString('ko-KR', {
+                  minimumFractionDigits: 1,
+                  maximumFractionDigits: 1,
+                }) + '억원';
+            };
+
+            return (
+                <div style={{
+                    minHeight: '100vh',
+                    background: 'black',
+                    color: 'white',
+                    padding: '20px'
+                }}>
+                    <div style={{
+                        textAlign: 'center',
+                        padding: '40px 0'
+                    }}>
+                        <h1 style={{
+                            fontSize: '48px',
+                            fontWeight: 'bold',
+                            marginBottom: '16px'
+                        }}>NCS별 훈련현황</h1>
+                        <p style={{
+                            fontSize: '20px',
+                            color: '#888'
+                        }}>첨단산업 디지털 핵심 실무인재 양성 훈련 과정 개괄표</p>
+
+                        <div style={{
+                            margin: '20px 0',
+                            display: 'flex',
+                            justifyContent: 'center',
+                            gap: '10px',
+                            flexWrap: 'wrap'
+                        }}>
+                            <input
+                                type="text"
+                                placeholder="NCS명 검색..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                style={{
+                                    padding: '8px 16px',
+                                    background: '#333',
+                                    border: '1px solid #666',
+                                    borderRadius: '4px',
+                                    color: 'white',
+                                    marginRight: '10px'
+                                }}
+                            />
+                            <button
+                                onClick={() => setSelectedYear('all')}
+                                style={{
+                                    padding: '8px 16px',
+                                    background: selectedYear === 'all' ? '#4299e1' : '#333',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    color: 'white',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                전체
+                            </button>
+                            {years.map(year => (
+                                <button
+                                    key={year}
+                                    onClick={() => setSelectedYear(year)}
+                                    style={{
+                                        padding: '8px 16px',
+                                        background: selectedYear === year ? '#4299e1' : '#333',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        color: 'white',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    {year}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div style={{
+                        maxWidth: '1200px',
+                        margin: '0 auto'
+                    }}>
+                        {filteredAndSortedData.map((item, index) => {
+                            const revenue = getRevenueForDisplay(item);
+                            const width = (revenue / maxRevenue * 100) + '%%';
+                            return (
+                                <div key={item.ncsName}
+                                    style={{
+                                        background: '#222',
+                                        borderRadius: '8px',
+                                        padding: '16px',
+                                        marginBottom: '8px',
+                                        position: 'relative',
+                                        animation: `slideIn 0.5s ease-out ${index * 0.1}s both`
+                                    }}
+                                >
+                                    <div style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        position: 'relative',
+                                        zIndex: 1
+                                    }}>
+                                        <div>
+                                            <span style={{color: '#4299e1', marginRight: '16px'}}>
+                                                #{index + 1}
+                                            </span>
+                                            <span style={{marginRight: '16px'}}>
+                                                {item.ncsName}
+                                            </span>
+                                            <span style={{color: '#888', fontSize: '14px'}}>
+                                                ({item.courses}개 과정)
+                                            </span>
+                                        </div>
+                                        <div>
+                                        <span style={{ marginRight: '16px', color: '#4299e1' }}>
+                                        {formatRevenue(revenue)}
+                                        </span>
+                                            <span style={{color: '#888', fontSize: '14px'}}>
+                                                {item.startDate} ~ {item.endDate}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div style={{
+                                        position: 'absolute',
+                                        bottom: 0,
+                                        left: 0,
+                                        height: '4px',
+                                        width: width,
+                                        background: '#4299e1',
+                                        transition: 'width 1s ease-out',
+                                        opacity: 0.5
+                                    }}/>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(
+            <RankingDisplay />,
+            document.getElementById('ranking-root')
+        );
+    </script>
+    <style>
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+    </style>
+    """ % json.dumps(ncs_ranking_data)
+
+    if js_code is None:
+        st.error("NCS 랭킹 컴포넌트 생성에 실패했습니다.")
+        return
+
+    js_code = f"""
+        <div style="height: 800px; overflow-y: auto;">
+            {js_code}
+        </div>
+    """
+    return js_code
+
 def main():
     st.set_page_config(layout="wide")
 
@@ -383,21 +632,6 @@ def main():
     year_columns = [str(col) for col in df.columns if re.match(r'^\d{4}년$', str(col))]
     df, yearly_data = calculate_yearly_revenue(df)
 
-    # 랭킹 컴포넌트 생성 및 표시
-    js_code = create_ranking_component(df, yearly_data)
-    if js_code is None:
-      st.error("랭킹 컴포넌트 생성에 실패했습니다. '훈련기관' 컬럼이 없는지 확인해주세요.")
-      return
-    js_code = f"""
-        <div style="height: 800px; overflow-y: auto;">
-            {js_code}
-        </div>
-    """
-    html(js_code, height=800)
-
-    # 선도기업 비중 및 SSAFY 사업 분류 시각화
-    calculate_and_visualize_revenue(df)
-
     # 사이드바에서 분석 유형 선택
     analysis_type = st.sidebar.selectbox(
         "분석 유형 선택",
@@ -405,6 +639,21 @@ def main():
     )
 
     if analysis_type == "훈련기관 분석":
+        # 랭킹 컴포넌트 생성 및 표시
+        js_code = create_ranking_component(df, yearly_data)
+        if js_code is None:
+          st.error("랭킹 컴포넌트 생성에 실패했습니다. '훈련기관' 컬럼이 없는지 확인해주세요.")
+          return
+        js_code = f"""
+            <div style="height: 800px; overflow-y: auto;">
+                {js_code}
+            </div>
+        """
+        html(js_code, height=800)
+
+        # 선도기업 비중 및 SSAFY 사업 분류 시각화
+        calculate_and_visualize_revenue(df)
+
         selected_institution = st.selectbox("훈련기관 선택", df['훈련기관'].unique(), key='selectbox')
         if selected_institution:
             st.subheader("훈련기관별 훈련 유형별 비중")
@@ -419,9 +668,24 @@ def main():
         analyze_top5_institutions(df, yearly_data)
 
     elif analysis_type == "과정 분석":
+        # KDT 훈련현황 및 매출 비중 표시 (선택 사항)
+        # js_code = create_ranking_component(df, yearly_data)  # 필요하다면 주석 해제
+        # if js_code:
+        #     html(js_code, height=800)
+        # calculate_and_visualize_revenue(df)
+
         analyze_course(df, yearly_data)
     else:
-        analyze_ncs(df, yearly_data)
+            ## KDT 훈련현황 및 매출 비중 표시 (선택 사항)
+            js_code = create_ncs_ranking_component(df)
+            if js_code:
+                html(js_code, height=800)
+            # calculate_and_visualize_revenue(df)
+
+            # NCS명 입력 받기
+            ncs_name = st.text_input("NCS명 검색")
+
+            analyze_ncs(df, yearly_data, ncs_name)  # ncs_name 전달
 
 
 if __name__ == "__main__":
