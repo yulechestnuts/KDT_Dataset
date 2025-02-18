@@ -129,13 +129,11 @@ def analyze_training_institution(df, yearly_data, selected_institution):
             {'회차': 'count',
             '수강신청 인원': 'sum',
             '누적매출': 'sum',
-            '수료율': 'mean',
             '만족도': 'mean'
             }
         ).rename(columns={'회차': '총 횟수',
                         '수강신청 인원': '총 수강생',
                         '누적매출': '매출액',
-                        '수료율': '수료율',
                         '만족도': '만족도'
                         })
 
@@ -177,13 +175,11 @@ def analyze_top5_institutions(df, yearly_data):
             {'회차': 'count',
              '수강신청 인원': 'sum',
              '누적매출': 'sum',
-             '수료율': 'mean',
              '만족도': 'mean'
              }
         ).rename(columns={'회차': '총 횟수',
                         '수강신청 인원': '총 수강생',
                         '누적매출': '매출액',
-                        '수료율': '수료율',
                         '만족도': '만족도'
                         })
          course_summary['매출액'] = course_summary['매출액'].apply(lambda x: format_revenue(x))
@@ -201,7 +197,52 @@ def analyze_course(df, yearly_data):
     st.subheader("과정 분석")
     st.write("과정 분석 기능은 아직 구현 중입니다.")
 
-@st.cache_data
-def analyze_ncs(df, yearly_data):
+def format_revenue(revenue):
+    """Formats revenue to be displayed in 억 단위."""
+    if pd.isna(revenue) or revenue == 0:
+        return "0.00억"
+    return f"{revenue:.2f}억"  # revenue가 이미 억 단위로 계산되었으므로 그대로 사용
+
+# @st.cache_data  # 제거
+def analyze_ncs(df, yearly_data, ncs_name):  # ncs_name 인자 추가
     st.subheader("NCS 분석")
-    st.write("NCS 분석 기능은 아직 구현 중입니다.")
+
+    if ncs_name:
+        filtered_df = df[df['NCS명'].str.contains(ncs_name, case=False, na=False)].copy()
+
+        if not filtered_df.empty:
+            course_summary = filtered_df.groupby(['과정명', '훈련기관']).agg({
+                '수강신청 인원': 'sum',
+                '누적매출': 'sum',
+                '만족도': 'mean'
+            }).rename(columns={'수강신청 인원': '총 훈련생 수',
+                             '누적매출': '총 매출',
+                             '만족도': '만족도'})
+
+            year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'^\d{4}년$', col)]
+
+            # 연도별 매출액을 억 단위로 변환
+            for year in year_columns:
+                if year in filtered_df.columns:
+                    course_summary[year] = filtered_df.groupby(['과정명', '훈련기관'])[year].sum() / 100000000
+                else:
+                    course_summary[year] = 0
+
+            # 총 매출을 억 단위로 변환
+            course_summary['총 매출'] = course_summary['총 매출'] / 100000000
+
+            # column_config를 사용하여 표시 형식 지정 및 정렬 설정
+            column_config = {
+                '총 매출': st.column_config.NumberColumn(format="%.2f 억"),
+            }
+            for year in year_columns:
+                column_config[year] = st.column_config.NumberColumn(format="%.2f 억")
+
+            # 데이터프레임 표시
+            st.dataframe(course_summary.sort_values(by='총 매출', ascending=False),
+                         column_config=column_config)
+
+        else:
+            st.write("검색 결과가 없습니다.")
+    else:
+        st.write("NCS명을 검색하세요.")
