@@ -107,6 +107,11 @@ def create_ranking_component(df, yearly_data):
                             color: '#888'
                         }}>첨단산업 디지털 핵심 실무인재 양성 훈련 과정 개괄표</p>
 
+                        <p style={{
+                            fontSize: '16px',
+                            color: '#888'
+                            }}>2025년 1월 31일 기준 개강 완료된 과정에 한함</p>
+
                         <div style={{
                             margin: '20px 0',
                             display: 'flex',
