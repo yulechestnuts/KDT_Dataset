@@ -19,7 +19,6 @@ from utils.institution_grouping import group_institutions_advanced
 from utils.training_type_classification import classify_training_type
 from visualization.reports import analyze_training_institution, analyze_course, analyze_ncs, analyze_top5_institutions
 
-@st.cache_data
 def create_ranking_component(df, yearly_data):
     """훈련기관별 랭킹 컴포넌트 생성"""
     if '훈련기관' not in df.columns:
