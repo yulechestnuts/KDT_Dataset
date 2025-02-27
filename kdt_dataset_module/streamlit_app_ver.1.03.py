@@ -314,7 +314,7 @@ def calculate_and_visualize_revenue(df):
     # 막대 그래프 생성
     bar_chart = alt.Chart(yearly_revenue_df_melted).mark_bar().encode(
         x=alt.X('연도', title="연도", axis=alt.Axis(labelAngle=-45)), # x축 레이블 각도 조절
-        y=alt.Y('매출액', title="매출액 (억원)", axis=alt.Axis(format="~s")),
+        y=alt.Y('매출액', title="매출액|n(억원)", axis=alt.Axis(format="~s", titleAngle=0)),  # y축 레이블 포맷 및 각도 조절
         color=alt.Color(field="유형", type="nominal",
                          scale=alt.Scale(domain=['신기술 훈련', '선도기업형 훈련', 'SSAFY', '재직자 훈련','대학주도형 훈련','심화 훈련','융합 훈련'],
                                         range=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728','#9467bd','#8c564b','#e377c2'])),
