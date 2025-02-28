@@ -27,30 +27,47 @@ def create_ranking_component(df, yearly_data):
        return None
     institution_revenue = df.groupby('훈련기관').agg({
         '누적매출': 'sum',
-        '과정명': 'count',
-        '과정시작일': 'min',
-        '과정종료일': 'max'
-    }).reset_index()
+        '훈련기관': 'count'
+    }).rename(columns={'훈련기관': 'courses'})
 
-    year_columns = [str(col) for col in df.columns if re.match(r'^\d{4}년$', str(col))]
+    # 연도별 매출 합산하기
+    year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'20\d{2}년$', col)]
+    yearly_revenues = {}
+    
+    for institution in institution_revenue.index:
+        institution_data = df[df['훈련기관'] == institution]
+        yearly_revenues[institution] = {}
+        for year in year_columns:
+            yearly_revenues[institution][year] = float(institution_data[year].sum())
 
-    yearly_sums = {}
-    for year in year_columns:
-        yearly_sums[year] = df.groupby('훈련기관')[year].sum()
-
+    # ranking_data 생성
     ranking_data = []
-    for _, row in institution_revenue.iterrows():
-        yearly_revenues = {str(year): float(yearly_sums[year].get(row['훈련기관'], 0)) for year in year_columns}
-
+    for institution in institution_revenue.index:
         ranking_data.append({
-            "institution": row['훈련기관'],
-            "revenue": float(row['누적매출']),
-            "courses": int(row['과정명']),
-            "yearlyRevenue": yearly_revenues,
-            "startDate": row['과정시작일'].strftime('%Y-%m'),
-            "endDate": row['과정종료일'].strftime('%Y-%m')
+            "institution": institution,
+            "revenue": float(institution_revenue.loc[institution, '누적매출']),
+            "courses": int(institution_revenue.loc[institution, 'courses']),
+            "yearlyRevenue": yearly_revenues[institution]
         })
 
+    # 수료율 데이터 준비 - 과정종료일 기준으로 수정
+    completion_data = []
+    for _, row in df.iterrows():
+        # 과정종료일을 datetime으로 변환하고 연도 추출
+        try:
+            end_date = pd.to_datetime(row['과정종료일'])
+            end_year = str(end_date.year)
+        except:
+            end_year = None
+
+        completion_data.append({
+            'year': end_year,  # 과정종료일의 연도
+            'applicants': float(row['수강신청 인원']),
+            'completion': float(row['수료인원']),
+            'capacity': float(row['정원'])
+        })
+
+    # % 기호를 %% 로 이스케이프 처리
     js_code = """
     <div id="ranking-root"></div>
     <script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
@@ -58,18 +75,55 @@ def create_ranking_component(df, yearly_data):
     <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
     <script type="text/babel">
         const rankingData = %s;
+        const completionData = %s;
 
         function RankingDisplay() {
             const [selectedYear, setSelectedYear] = React.useState('all');
             const [searchTerm, setSearchTerm] = React.useState('');
             const years = Object.keys(rankingData[0].yearlyRevenue).sort();
 
-             const getRevenueForDisplay = (item) => {
+            // 수료율 계산 로직 수정
+            const calculateCompletionRate = (year = null) => {
+                if (year) {
+                    // 특정 연도에 종료된 과정만 필터링
+                    const yearData = completionData.filter(d => d.year === year);
+                    
+                    // 수료인원이 있는 과정만 필터링
+                    const validYearData = yearData.filter(d => d.completion > 0);
+                    
+                    if (validYearData.length === 0) return 0;
+                    
+                    // 디버깅을 위한 합계 출력
+                    console.log(`${year}년 데이터:`, {
+                        '과정 수': validYearData.length,
+                        '정원': validYearData.reduce((sum, d) => sum + d.capacity, 0),
+                        '수강신청': validYearData.reduce((sum, d) => sum + d.applicants, 0),
+                        '수료': validYearData.reduce((sum, d) => sum + d.completion, 0)
+                    });
+                    
+                    const totalApplicants = validYearData.reduce((sum, d) => sum + d.applicants, 0);
+                    const totalCompleted = validYearData.reduce((sum, d) => sum + d.completion, 0);
+                    
+                    return ((totalCompleted / totalApplicants) * 100).toFixed(1);
+                } else {
+                    // 전체 데이터 중 수료인원이 있는 과정만 필터링
+                    const validData = completionData.filter(d => d.completion > 0);
+                    
+                    if (validData.length === 0) return 0;
+                    
+                    const totalApplicants = validData.reduce((sum, d) => sum + d.applicants, 0);
+                    const totalCompleted = validData.reduce((sum, d) => sum + d.completion, 0);
+                    
+                    return ((totalCompleted / totalApplicants) * 100).toFixed(1);
+                }
+            };
+
+            const getRevenueForDisplay = (item) => {
                 if (selectedYear === 'all') {
                     return item.revenue;
                 }
                 return item.yearlyRevenue[selectedYear] || 0;
-             };
+            };
 
             const filteredAndSortedData = [...rankingData]
                 .filter(item =>
@@ -106,11 +160,75 @@ def create_ranking_component(df, yearly_data):
                             fontSize: '20px',
                             color: '#888'
                         }}>첨단산업 디지털 핵심 실무인재 양성 훈련 과정 개괄표</p>
+                        
+                        <div style={{
+                            margin: '10px 0',
+                            display: 'flex',
+                            justifyContent: 'center',
+                            gap: '10px',
+                            flexWrap: 'wrap'
+                        }}>
+                            <button style={{
+                                padding: '8px 16px',
+                                background: '#333',
+                                border: 'none',
+                                borderRadius: '4px',
+                                color: 'white'
+                            }}>
+                                전체 수료율 <span style={{color: '#4299e1'}}>{calculateCompletionRate()}</span>%%
+                            </button>
+                            <button style={{
+                                padding: '8px 16px',
+                                background: '#333',
+                                border: 'none',
+                                borderRadius: '4px',
+                                color: 'white'
+                            }}>
+                                2021년 수료율 <span style={{color: '#4299e1'}}>{calculateCompletionRate('2021')}</span>%%
+                            </button>
+                            <button style={{
+                                padding: '8px 16px',
+                                background: '#333',
+                                border: 'none',
+                                borderRadius: '4px',
+                                color: 'white'
+                            }}>
+                                2022년 수료율 <span style={{color: '#4299e1'}}>{calculateCompletionRate('2022')}</span>%%
+                            </button>
+                            <button style={{
+                                padding: '8px 16px',
+                                background: '#333',
+                                border: 'none',
+                                borderRadius: '4px',
+                                color: 'white'
+                            }}>
+                                2023년 수료율 <span style={{color: '#4299e1'}}>{calculateCompletionRate('2023')}</span>%%
+                            </button>
+                            <button style={{
+                                padding: '8px 16px',
+                                background: '#333',
+                                border: 'none',
+                                borderRadius: '4px',
+                                color: 'white'
+                            }}>
+                                2024년 수료율 <span style={{color: '#4299e1'}}>{calculateCompletionRate('2024')}</span>%%
+                            </button>
+                            <button style={{
+                                padding: '8px 16px',
+                                background: '#333',
+                                border: 'none',
+                                borderRadius: '4px',
+                                color: 'white'
+                            }}>
+                                2025년 수료율 <span style={{color: '#4299e1'}}>{calculateCompletionRate('2025')}</span>%%
+                            </button>
+                        </div>
 
                         <p style={{
                             fontSize: '16px',
-                            color: '#888'
-                            }}>2025년 1월 31일 기준 개강 완료된 과정에 한함</p>
+                            color: '#888',
+                            marginTop: '10px'
+                        }}>2025년 1월 31일 기준 개설된 과정 기준</p>
 
                         <div style={{
                             margin: '20px 0',
@@ -196,16 +314,13 @@ def create_ranking_component(df, yearly_data):
                                             <span style={{marginRight: '16px'}}>
                                                 {item.institution}
                                             </span>
-                                            <span style={{color: '#888', fontSize: '14px'}}>
-                                                ({item.courses}개 과정)
-                                            </span>
                                         </div>
                                         <div>
-                                        <span style={{ marginRight: '16px', color: '#4299e1' }}>
-                                          {formatRevenue(revenue)}
-                                        </span>
+                                            <span style={{color: '#4299e1', marginRight: '16px'}}>
+                                                {formatRevenue(revenue)}
+                                            </span>
                                             <span style={{color: '#888', fontSize: '14px'}}>
-                                                {item.startDate} ~ {item.endDate}
+                                                ({item.courses}개 과정)
                                             </span>
                                         </div>
                                     </div>
@@ -244,7 +359,7 @@ def create_ranking_component(df, yearly_data):
             }
         }
     </style>
-    """ % json.dumps(ranking_data)
+    """ % (json.dumps(ranking_data), json.dumps(completion_data))
 
     return js_code
 
@@ -512,9 +627,6 @@ def create_ncs_ranking_component(df):
                                             </span>
                                             <span style={{marginRight: '16px'}}>
                                                 {item.ncsName}
-                                            </span>
-                                            <span style={{color: '#888', fontSize: '14px'}}>
-                                                ({item.courses}개 과정)
                                             </span>
                                         </div>
                                         <div>
