@@ -214,7 +214,11 @@ def create_ranking_component(df, yearly_data):
                 }}>
                     <div style={{
                         textAlign: 'center',
-                        padding: '40px 0'
+                        padding: '40px 0',
+                        position: 'sticky',
+                        top: 0,
+                        background: 'black',
+                        zIndex: 1000
                     }}>
                         <h1 style={{
                             fontSize: '48px',
@@ -300,7 +304,12 @@ def create_ranking_component(df, yearly_data):
                             display: 'flex',
                             justifyContent: 'center',
                             gap: '10px',
-                            flexWrap: 'wrap'
+                            flexWrap: 'wrap',
+                            position: 'sticky',
+                            top: '200px',
+                            background: 'black',
+                            zIndex: 1000,
+                            padding: '10px 0'
                         }}>
                             <input
                                 type="text"
@@ -711,7 +720,11 @@ def create_ncs_ranking_component(df):
                 }}>
                     <div style={{
                         textAlign: 'center',
-                        padding: '40px 0'
+                        padding: '40px 0',
+                        position: 'sticky',
+                        top: 0,
+                        background: 'black',
+                        zIndex: 1000
                     }}>
                         <h1 style={{
                             fontSize: '48px',
