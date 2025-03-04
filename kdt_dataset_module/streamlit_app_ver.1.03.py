@@ -25,15 +25,44 @@ def create_ranking_component(df, yearly_data):
     if '훈련기관' not in df.columns:
        print("Error: '훈련기관' 컬럼이 DataFrame에 없습니다. (create_ranking_component)")
        return None
+    
+    # 연도별 과정 수 계산
+    yearly_courses = {}
+    year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'20\d{2}년$', col)]
+    
+    for institution in df['훈련기관'].unique():
+        yearly_courses[institution] = {}
+        for year in ['2021년', '2022년', '2023년', '2024년', '2025년']:
+            year_data = df[(df['훈련기관'] == institution) & 
+                          (pd.to_datetime(df['과정시작일']).dt.year == int(year[:4]))]
+            yearly_courses[institution][year] = len(year_data)
+
+    # 만족도 계산
+    satisfaction_data = df.groupby('훈련기관')['만족도'].mean().to_dict()
+
     institution_revenue = df.groupby('훈련기관').agg({
         '누적매출': 'sum',
         '훈련기관': 'count'
     }).rename(columns={'훈련기관': 'courses'})
 
-    # 연도별 매출 합산하기
-    year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'20\d{2}년$', col)]
+    # Top 5 과정 데이터 준비 - 매출액 계산 수정
+    courses_data = {}
+    for institution in df['훈련기관'].unique():
+        inst_courses = df[df['훈련기관'] == institution].copy()
+        courses_data[institution] = [
+            {
+                'name': row['과정명'],
+                'yearlyRevenue': {
+                    year: float(row[year]) if pd.notna(row[year]) else 0
+                    for year in year_columns
+                },
+                'satisfaction': float(row['만족도']) if pd.notna(row['만족도']) else 0
+            }
+            for _, row in inst_courses.iterrows()
+        ]
+
+    # 연도별 매출 합산
     yearly_revenues = {}
-    
     for institution in institution_revenue.index:
         institution_data = df[df['훈련기관'] == institution]
         yearly_revenues[institution] = {}
@@ -47,27 +76,42 @@ def create_ranking_component(df, yearly_data):
             "institution": institution,
             "revenue": float(institution_revenue.loc[institution, '누적매출']),
             "courses": int(institution_revenue.loc[institution, 'courses']),
-            "yearlyRevenue": yearly_revenues[institution]
+            "yearlyRevenue": yearly_revenues[institution],
+            "yearlyCourses": yearly_courses[institution],
+            "satisfaction": round(float(satisfaction_data.get(institution, 0)), 1),
+            "coursesData": courses_data[institution]  # 전체 과정 데이터 전달
         })
 
-    # 수료율 데이터 준비 - 과정종료일 기준으로 수정
-    completion_data = []
-    for _, row in df.iterrows():
-        # 과정종료일을 datetime으로 변환하고 연도 추출
-        try:
-            end_date = pd.to_datetime(row['과정종료일'])
-            end_year = str(end_date.year)
-        except:
-            end_year = None
+    def calculate_completion_rate(year=None):
+        """연도별 수료율 계산 - 과정종료일 기준"""
+        if year:
+            # 해당 연도에 종료된 과정만 필터링
+            year_data = df[pd.to_datetime(df['과정종료일']).dt.year == int(year)]
+            # 수료인원이 0인 과정 제외
+            valid_data = year_data[year_data['수료인원'] > 0]
+            if len(valid_data) == 0:
+                return 0
+            completion_rate = (valid_data['수료인원'].sum() / valid_data['수강신청 인원'].sum()) * 100
+        else:
+            # 전체 기간 중 종료된 과정만 필터링
+            completed_data = df[pd.to_datetime(df['과정종료일']) <= pd.Timestamp.now()]
+            # 수료인원이 0인 과정 제외
+            valid_data = completed_data[completed_data['수료인원'] > 0]
+            if len(valid_data) == 0:
+                return 0
+            completion_rate = (valid_data['수료인원'].sum() / valid_data['수강신청 인원'].sum()) * 100
+        return round(completion_rate, 1)
 
-        completion_data.append({
-            'year': end_year,  # 과정종료일의 연도
-            'applicants': float(row['수강신청 인원']),
-            'completion': float(row['수료인원']),
-            'capacity': float(row['정원'])
-        })
+    # 수료율 계산
+    completion_rates = {
+        'total': calculate_completion_rate(),
+        '2021': calculate_completion_rate(2021),
+        '2022': calculate_completion_rate(2022),
+        '2023': calculate_completion_rate(2023),
+        '2024': calculate_completion_rate(2024),
+        '2025': calculate_completion_rate(2025)
+    }
 
-    # % 기호를 %% 로 이스케이프 처리
     js_code = """
     <div id="ranking-root"></div>
     <script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
@@ -75,47 +119,19 @@ def create_ranking_component(df, yearly_data):
     <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
     <script type="text/babel">
         const rankingData = %s;
-        const completionData = %s;
+        const completionRates = %s;
 
         function RankingDisplay() {
             const [selectedYear, setSelectedYear] = React.useState('all');
             const [searchTerm, setSearchTerm] = React.useState('');
+            const [expandedInstitutions, setExpandedInstitutions] = React.useState({});
             const years = Object.keys(rankingData[0].yearlyRevenue).sort();
 
-            // 수료율 계산 로직 수정
-            const calculateCompletionRate = (year = null) => {
-                if (year) {
-                    // 특정 연도에 종료된 과정만 필터링
-                    const yearData = completionData.filter(d => d.year === year);
-                    
-                    // 수료인원이 있는 과정만 필터링
-                    const validYearData = yearData.filter(d => d.completion > 0);
-                    
-                    if (validYearData.length === 0) return 0;
-                    
-                    // 디버깅을 위한 합계 출력
-                    console.log(`${year}년 데이터:`, {
-                        '과정 수': validYearData.length,
-                        '정원': validYearData.reduce((sum, d) => sum + d.capacity, 0),
-                        '수강신청': validYearData.reduce((sum, d) => sum + d.applicants, 0),
-                        '수료': validYearData.reduce((sum, d) => sum + d.completion, 0)
-                    });
-                    
-                    const totalApplicants = validYearData.reduce((sum, d) => sum + d.applicants, 0);
-                    const totalCompleted = validYearData.reduce((sum, d) => sum + d.completion, 0);
-                    
-                    return ((totalCompleted / totalApplicants) * 100).toFixed(1);
-                } else {
-                    // 전체 데이터 중 수료인원이 있는 과정만 필터링
-                    const validData = completionData.filter(d => d.completion > 0);
-                    
-                    if (validData.length === 0) return 0;
-                    
-                    const totalApplicants = validData.reduce((sum, d) => sum + d.applicants, 0);
-                    const totalCompleted = validData.reduce((sum, d) => sum + d.completion, 0);
-                    
-                    return ((totalCompleted / totalApplicants) * 100).toFixed(1);
-                }
+            const toggleInstitution = (institution) => {
+                setExpandedInstitutions(prev => ({
+                    ...prev,
+                    [institution]: !prev[institution]
+                }));
             };
 
             const getRevenueForDisplay = (item) => {
@@ -123,6 +139,55 @@ def create_ranking_component(df, yearly_data):
                     return item.revenue;
                 }
                 return item.yearlyRevenue[selectedYear] || 0;
+            };
+
+            const calculateCourseRevenue = (course, selectedYear) => {
+                if (selectedYear === 'all') {
+                    return Object.values(course.yearlyRevenue).reduce((sum, val) => sum + val, 0);
+                }
+                return course.yearlyRevenue[selectedYear] || 0;
+            };
+
+            const getTop5Courses = (coursesData, selectedYear) => {
+                // 과정명별로 매출과 만족도를 합산
+                const aggregatedCourses = coursesData.reduce((acc, course) => {
+                    if (!acc[course.name]) {
+                        acc[course.name] = {
+                            name: course.name,
+                            yearlyRevenue: { ...course.yearlyRevenue },
+                            satisfaction: course.satisfaction,
+                            totalCount: 1,
+                            yearlyCount: Object.keys(course.yearlyRevenue).reduce((counts, year) => {
+                                counts[year] = course.yearlyRevenue[year] > 0 ? 1 : 0;
+                                return counts;
+                            }, {})
+                        };
+                    } else {
+                        // 연도별 매출 합산
+                        Object.keys(course.yearlyRevenue).forEach(year => {
+                            acc[course.name].yearlyRevenue[year] = (acc[course.name].yearlyRevenue[year] || 0) + course.yearlyRevenue[year];
+                            if (course.yearlyRevenue[year] > 0) {
+                                acc[course.name].yearlyCount[year] = (acc[course.name].yearlyCount[year] || 0) + 1;
+                            }
+                        });
+                        // 만족도 평균 계산을 위해 합산
+                        acc[course.name].satisfaction = (acc[course.name].satisfaction * acc[course.name].totalCount + course.satisfaction) / (acc[course.name].totalCount + 1);
+                        acc[course.name].totalCount += 1;
+                    }
+                    return acc;
+                }, {});
+
+                // 객체를 배열로 변환하고 매출 기준으로 정렬
+                return Object.values(aggregatedCourses)
+                    .map(course => ({
+                        ...course,
+                        revenue: calculateCourseRevenue(course, selectedYear),
+                        displayCount: selectedYear === 'all' ? 
+                            course.totalCount : 
+                            (course.yearlyCount[selectedYear] || 0)
+                    }))
+                    .sort((a, b) => b.revenue - a.revenue)
+                    .slice(0, 5);
             };
 
             const filteredAndSortedData = [...rankingData]
@@ -175,7 +240,7 @@ def create_ranking_component(df, yearly_data):
                                 borderRadius: '4px',
                                 color: 'white'
                             }}>
-                                전체 수료율 <span style={{color: '#4299e1'}}>{calculateCompletionRate()}</span>%%
+                                전체 수료율 <span style={{color: '#4299e1', fontWeight: 'bold'}}>{completionRates.total}</span>%%
                             </button>
                             <button style={{
                                 padding: '8px 16px',
@@ -184,7 +249,7 @@ def create_ranking_component(df, yearly_data):
                                 borderRadius: '4px',
                                 color: 'white'
                             }}>
-                                2021년 수료율 <span style={{color: '#4299e1'}}>{calculateCompletionRate('2021')}</span>%%
+                                2021년 수료율 <span style={{color: '#4299e1', fontWeight: 'bold'}}>{completionRates['2021']}</span>%%
                             </button>
                             <button style={{
                                 padding: '8px 16px',
@@ -193,7 +258,7 @@ def create_ranking_component(df, yearly_data):
                                 borderRadius: '4px',
                                 color: 'white'
                             }}>
-                                2022년 수료율 <span style={{color: '#4299e1'}}>{calculateCompletionRate('2022')}</span>%%
+                                2022년 수료율 <span style={{color: '#4299e1', fontWeight: 'bold'}}>{completionRates['2022']}</span>%%
                             </button>
                             <button style={{
                                 padding: '8px 16px',
@@ -202,7 +267,7 @@ def create_ranking_component(df, yearly_data):
                                 borderRadius: '4px',
                                 color: 'white'
                             }}>
-                                2023년 수료율 <span style={{color: '#4299e1'}}>{calculateCompletionRate('2023')}</span>%%
+                                2023년 수료율 <span style={{color: '#4299e1', fontWeight: 'bold'}}>{completionRates['2023']}</span>%%
                             </button>
                             <button style={{
                                 padding: '8px 16px',
@@ -211,7 +276,7 @@ def create_ranking_component(df, yearly_data):
                                 borderRadius: '4px',
                                 color: 'white'
                             }}>
-                                2024년 수료율 <span style={{color: '#4299e1'}}>{calculateCompletionRate('2024')}</span>%%
+                                2024년 수료율 <span style={{color: '#4299e1', fontWeight: 'bold'}}>{completionRates['2024']}</span>%%
                             </button>
                             <button style={{
                                 padding: '8px 16px',
@@ -220,7 +285,7 @@ def create_ranking_component(df, yearly_data):
                                 borderRadius: '4px',
                                 color: 'white'
                             }}>
-                                2025년 수료율 <span style={{color: '#4299e1'}}>{calculateCompletionRate('2025')}</span>%%
+                                2025년 수료율 <span style={{color: '#4299e1', fontWeight: 'bold'}}>{completionRates['2025']}</span>%%
                             </button>
                         </div>
 
@@ -290,50 +355,115 @@ def create_ranking_component(df, yearly_data):
                         {filteredAndSortedData.map((item, index) => {
                             const revenue = getRevenueForDisplay(item);
                             const width = (revenue / maxRevenue * 100) + '%%';
+                            const isExpanded = expandedInstitutions[item.institution];
                             return (
-                                <div key={item.institution}
-                                    style={{
-                                        background: '#222',
-                                        borderRadius: '8px',
-                                        padding: '16px',
-                                        marginBottom: '8px',
-                                        position: 'relative',
-                                        animation: `slideIn 0.5s ease-out ${index * 0.1}s both`
-                                    }}
-                                >
-                                    <div style={{
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        position: 'relative',
-                                        zIndex: 1
-                                    }}>
-                                        <div>
-                                            <span style={{color: '#4299e1', marginRight: '16px'}}>
-                                                #{index + 1}
-                                            </span>
-                                            <span style={{marginRight: '16px'}}>
-                                                {item.institution}
-                                            </span>
+                                <div key={item.institution}>
+                                    <div
+                                        style={{
+                                            background: '#222',
+                                            borderRadius: '8px',
+                                            padding: '16px',
+                                            marginBottom: '8px',
+                                            position: 'relative',
+                                            animation: `slideIn 0.5s ease-out ${index * 0.1}s both`,
+                                            cursor: 'pointer'
+                                        }}
+                                        onClick={() => toggleInstitution(item.institution)}
+                                    >
+                                        <div style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            position: 'relative',
+                                            zIndex: 1
+                                        }}>
+                                            <div>
+                                                <span style={{color: '#4299e1', marginRight: '16px'}}>
+                                                    #{index + 1}
+                                                </span>
+                                                <span style={{marginRight: '16px'}}>
+                                                    {item.institution}
+                                                </span>
+                                                <span style={{
+                                                    background: '#2D3748',
+                                                    padding: '4px 8px',
+                                                    borderRadius: '4px',
+                                                    color: '#48BB78',
+                                                    fontSize: '14px'
+                                                }}>
+                                                    만족도: {item.satisfaction}
+                                                </span>
+                                                <span style={{
+                                                    marginLeft: '8px',
+                                                    cursor: 'pointer',
+                                                    color: isExpanded ? '#4299e1' : '#888',
+                                                    transition: 'color 0.3s'
+                                                }}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    toggleInstitution(item.institution);
+                                                }}>
+                                                    {isExpanded ? '▼' : '▶'}
+                                                </span>
+                                            </div>
+                                            <div>
+                                                <span style={{color: '#4299e1', marginRight: '16px'}}>
+                                                    {formatRevenue(revenue)}
+                                                </span>
+                                                <span style={{color: '#888', fontSize: '14px'}}>
+                                                    {selectedYear === 'all' ? 
+                                                        `(총 ${item.courses}개 과정)` :
+                                                        `(${item.yearlyCourses[selectedYear]}개 과정)`
+                                                    }
+                                                </span>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <span style={{color: '#4299e1', marginRight: '16px'}}>
-                                                {formatRevenue(revenue)}
-                                            </span>
-                                            <span style={{color: '#888', fontSize: '14px'}}>
-                                                ({item.courses}개 과정)
-                                            </span>
-                                        </div>
+                                        <div style={{
+                                            position: 'absolute',
+                                            bottom: 0,
+                                            left: 0,
+                                            height: '4px',
+                                            width: width,
+                                            background: '#4299e1',
+                                            transition: 'width 1s ease-out',
+                                            opacity: 0.5
+                                        }}/>
                                     </div>
-                                    <div style={{
-                                        position: 'absolute',
-                                        bottom: 0,
-                                        left: 0,
-                                        height: '4px',
-                                        width: width,
-                                        background: '#4299e1',
-                                        transition: 'width 1s ease-out',
-                                        opacity: 0.5
-                                    }}/>
+                                    {isExpanded && (
+                                        <div style={{
+                                            background: '#2D3748',
+                                            borderRadius: '8px',
+                                            padding: '16px',
+                                            marginBottom: '16px',
+                                            marginLeft: '20px'
+                                        }}>
+                                            <h3 style={{color: '#4299e1', marginBottom: '12px'}}>Top 5 과정</h3>
+                                            {getTop5Courses(item.coursesData, selectedYear).map((course, idx) => (
+                                                <div key={idx} style={{
+                                                    marginBottom: '8px',
+                                                    padding: '8px',
+                                                    background: '#1A202C',
+                                                    borderRadius: '4px'
+                                                }}>
+                                                    <div style={{display: 'flex', justifyContent: 'space-between'}}>
+                                                        <span>#{idx + 1} {course.name}</span>
+                                                        <span>
+                                                            <span style={{color: '#48BB78', marginRight: '12px'}}>
+                                                                만족도: {course.satisfaction.toFixed(1)}
+                                                            </span>
+                                                            <span style={{color: '#888', marginRight: '12px'}}>
+                                                                {selectedYear === 'all' ? 
+                                                                    `(총 ${course.totalCount}회차)` : 
+                                                                    `(${selectedYear} ${course.displayCount}회차)`}
+                                                            </span>
+                                                            <span style={{color: '#4299e1'}}>
+                                                                {formatRevenue(course.revenue)}
+                                                            </span>
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             );
                         })}
@@ -359,7 +489,7 @@ def create_ranking_component(df, yearly_data):
             }
         }
     </style>
-    """ % (json.dumps(ranking_data), json.dumps(completion_data))
+    """ % (json.dumps(ranking_data), json.dumps(completion_rates))
 
     return js_code
 
@@ -507,6 +637,55 @@ def create_ncs_ranking_component(df):
                 }
                 return item.yearlyRevenue[selectedYear] || 0;
              };
+
+            const calculateCourseRevenue = (course, selectedYear) => {
+                if (selectedYear === 'all') {
+                    return Object.values(course.yearlyRevenue).reduce((sum, val) => sum + val, 0);
+                }
+                return course.yearlyRevenue[selectedYear] || 0;
+            };
+
+            const getTop5Courses = (coursesData, selectedYear) => {
+                // 과정명별로 매출과 만족도를 합산
+                const aggregatedCourses = coursesData.reduce((acc, course) => {
+                    if (!acc[course.name]) {
+                        acc[course.name] = {
+                            name: course.name,
+                            yearlyRevenue: { ...course.yearlyRevenue },
+                            satisfaction: course.satisfaction,
+                            totalCount: 1,
+                            yearlyCount: Object.keys(course.yearlyRevenue).reduce((counts, year) => {
+                                counts[year] = course.yearlyRevenue[year] > 0 ? 1 : 0;
+                                return counts;
+                            }, {})
+                        };
+                    } else {
+                        // 연도별 매출 합산
+                        Object.keys(course.yearlyRevenue).forEach(year => {
+                            acc[course.name].yearlyRevenue[year] = (acc[course.name].yearlyRevenue[year] || 0) + course.yearlyRevenue[year];
+                            if (course.yearlyRevenue[year] > 0) {
+                                acc[course.name].yearlyCount[year] = (acc[course.name].yearlyCount[year] || 0) + 1;
+                            }
+                        });
+                        // 만족도 평균 계산을 위해 합산
+                        acc[course.name].satisfaction = (acc[course.name].satisfaction * acc[course.name].totalCount + course.satisfaction) / (acc[course.name].totalCount + 1);
+                        acc[course.name].totalCount += 1;
+                    }
+                    return acc;
+                }, {});
+
+                // 객체를 배열로 변환하고 매출 기준으로 정렬
+                return Object.values(aggregatedCourses)
+                    .map(course => ({
+                        ...course,
+                        revenue: calculateCourseRevenue(course, selectedYear),
+                        displayCount: selectedYear === 'all' ? 
+                            course.totalCount : 
+                            (course.yearlyCount[selectedYear] || 0)
+                    }))
+                    .sort((a, b) => b.revenue - a.revenue)
+                    .slice(0, 5);
+            };
 
             const filteredAndSortedData = [...rankingData]
                 .filter(item =>
