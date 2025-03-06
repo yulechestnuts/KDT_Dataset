@@ -37,8 +37,17 @@ def create_ranking_component(df, yearly_data):
                           (pd.to_datetime(df['과정시작일']).dt.year == int(year[:4]))]
             yearly_courses[institution][year] = len(year_data)
 
-    # 만족도 계산
-    satisfaction_data = df.groupby('훈련기관')['만족도'].mean().to_dict()
+    # 만족도 계산 수정
+    satisfaction_data = {}
+    for institution in df['훈련기관'].unique():
+        inst_data = df[df['훈련기관'] == institution]
+        valid_data = inst_data[inst_data['만족도'] > 0]  # 만족도가 0인 데이터 제외
+        if len(valid_data) > 0:
+            weighted_satisfaction = (valid_data['만족도'] * valid_data['수강신청 인원']).sum()
+            total_students = valid_data['수강신청 인원'].sum()
+            satisfaction_data[institution] = round(weighted_satisfaction / total_students, 1)
+        else:
+            satisfaction_data[institution] = 0
 
     institution_revenue = df.groupby('훈련기관').agg({
         '누적매출': 'sum',
@@ -56,7 +65,10 @@ def create_ranking_component(df, yearly_data):
                     year: float(row[year]) if pd.notna(row[year]) else 0
                     for year in year_columns
                 },
-                'satisfaction': float(row['만족도']) if pd.notna(row['만족도']) else 0
+                'satisfaction': float(row['만족도']) if pd.notna(row['만족도']) else 0,
+                'startYear': pd.to_datetime(row['과정시작일']).year,
+                'students': int(row['수강신청 인원']) if pd.notna(row['수강신청 인원']) else 0,
+                'completedStudents': int(row['수료인원']) if pd.notna(row['수료인원']) else 0  # 수료인원 추가
             }
             for _, row in inst_courses.iterrows()
         ]
@@ -155,36 +167,42 @@ def create_ranking_component(df, yearly_data):
                         acc[course.name] = {
                             name: course.name,
                             yearlyRevenue: { ...course.yearlyRevenue },
-                            satisfaction: course.satisfaction,
+                            satisfaction: course.satisfaction > 0 ? course.satisfaction : 0,
                             totalCount: 1,
-                            yearlyCount: Object.keys(course.yearlyRevenue).reduce((counts, year) => {
-                                counts[year] = course.yearlyRevenue[year] > 0 ? 1 : 0;
-                                return counts;
-                            }, {})
+                            yearlyCount: {},
+                            latestStartYear: course.startYear,
+                            totalStudents: course.satisfaction > 0 ? course.students : 0,
+                            totalCompletedStudents: course.completedStudents,  // 수료인원 합계 추가
+                            weightedSatisfaction: course.satisfaction > 0 ? course.satisfaction * course.students : 0
                         };
+                        acc[course.name].yearlyCount[course.startYear] = 1;
                     } else {
-                        // 연도별 매출 합산
                         Object.keys(course.yearlyRevenue).forEach(year => {
                             acc[course.name].yearlyRevenue[year] = (acc[course.name].yearlyRevenue[year] || 0) + course.yearlyRevenue[year];
-                            if (course.yearlyRevenue[year] > 0) {
-                                acc[course.name].yearlyCount[year] = (acc[course.name].yearlyCount[year] || 0) + 1;
-                            }
                         });
-                        // 만족도 평균 계산을 위해 합산
-                        acc[course.name].satisfaction = (acc[course.name].satisfaction * acc[course.name].totalCount + course.satisfaction) / (acc[course.name].totalCount + 1);
+                        
                         acc[course.name].totalCount += 1;
+                        acc[course.name].yearlyCount[course.startYear] = (acc[course.name].yearlyCount[course.startYear] || 0) + 1;
+                        acc[course.name].totalCompletedStudents += course.completedStudents;  // 수료인원 누적
+                        
+                        if (course.satisfaction > 0) {
+                            acc[course.name].totalStudents += course.students;
+                            acc[course.name].weightedSatisfaction += course.satisfaction * course.students;
+                        }
                     }
                     return acc;
                 }, {});
 
-                // 객체를 배열로 변환하고 매출 기준으로 정렬
                 return Object.values(aggregatedCourses)
                     .map(course => ({
                         ...course,
                         revenue: calculateCourseRevenue(course, selectedYear),
                         displayCount: selectedYear === 'all' ? 
                             course.totalCount : 
-                            (course.yearlyCount[selectedYear] || 0)
+                            (course.yearlyCount[selectedYear.replace('년', '')] || 0),
+                        satisfaction: course.totalStudents > 0 ? 
+                            (course.weightedSatisfaction / course.totalStudents).toFixed(1) : 
+                            '데이터 없음'
                     }))
                     .sort((a, b) => b.revenue - a.revenue)
                     .slice(0, 5);
@@ -454,10 +472,10 @@ def create_ranking_component(df, yearly_data):
                                                     borderRadius: '4px'
                                                 }}>
                                                     <div style={{display: 'flex', justifyContent: 'space-between'}}>
-                                                        <span>#{idx + 1} {course.name}</span>
+                                                        <span>#{idx + 1} {course.name} <span style={{color: '#888'}}>(수료인원 {course.totalCompletedStudents}명)</span></span>
                                                         <span>
                                                             <span style={{color: '#48BB78', marginRight: '12px'}}>
-                                                                만족도: {course.satisfaction.toFixed(1)}
+                                                                만족도: {course.satisfaction}
                                                             </span>
                                                             <span style={{color: '#888', marginRight: '12px'}}>
                                                                 {selectedYear === 'all' ? 
@@ -661,36 +679,42 @@ def create_ncs_ranking_component(df):
                         acc[course.name] = {
                             name: course.name,
                             yearlyRevenue: { ...course.yearlyRevenue },
-                            satisfaction: course.satisfaction,
+                            satisfaction: course.satisfaction > 0 ? course.satisfaction : 0,
                             totalCount: 1,
-                            yearlyCount: Object.keys(course.yearlyRevenue).reduce((counts, year) => {
-                                counts[year] = course.yearlyRevenue[year] > 0 ? 1 : 0;
-                                return counts;
-                            }, {})
+                            yearlyCount: {},
+                            latestStartYear: course.startYear,
+                            totalStudents: course.satisfaction > 0 ? course.students : 0,
+                            totalCompletedStudents: course.completedStudents,  // 수료인원 합계 추가
+                            weightedSatisfaction: course.satisfaction > 0 ? course.satisfaction * course.students : 0
                         };
+                        acc[course.name].yearlyCount[course.startYear] = 1;
                     } else {
-                        // 연도별 매출 합산
                         Object.keys(course.yearlyRevenue).forEach(year => {
                             acc[course.name].yearlyRevenue[year] = (acc[course.name].yearlyRevenue[year] || 0) + course.yearlyRevenue[year];
-                            if (course.yearlyRevenue[year] > 0) {
-                                acc[course.name].yearlyCount[year] = (acc[course.name].yearlyCount[year] || 0) + 1;
-                            }
                         });
-                        // 만족도 평균 계산을 위해 합산
-                        acc[course.name].satisfaction = (acc[course.name].satisfaction * acc[course.name].totalCount + course.satisfaction) / (acc[course.name].totalCount + 1);
+                        
                         acc[course.name].totalCount += 1;
+                        acc[course.name].yearlyCount[course.startYear] = (acc[course.name].yearlyCount[course.startYear] || 0) + 1;
+                        acc[course.name].totalCompletedStudents += course.completedStudents;  // 수료인원 누적
+                        
+                        if (course.satisfaction > 0) {
+                            acc[course.name].totalStudents += course.students;
+                            acc[course.name].weightedSatisfaction += course.satisfaction * course.students;
+                        }
                     }
                     return acc;
                 }, {});
 
-                // 객체를 배열로 변환하고 매출 기준으로 정렬
                 return Object.values(aggregatedCourses)
                     .map(course => ({
                         ...course,
                         revenue: calculateCourseRevenue(course, selectedYear),
                         displayCount: selectedYear === 'all' ? 
                             course.totalCount : 
-                            (course.yearlyCount[selectedYear] || 0)
+                            (course.yearlyCount[selectedYear.replace('년', '')] || 0),
+                        satisfaction: course.totalStudents > 0 ? 
+                            (course.weightedSatisfaction / course.totalStudents).toFixed(1) : 
+                            '데이터 없음'
                     }))
                     .sort((a, b) => b.revenue - a.revenue)
                     .slice(0, 5);
