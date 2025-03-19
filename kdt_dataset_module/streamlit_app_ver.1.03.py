@@ -918,7 +918,7 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
-    url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202501.csv?raw=true" # Define URL here
+    url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202502.csv?raw=true" # Define URL here
     df = load_data_from_github(url) # Use load_data_from_github
     if df.empty:
         return
