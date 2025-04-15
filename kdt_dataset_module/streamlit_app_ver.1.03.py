@@ -315,7 +315,7 @@ def create_ranking_component(df, yearly_data):
                             fontSize: '16px',
                             color: '#888',
                             marginTop: '10px'
-                        }}>2025년 2월 28일 기준 개설된 과정 기준</p>
+                        }}>2025년 3월 31일 기준 개설된 과정 기준</p>
 
                         <div style={{
                             margin: '20px 0',
