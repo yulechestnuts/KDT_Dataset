@@ -95,112 +95,135 @@ def create_yearly_revenue_pie_charts(df, institution_name, yearly_data):
 @st.cache_data
 def analyze_training_institution(df, yearly_data, selected_institution):
     """Analyzes training institution performance"""
-    if not selected_institution:
-        st.write("훈련기관을 선택해주세요.")
-        return
+    try:
+        if not selected_institution:
+            st.write("훈련기관을 선택해주세요.")
+            return
 
-    institution_df = df[df['훈련기관'] == selected_institution].copy()
+        institution_df = df[df['훈련기관'] == selected_institution].copy()
+        
+        # 데이터 타입 검사 및 변환 (Int64 -> float)
+        numeric_cols = ['누적매출', '수강신청 인원', '수료인원']
+        for col in numeric_cols:
+            if col in institution_df.columns and institution_df[col].dtype.name == 'Int64':
+                institution_df[col] = institution_df[col].astype(float)
 
-    st.write("### 연도별 정보")
-    year_columns = [col for col in yearly_data.columns if isinstance(col, str) and re.match(r'^\d{4}년$', col)]
-    yearly_summary = institution_df.groupby('훈련연도').agg(
-        {'과정명': 'count', '수강신청 인원': 'sum'}
-    ).rename(columns={'과정명': '총 과정 수', '수강신청 인원': '총 수강생'})
+        st.write("### 연도별 정보")
+        year_columns = [col for col in yearly_data.columns if isinstance(col, str) and re.match(r'^\d{4}년$', col)]
+        yearly_summary = institution_df.groupby('훈련연도').agg(
+            {'과정명': 'count', '수강신청 인원': 'sum'}
+        ).rename(columns={'과정명': '총 과정 수', '수강신청 인원': '총 수강생'})
 
-    if '실 매출 대비' in institution_df.columns:
-        institution_df['실 매출 대비'] = pd.to_numeric(institution_df['실 매출 대비'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
-        total_revenue = institution_df.groupby('훈련연도')['실 매출 대비'].sum() / 100000000
-        yearly_summary['총 매출'] = total_revenue
-    else:
-        yearly_summary['총 매출'] = 0  # 숫자 0으로 초기화
-
-    # column_config 설정
-    column_config = {'총 매출': st.column_config.NumberColumn(format="%.2f억")}
-    for year in year_columns:
-        column_config[year] = st.column_config.NumberColumn(format="%.2f억")
-
-    # 연도별 매출액 처리 및 column_config 적용
-    for year in year_columns:
-        if year in institution_df.columns:
-            # 연도별 매출액을 숫자형으로 변환 후 합산
-            institution_df[year] = pd.to_numeric(institution_df[year].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
-            yearly_summary[year] = institution_df.groupby('훈련연도')[year].sum() / 100000000
+        if '실 매출 대비' in institution_df.columns:
+            institution_df['실 매출 대비'] = pd.to_numeric(institution_df['실 매출 대비'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+            total_revenue = institution_df.groupby('훈련연도')['실 매출 대비'].sum() / 100000000
+            yearly_summary['총 매출'] = total_revenue
         else:
-            yearly_summary[year] = 0
+            yearly_summary['총 매출'] = 0  # 숫자 0으로 초기화
 
-    st.dataframe(yearly_summary, column_config=column_config)
+        # column_config 설정
+        column_config = {'총 매출': st.column_config.NumberColumn(format="%.2f억")}
+        for year in year_columns:
+            column_config[year] = st.column_config.NumberColumn(format="%.2f억")
+
+        # 연도별 매출액 처리 및 column_config 적용
+        for year in year_columns:
+            if year in institution_df.columns:
+                # 연도별 매출액을 숫자형으로 변환 후 합산
+                institution_df[year] = pd.to_numeric(institution_df[year].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+                yearly_summary[year] = institution_df.groupby('훈련연도')[year].sum() / 100000000
+            else:
+                yearly_summary[year] = 0
+
+        st.dataframe(yearly_summary, column_config=column_config)
 
 
-    st.write("### 과정별 세부 정보")
-    course_summary = institution_df.groupby('과정명', as_index=False).agg(
-        {'회차': 'count',
-         '수강신청 인원': 'sum',
-         '누적매출': 'sum',
-         '만족도': 'mean'
-         }
-    ).rename(columns={'회차': '총 횟수',
-                     '수강신청 인원': '총 수강생',
-                     '누적매출': '매출액',
-                     '만족도': '만족도'
-                     })
-
-    # column_config 설정 (과정별 세부 정보)
-    course_column_config = {'매출액': st.column_config.NumberColumn(format="%.2f억")}
-
-    # 매출액을 억 단위로 변환
-    course_summary['매출액'] = course_summary['매출액'] / 100000000
-
-    st.dataframe(course_summary.sort_values(by='매출액', ascending=False),
-    column_config=course_column_config)
-
-    bar_chart = create_horizontal_bar_chart(institution_df, selected_institution, yearly_data)
-    if bar_chart:
-        st.altair_chart(bar_chart, use_container_width=True)
-    else:
-        st.write("해당 기관은 훈련 유형별 매출액을 표시할 데이터가 부족합니다.")
-
-    line_chart = create_yearly_revenue_line_chart(institution_df, selected_institution, yearly_data)
-    if line_chart:
-         st.altair_chart(line_chart, use_container_width=True)
-    else:
-       st.write("해당 기관은 연도별 매출 변화를 표시할 데이터가 부족합니다.")
-
-    pie_charts = create_yearly_revenue_pie_charts(institution_df, selected_institution, yearly_data)
-    if pie_charts:
-        for chart in pie_charts:
-            st.altair_chart(chart, use_container_width=True)
-    else:
-         st.write("해당 기관은 연도별 매출 비중을 표시할 데이터가 부족합니다.")
-
-@st.cache_data
-def analyze_top5_institutions(df, yearly_data):
-    st.subheader("Top 5 훈련기관별 성과 분석")
-    top5_institutions = df.groupby('훈련기관')['누적매출'].sum().nlargest(5).index
-
-    for institution in top5_institutions:
-         st.write(f"### {institution}")
-         institution_df = df[df['훈련기관'] == institution].copy()
-
-         course_summary = institution_df.groupby('과정명', as_index=False).agg(
+        st.write("### 과정별 세부 정보")
+        course_summary = institution_df.groupby('과정명', as_index=False).agg(
             {'회차': 'count',
-             '수강신청 인원': 'sum',
-             '누적매출': 'sum',
-             '만족도': 'mean'
-             }
+            '수강신청 인원': 'sum',
+            '누적매출': 'sum',
+            '만족도': 'mean'
+            }
         ).rename(columns={'회차': '총 횟수',
                         '수강신청 인원': '총 수강생',
                         '누적매출': '매출액',
                         '만족도': '만족도'
                         })
-         course_summary['매출액'] = course_summary['매출액'].apply(lambda x: format_revenue(x))
-         course_summary['매출액'] = pd.to_numeric(course_summary['매출액'].str.replace('억', '').fillna(0), errors='coerce')
-         st.dataframe(course_summary)
-         
-    chart = create_horizontal_bar_chart(institution_df, institution, yearly_data)
-    if chart:
-        st.altair_chart(chart, use_container_width=True)
-    else:
-        st.write("해당 기관은 훈련 유형별 매출액을 표시할 데이터가 부족합니다.")
+
+        # column_config 설정 (과정별 세부 정보)
+        course_column_config = {'매출액': st.column_config.NumberColumn(format="%.2f억")}
+
+        # 매출액을 억 단위로 변환
+        course_summary['매출액'] = course_summary['매출액'] / 100000000
+
+        st.dataframe(course_summary.sort_values(by='매출액', ascending=False),
+        column_config=course_column_config)
+
+        bar_chart = create_horizontal_bar_chart(institution_df, selected_institution, yearly_data)
+        if bar_chart:
+            st.altair_chart(bar_chart, use_container_width=True)
+        else:
+            st.write("해당 기관은 훈련 유형별 매출액을 표시할 데이터가 부족합니다.")
+
+        line_chart = create_yearly_revenue_line_chart(institution_df, selected_institution, yearly_data)
+        if line_chart:
+            st.altair_chart(line_chart, use_container_width=True)
+        else:
+            st.write("해당 기관은 연도별 매출 변화를 표시할 데이터가 부족합니다.")
+
+        pie_charts = create_yearly_revenue_pie_charts(institution_df, selected_institution, yearly_data)
+        if pie_charts:
+            for chart in pie_charts:
+                st.altair_chart(chart, use_container_width=True)
+        else:
+            st.write("해당 기관은 연도별 매출 비중을 표시할 데이터가 부족합니다.")
+    except Exception as e:
+        st.error(f"훈련기관 분석 중 오류가 발생했습니다: {e}")
+        import traceback
+        st.error(traceback.format_exc())
+
+@st.cache_data
+def analyze_top5_institutions(df, yearly_data):
+    try:
+        st.subheader("Top 5 훈련기관별 성과 분석")
+        
+        # 데이터 타입 검사 및 변환 (Int64 -> float)
+        numeric_cols = ['누적매출', '수강신청 인원', '수료인원']
+        for col in numeric_cols:
+            if col in df.columns and df[col].dtype.name == 'Int64':
+                df[col] = df[col].astype(float)
+                
+        top5_institutions = df.groupby('훈련기관')['누적매출'].sum().nlargest(5).index
+
+        for institution in top5_institutions:
+            st.write(f"### {institution}")
+            institution_df = df[df['훈련기관'] == institution].copy()
+
+            course_summary = institution_df.groupby('과정명', as_index=False).agg(
+                {'회차': 'count',
+                '수강신청 인원': 'sum',
+                '누적매출': 'sum',
+                '만족도': 'mean'
+                }
+            ).rename(columns={'회차': '총 횟수',
+                            '수강신청 인원': '총 수강생',
+                            '누적매출': '매출액',
+                            '만족도': '만족도'
+                            })
+            course_summary['매출액'] = course_summary['매출액'].apply(lambda x: format_revenue(x))
+            course_summary['매출액'] = pd.to_numeric(course_summary['매출액'].str.replace('억', '').fillna(0), errors='coerce')
+            st.dataframe(course_summary)
+            
+            chart = create_horizontal_bar_chart(institution_df, institution, yearly_data)
+            if chart:
+                st.altair_chart(chart, use_container_width=True)
+            else:
+                st.write("해당 기관은 훈련 유형별 매출액을 표시할 데이터가 부족합니다.")
+    except Exception as e:
+        st.error(f"Top 5 훈련기관 분석 중 오류가 발생했습니다: {e}")
+        import traceback
+        st.error(traceback.format_exc())
 
 @st.cache_data
 def analyze_course(df, yearly_data):

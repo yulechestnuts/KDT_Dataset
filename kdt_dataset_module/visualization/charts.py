@@ -29,37 +29,193 @@ def create_yearly_revenue_chart(yearly_data):
     )
     return line_chart
 
-def create_ncs_revenue_bar_chart(ncs_stats):
-    """NCS별 누적매출 바 차트를 생성합니다."""
-    base_chart = alt.Chart(ncs_stats).encode(
-        x=alt.X('NCS명:N', sort='-y', axis=alt.Axis(labelAngle=-45, labelFontSize=10))
+def create_monthly_revenue_chart(df, institution=None):
+    """월별 매출 흐름 차트 생성 - 기관별 필터링 가능"""
+    # 데이터 복사
+    df_monthly = df.copy()
+    
+    # 수치형 컬럼 float 타입으로 변환
+    numeric_cols = ['누적매출', '수강신청 인원', '수료인원']
+    for col in numeric_cols:
+        if col in df_monthly.columns and df_monthly[col].dtype.name == 'Int64':
+            df_monthly[col] = df_monthly[col].astype(float)
+    
+    # 기관별 필터링
+    if institution:
+        df_monthly = df_monthly[df_monthly['훈련기관'] == institution]
+    
+    # 시작일을 월 단위로 변환
+    df_monthly['월'] = pd.to_datetime(df_monthly['과정시작일']).dt.to_period('M').astype(str)
+    
+    # 월별 매출, 수강생 수 집계
+    monthly_data = df_monthly.groupby('월').agg({
+        '누적매출': 'sum',
+        '수강신청 인원': 'sum',
+        '수료인원': 'sum'
+    }).reset_index()
+    
+    # 억 단위 변환
+    monthly_data['매출(억)'] = monthly_data['누적매출'] / 100000000
+    
+    # 월 정렬을 위해 datetime으로 변환
+    monthly_data['날짜'] = pd.to_datetime(monthly_data['월'] + '-01')
+    monthly_data = monthly_data.sort_values('날짜')
+    
+    # 빈 데이터 처리
+    if len(monthly_data) == 0:
+        # 빈 차트 반환
+        return alt.Chart().mark_text(
+            text="데이터가 없습니다.",
+            fontSize=20
+        ).properties(
+            width=800,
+            height=400,
+            title=f"{institution or '전체'} 월별 매출 및 수강생 추이"
+        )
+    
+    # 이중 축 차트 생성
+    base = alt.Chart(monthly_data).encode(
+        x=alt.X('월:N', sort=None, axis=alt.Axis(labelAngle=-45, title='월'))
     )
-
-    bars = base_chart.mark_bar().encode(
-        y=alt.Y('누적매출:Q', title='누적매출 (원)'),
+    
+    line = base.mark_line(stroke='#4299e1', point=True).encode(
+        y=alt.Y('매출(억):Q', axis=alt.Axis(title='매출액 (억원)', titleColor='#4299e1')),
         tooltip=[
-            alt.Tooltip('NCS명:N', title='NCS명'),
-            alt.Tooltip('누적매출:Q', title='누적매출', format=',.0f'),
-            alt.Tooltip('과정명:Q', title='과정 수')
+            alt.Tooltip('월:N', title='월'),
+            alt.Tooltip('매출(억):Q', title='매출액 (억원)', format='.2f'),
         ]
     )
-
-    text = base_chart.mark_text(
-        align='center',
-        baseline='bottom',
-        dy=-5,
-        fontSize=10
-    ).encode(
-        y=alt.Y('누적매출:Q'),
-        text=alt.Text('누적매출:Q', format='.1e')
+    
+    bar = base.mark_bar(color='#f6ad55', opacity=0.5).encode(
+        y=alt.Y('수강신청 인원:Q', axis=alt.Axis(title='수강신청 인원', titleColor='#f6ad55')),
+        tooltip=[
+            alt.Tooltip('월:N', title='월'),
+            alt.Tooltip('수강신청 인원:Q', title='수강신청 인원', format=',d'),
+            alt.Tooltip('수료인원:Q', title='수료인원', format=',d')
+        ]
     )
-
-    chart = (bars + text).properties(
-        width=700,
+    
+    chart = alt.layer(line, bar).resolve_scale(
+        y='independent'
+    ).properties(
+        width=800,
         height=400,
-        title='NCS별 누적매출'
+        title=f"{institution or '전체'} 월별 매출 및 수강생 추이"
     )
+    
     return chart
+
+def create_monthly_revenue_summary_chart(df):
+    """전체 월별 매출 요약 차트"""
+    try:
+        # 데이터 복사
+        df_monthly = df.copy()
+        
+        # 수치형 컬럼 float 타입으로 변환
+        numeric_cols = ['누적매출', '수강신청 인원', '수료인원']
+        for col in numeric_cols:
+            if col in df_monthly.columns:
+                if df_monthly[col].dtype.name == 'Int64':
+                    df_monthly[col] = df_monthly[col].astype(float)
+                elif not pd.api.types.is_numeric_dtype(df_monthly[col]):
+                    df_monthly[col] = pd.to_numeric(df_monthly[col], errors='coerce').fillna(0)
+        
+        # '과정시작일' 열이 있는지 확인
+        if '과정시작일' not in df_monthly.columns:
+            raise ValueError("'과정시작일' 열이 데이터프레임에 없습니다.")
+            
+        # 시작일을 월 단위로 변환
+        df_monthly['월'] = pd.to_datetime(df_monthly['과정시작일'], errors='coerce').dt.to_period('M').astype(str)
+        
+        # 월별 매출 집계
+        monthly_data = df_monthly.groupby('월').agg({
+            '누적매출': 'sum',
+            '수강신청 인원': 'sum',
+            '수료인원': 'sum',
+            '과정명': 'count'
+        }).reset_index()
+        
+        # 억 단위 변환
+        monthly_data['매출(억)'] = monthly_data['누적매출'] / 100000000
+        monthly_data.rename(columns={'과정명': '과정수'}, inplace=True)
+        
+        # 월 정렬을 위해 datetime으로 변환
+        monthly_data['날짜'] = pd.to_datetime(monthly_data['월'] + '-01', errors='coerce')
+        monthly_data = monthly_data.sort_values('날짜')
+        
+        return monthly_data
+    except Exception as e:
+        import streamlit as st
+        st.error(f"월별 매출 요약 차트 생성 중 오류가 발생했습니다: {e}")
+        import traceback
+        st.error(traceback.format_exc())
+        return pd.DataFrame()
+
+def create_ncs_revenue_bar_chart(ncs_stats):
+    """NCS별 매출 바 차트를 생성합니다."""
+    try:
+        # 입력 데이터 검증
+        if ncs_stats is None or len(ncs_stats) == 0:
+            import streamlit as st
+            st.warning("NCS 통계 데이터가 비어 있습니다.")
+            return None
+            
+        # 필수 컬럼 확인
+        required_columns = ['ncs', 'revenue']
+        missing_columns = [col for col in required_columns if col not in ncs_stats.columns]
+        if missing_columns:
+            import streamlit as st
+            st.warning(f"NCS 통계 데이터에 필요한 컬럼이 없습니다: {', '.join(missing_columns)}")
+            return None
+        
+        # 데이터 타입 검사 및 변환
+        if not pd.api.types.is_numeric_dtype(ncs_stats['revenue']):
+            ncs_stats['revenue'] = pd.to_numeric(ncs_stats['revenue'], errors='coerce')
+            # 변환 후 NaN 값 확인
+            nan_count = ncs_stats['revenue'].isna().sum()
+            if nan_count > 0:
+                import streamlit as st
+                st.warning(f"revenue 컬럼에 {nan_count}개의 유효하지 않은 값이 있어 0으로 대체됩니다.")
+                ncs_stats['revenue'] = ncs_stats['revenue'].fillna(0)
+        
+        # 모든 값이 0인지 확인
+        if ncs_stats['revenue'].sum() == 0:
+            import streamlit as st
+            st.warning("모든 NCS의 매출 값이 0입니다.")
+            return None
+        
+        # 상위 10개 NCS 필터링
+        top_ncs = ncs_stats.sort_values('revenue', ascending=False).head(10)
+        
+        # 결과가 비어있는지 확인
+        if len(top_ncs) == 0:
+            import streamlit as st
+            st.warning("필터링 후 표시할 NCS 데이터가 없습니다.")
+            return None
+        
+        # 차트 생성
+        fig = px.bar(
+            top_ncs, 
+            x='ncs', 
+            y='revenue',
+            text='revenue',
+            title='NCS별 매출',
+            labels={'ncs': 'NCS 분류명', 'revenue': '매출액(억)'},
+            color='revenue',
+            color_continuous_scale=px.colors.sequential.Blues
+        )
+        
+        fig.update_traces(texttemplate='%{text:.1f}억', textposition='outside')
+        fig.update_layout(uniformtext_minsize=10, uniformtext_mode='hide')
+        fig.update_layout(height=500)
+        
+        return fig
+    except Exception as e:
+        import streamlit as st
+        st.error(f"NCS별 매출 바 차트 생성 중 오류가 발생했습니다: {str(e)}")
+        import traceback
+        st.error(traceback.format_exc())
+        return None
 
 def create_ncs_yearly_revenue_line_chart(yearly_data_long):
     """NCS별 연도별 매출 추이 라인 차트를 생성합니다."""
