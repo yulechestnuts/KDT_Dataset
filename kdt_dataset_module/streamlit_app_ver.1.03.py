@@ -1561,20 +1561,20 @@ def main():
             # 연도별 매출 재계산
             df, yearly_data = calculate_yearly_revenue(df)
             
-        # NCS 랭킹 컴포넌트 생성 및 표시
-        js_code = create_ncs_ranking_component(df)
-        if js_code:
-            html(js_code, height=800)
-        # calculate_and_visualize_revenue(df)
+            # NCS 랭킹 컴포넌트 생성 및 표시
+            js_code = create_ncs_ranking_component(df)
+            if js_code:
+                html(js_code, height=800)
+            # calculate_and_visualize_revenue(df)
 
-        # NCS명 입력 받기
-        ncs_name = st.text_input("NCS명 검색")
+            # NCS명 입력 받기
+            ncs_name = st.text_input("NCS명 검색")
 
-        analyze_ncs(df, yearly_data, ncs_name)  # ncs_name 전달
-        
-        # 원래 df로 복구
-        if use_adjusted_revenue:
-            df = original_df.copy()
+            analyze_ncs(df, yearly_data, ncs_name)  # ncs_name 전달
+            
+            # 원래 df로 복구
+            if use_adjusted_revenue:
+                df = original_df.copy()
 
         elif analysis_type == "월별 매출 분석":
             st.title("월별 매출 분석")
