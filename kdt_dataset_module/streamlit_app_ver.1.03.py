@@ -662,6 +662,20 @@ def create_ranking_component(df, yearly_data):
 
     return js_code
 
+def format_revenue(revenue):
+    """매출액을 조/억 단위로 포맷팅"""
+    if revenue >= 1000000000000:  # 1조 이상
+        trillion = int(revenue // 1000000000000)  # 정수 조 단위
+        billion = (revenue % 1000000000000) / 100000000  # 억 단위 (소수점 포함)
+        
+        if billion > 0:
+            return f"{trillion}조 {billion:.1f}억원"
+        else:
+            return f"{trillion}조원"
+    else:
+        # 1조 미만은 억 단위로 표시 (소수점 포함)
+        return f"{revenue/100000000:.1f}억원"
+
 def calculate_and_visualize_revenue(df):
     """선도기업 매출 비중과 총 매출 분석을 시각화합니다."""
     try:
@@ -685,7 +699,7 @@ def calculate_and_visualize_revenue(df):
             filter_text = "일반KDT"
         else:
             filtered_df = df.copy()
-            filter_text = "전체"
+            filter_text = ""
         
         # 연도 선택 옵션
         years = [2021, 2022, 2023, 2024, 2025, "전체 기간"]
@@ -715,13 +729,15 @@ def calculate_and_visualize_revenue(df):
             
             # 매출 단위 변환 (억원)
             training_type_stats['매출(억원)'] = training_type_stats['누적매출'] / 100000000
-            total_revenue_billions = total_revenue / 100000000
             
+            # 2열 레이아웃 구성
             col1, col2 = st.columns(2)
             
             # 왼쪽 열: 훈련유형별 매출 비중
             with col1:
-                st.markdown(f"### {filter_text} {year_text} 총 매출: {total_revenue_billions:.1f}억원")
+                # 포맷팅된 매출액 표시
+                formatted_revenue = format_revenue(total_revenue)
+                st.markdown(f"### {filter_text} {year_text} 총 매출: {formatted_revenue}")
                 
                 # 파이 차트 - 매출 비중
                 fig_revenue = px.pie(
@@ -749,26 +765,57 @@ def calculate_and_visualize_revenue(df):
                 fig_courses.update_traces(textposition='inside', textinfo='percent+label')
                 st.plotly_chart(fig_courses, use_container_width=True)
             
-            # 선도기업 과정 매출 상위 훈련기관
-            if '선도기업형 훈련' in year_filtered_df['훈련유형'].values:
-                leading_courses = year_filtered_df[year_filtered_df['훈련유형'].str.contains('선도기업형 훈련')]
-                leading_institutions = leading_courses.groupby('훈련기관').agg({
-                    '누적매출': 'sum'
-                }).reset_index().sort_values('누적매출', ascending=False).head(5)
-                
-                leading_institutions['매출(억원)'] = leading_institutions['누적매출'] / 100000000
-                
-                st.markdown(f"### {year_text} 선도기업형 과정 매출 상위 5개 훈련기관")
-                
-                fig_leading = px.bar(
-                    leading_institutions,
-                    x='훈련기관',
-                    y='매출(억원)',
-                    title=f"{year_text} 선도기업형 과정 매출 상위 5개 훈련기관",
-                    color='매출(억원)',
-                    color_continuous_scale=px.colors.sequential.Viridis
-                )
-                st.plotly_chart(fig_leading, use_container_width=True)
+            # 모든 필터에 대해 상위 훈련기관 바 차트 표시
+            # 바 차트 제목과 데이터 필터링 설정
+            if revenue_type == "선도기업형만":
+                bar_chart_title = f"{year_text} 선도기업형 과정 매출 상위 5개 훈련기관"
+                top_institutions_df = year_filtered_df
+            elif revenue_type == "일반KDT만":
+                bar_chart_title = f"{year_text} 일반KDT 과정 매출 상위 5개 훈련기관"
+                top_institutions_df = year_filtered_df
+            else:
+                bar_chart_title = f"{year_text} 전체 과정 매출 상위 5개 훈련기관"
+                top_institutions_df = year_filtered_df
+            
+            # 훈련기관별 매출 집계
+            top_institutions = top_institutions_df.groupby('훈련기관').agg({
+                '누적매출': 'sum'
+            }).reset_index().sort_values('누적매출', ascending=False).head(5)
+            
+            top_institutions['매출(억원)'] = top_institutions['누적매출'] / 100000000
+            
+            st.markdown(f"### {bar_chart_title}")
+            
+            # 훈련기관 바 차트에 포맷팅된 매출액 텍스트 추가
+            fig_top = px.bar(
+                top_institutions,
+                x='훈련기관',
+                y='매출(억원)',
+                title=bar_chart_title,
+                color='매출(억원)',
+                color_continuous_scale=px.colors.sequential.Viridis
+            )
+            
+            # 바 차트 위에 포맷팅된 매출액 표시
+            fig_top.update_traces(
+                text=[format_revenue(rev) for rev in top_institutions['누적매출']],
+                textposition='outside'
+            )
+            
+            # 바 차트 레이아웃 조정 - 높이 증가 및 마진 추가
+            fig_top.update_layout(
+                height=500,  # 높이 증가
+                margin=dict(t=50, b=100),  # 위, 아래 마진 추가
+                xaxis=dict(tickangle=-45)  # x축 레이블 기울기 조정
+            )
+            
+            st.plotly_chart(fig_top, use_container_width=True)
+            
+            # 매출액 상세 테이블 (옵션)
+            if st.checkbox("훈련기관별 매출액 상세보기", False):
+                display_table = top_institutions.copy()
+                display_table['매출액'] = display_table['누적매출'].apply(format_revenue)
+                st.table(display_table[['훈련기관', '매출액']])
         
         except Exception as e:
             st.error(f"매출 계산 중 오류가 발생했습니다: {e}")
@@ -780,6 +827,7 @@ def calculate_and_visualize_revenue(df):
         import traceback
         st.error(traceback.format_exc())
 
+        
 @st.cache_data
 def create_ncs_ranking_component(df):
     """NCS 분류별 랭킹 컴포넌트 생성"""
@@ -908,15 +956,6 @@ def render_institution_info(data, show_leading_only=False):
                 </div>
                 """
                 st.markdown(card_html, unsafe_allow_html=True)
-
-def format_revenue(revenue):
-    """매출액을 조/억 단위로 포맷팅"""
-    if revenue >= 1000000000000:  # 1조 이상
-        trillion = revenue // 1000000000000
-        billion = (revenue % 1000000000000) / 100000000
-        return f"{trillion}조 {billion:.1f}억원"
-    else:
-        return f"{revenue/100000000:.1f}억원"
 
 def visualize_by_institutions(df):
     """훈련기관별 분석을 시각화합니다."""
