@@ -1031,8 +1031,8 @@ def visualize_by_institutions(df):
             # 선택된 훈련기관 데이터
             selected_data = filtered_df[filtered_df['훈련기관'] == selected_institution]
             
-            # 연도별 데이터 준비 (반분기 연도 제외)
-            year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'20\d{2}년$', col) and not re.match(r'20\d{2}년_반분기', col)]
+            # 연도별 데이터 준비
+            year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'20\d{2}년$', col)]
             
             # 연도별 매출 계산
             yearly_revenue = {}
@@ -1045,7 +1045,7 @@ def visualize_by_institutions(df):
                 normal_data = year_data[~year_data['훈련유형'].str.contains('선도기업형 훈련', na=False)]
                 
                 yearly_revenue[year] = year_data[year].sum()
-                yearly_leading[year] = leading_data[year].sum() * 0.1  # 선도기업 아카데미는 10%
+                yearly_leading[year] = leading_data[year].sum()
                 yearly_normal[year] = normal_data[year].sum()
             
             # 매출 정보 표시
@@ -1078,7 +1078,8 @@ def visualize_by_institutions(df):
             fig.update_layout(
                 yaxis_title='매출액(원)',
                 legend_title='훈련유형',
-                yaxis_tickformat=',.0f'
+                yaxis_tickformat=',.0f',
+                xaxis_type='category'
             )
             st.plotly_chart(fig, use_container_width=True)
             
@@ -1102,7 +1103,7 @@ def visualize_by_institutions(df):
                 
                 # 비교 차트 데이터 준비
                 comparison_data = pd.DataFrame({
-                    '연도': [year[:4] for year in year_columns] * 2,
+                    '연도': [year[:4] for year in year_columns],
                     '훈련기관': [selected_institution] * len(year_columns) + [compare_institution] * len(year_columns),
                     '총매출': [yearly_revenue[year] for year in year_columns] + [compare_yearly_revenue[year] for year in year_columns],
                     '선도기업형': [yearly_leading[year] for year in year_columns] + [compare_yearly_leading[year] for year in year_columns],
@@ -1122,7 +1123,8 @@ def visualize_by_institutions(df):
                 fig.update_layout(
                     yaxis_title='매출액(원)',
                     legend_title='훈련기관',
-                    yaxis_tickformat=',.0f'
+                    yaxis_tickformat=',.0f',
+                    xaxis_type='category'
                 )
                 st.plotly_chart(fig, use_container_width=True)
                 
