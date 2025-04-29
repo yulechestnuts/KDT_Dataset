@@ -909,6 +909,15 @@ def render_institution_info(data, show_leading_only=False):
                 """
                 st.markdown(card_html, unsafe_allow_html=True)
 
+def format_revenue(revenue):
+    """매출액을 조/억 단위로 포맷팅"""
+    if revenue >= 1000000000000:  # 1조 이상
+        trillion = revenue // 1000000000000
+        billion = (revenue % 1000000000000) / 100000000
+        return f"{trillion}조 {billion:.1f}억원"
+    else:
+        return f"{revenue/100000000:.1f}억원"
+
 def visualize_by_institutions(df):
     """훈련기관별 분석을 시각화합니다."""
     try:
@@ -937,6 +946,160 @@ def visualize_by_institutions(df):
             filtered_df = df.copy()
             show_leading = False
         
+        # 훈련기관 검색 기능 추가
+        st.markdown("### 훈련기관 검색 및 비교")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            search_term = st.text_input("훈련기관 검색", "", key="institution_search")
+            if search_term:
+                search_results = filtered_df[filtered_df['훈련기관'].str.contains(search_term, case=False, na=False)]
+                if not search_results.empty:
+                    selected_institution = st.selectbox(
+                        "검색된 훈련기관 선택",
+                        search_results['훈련기관'].unique(),
+                        key="selected_institution"
+                    )
+                else:
+                    st.warning("검색 결과가 없습니다.")
+                    selected_institution = None
+            else:
+                selected_institution = None
+        
+        with col2:
+            if selected_institution:
+                compare_term = st.text_input("비교할 훈련기관 검색", "", key="compare_search")
+                if compare_term:
+                    compare_results = filtered_df[filtered_df['훈련기관'].str.contains(compare_term, case=False, na=False)]
+                    if not compare_results.empty:
+                        compare_institution = st.selectbox(
+                            "비교할 훈련기관 선택",
+                            compare_results['훈련기관'].unique(),
+                            key="compare_institution"
+                        )
+                    else:
+                        st.warning("비교 검색 결과가 없습니다.")
+                        compare_institution = None
+                else:
+                    compare_institution = None
+            else:
+                compare_institution = None
+        
+        # 선택된 훈련기관이 있는 경우 상세 분석 표시
+        if selected_institution:
+            st.markdown(f"### {selected_institution} 상세 분석")
+            
+            # 선택된 훈련기관 데이터
+            selected_data = filtered_df[filtered_df['훈련기관'] == selected_institution]
+            
+            # 연도별 데이터 준비 (반분기 연도 제외)
+            year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'20\d{2}년$', col) and not re.match(r'20\d{2}년_반분기', col)]
+            
+            # 연도별 매출 계산
+            yearly_revenue = {}
+            yearly_leading = {}
+            yearly_normal = {}
+            
+            for year in year_columns:
+                year_data = selected_data[selected_data['훈련연도'] == int(year[:4])]
+                leading_data = year_data[year_data['훈련유형'].str.contains('선도기업형 훈련', na=False)]
+                normal_data = year_data[~year_data['훈련유형'].str.contains('선도기업형 훈련', na=False)]
+                
+                yearly_revenue[year] = year_data[year].sum()
+                yearly_leading[year] = leading_data[year].sum() * 0.1  # 선도기업 아카데미는 10%
+                yearly_normal[year] = normal_data[year].sum()
+            
+            # 매출 정보 표시
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                total_revenue = sum(yearly_revenue.values())
+                st.metric("총 매출", format_revenue(total_revenue))
+            with col2:
+                total_leading = sum(yearly_leading.values())
+                st.metric("선도기업형 매출", format_revenue(total_leading))
+            with col3:
+                total_normal = sum(yearly_normal.values())
+                st.metric("일반KDT 매출", format_revenue(total_normal))
+            
+            # 연도별 매출 추이 차트
+            yearly_data = pd.DataFrame({
+                '연도': [year[:4] for year in year_columns],
+                '총매출': [yearly_revenue[year] for year in year_columns],
+                '선도기업형': [yearly_leading[year] for year in year_columns],
+                '일반KDT': [yearly_normal[year] for year in year_columns]
+            })
+            
+            fig = px.line(
+                yearly_data,
+                x='연도',
+                y=['선도기업형', '일반KDT'],
+                title=f"{selected_institution} 연도별 매출 추이",
+                markers=True
+            )
+            fig.update_layout(
+                yaxis_title='매출액(원)',
+                legend_title='훈련유형',
+                yaxis_tickformat=',.0f'
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # 비교 기관이 있는 경우 비교 차트 표시
+            if compare_institution:
+                compare_data = filtered_df[filtered_df['훈련기관'] == compare_institution]
+                
+                # 비교 기관의 연도별 매출 계산
+                compare_yearly_revenue = {}
+                compare_yearly_leading = {}
+                compare_yearly_normal = {}
+                
+                for year in year_columns:
+                    year_data = compare_data[compare_data['훈련연도'] == int(year[:4])]
+                    leading_data = year_data[year_data['훈련유형'].str.contains('선도기업형 훈련', na=False)]
+                    normal_data = year_data[~year_data['훈련유형'].str.contains('선도기업형 훈련', na=False)]
+                    
+                    compare_yearly_revenue[year] = year_data[year].sum()
+                    compare_yearly_leading[year] = leading_data[year].sum() * 0.1
+                    compare_yearly_normal[year] = normal_data[year].sum()
+                
+                # 비교 차트 데이터 준비
+                comparison_data = pd.DataFrame({
+                    '연도': [year[:4] for year in year_columns] * 2,
+                    '훈련기관': [selected_institution] * len(year_columns) + [compare_institution] * len(year_columns),
+                    '총매출': [yearly_revenue[year] for year in year_columns] + [compare_yearly_revenue[year] for year in year_columns],
+                    '선도기업형': [yearly_leading[year] for year in year_columns] + [compare_yearly_leading[year] for year in year_columns],
+                    '일반KDT': [yearly_normal[year] for year in year_columns] + [compare_yearly_normal[year] for year in year_columns]
+                })
+                
+                # 비교 차트 표시 (누적 막대 차트로 변경)
+                fig = px.bar(
+                    comparison_data,
+                    x='연도',
+                    y='총매출',
+                    color='훈련기관',
+                    title=f"{selected_institution} vs {compare_institution} 연도별 매출 비교",
+                    barmode='group',
+                    color_discrete_sequence=['#FFA500', '#008000']
+                )
+                fig.update_layout(
+                    yaxis_title='매출액(원)',
+                    legend_title='훈련기관',
+                    yaxis_tickformat=',.0f'
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # 비교 기관의 매출 정보 표시
+                st.markdown(f"### {compare_institution} 매출 정보")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    compare_total = sum(compare_yearly_revenue.values())
+                    st.metric("총 매출", format_revenue(compare_total))
+                with col2:
+                    compare_leading = sum(compare_yearly_leading.values())
+                    st.metric("선도기업형 매출", format_revenue(compare_leading))
+                with col3:
+                    compare_normal = sum(compare_yearly_normal.values())
+                    st.metric("일반KDT 매출", format_revenue(compare_normal))
+        
         # 상위 훈련기관 표시
         st.markdown("### 상위 훈련기관")
         render_institution_info(filtered_df, show_leading)
@@ -950,23 +1113,28 @@ def visualize_by_institutions(df):
             '누적매출': 'sum'
         }).reset_index().sort_values('누적매출', ascending=False).head(10)
         
-        # 실제 금액(10배)으로 표시
-        institution_stats['누적매출(억)'] = institution_stats['누적매출'] * 10 / 100000000
+        # 매출액 포맷팅
+        institution_stats['누적매출(포맷)'] = institution_stats['누적매출'].apply(format_revenue)
         
-        # 차트 생성 - Y축 레이블 수평으로 변경
+        # 차트 생성
         fig = px.bar(
             institution_stats,
             x='훈련기관',
-            y='누적매출(억)',
+            y='누적매출',
             title=f'훈련기관별 매출액 (상위 10개, {"선도기업형" if type_selection == "선도기업형" else "일반KDT" if type_selection == "일반KDT" else "전체"})',
-            color='누적매출(억)',
+            color='누적매출',
             color_continuous_scale=px.colors.sequential.Greens,
-            height=400
+            height=400,
+            text='누적매출(포맷)'
         )
-        fig.update_layout(yaxis_title='매출액(억원)', yaxis_tickangle=0)
+        fig.update_layout(
+            yaxis_title='매출액(원)',
+            yaxis_tickangle=0,
+            yaxis_tickformat=',.0f'
+        )
         st.plotly_chart(fig, use_container_width=True)
         
-        # 과정 수 차트 - Y축 레이블 수평으로 변경
+        # 과정 수 차트
         fig = px.bar(
             institution_stats,
             x='훈련기관',
@@ -1374,6 +1542,363 @@ def create_monthly_revenue_chart(df, institution=None):
     )
     
     return chart
+
+def load_data():
+    """데이터를 로드하는 함수"""
+    try:
+        url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202503.csv?raw=true"
+        df = pd.read_csv(url, encoding='utf-8')
+        
+        # 데이터 전처리
+        if '훈련기관' not in df.columns:
+            st.error("데이터에 '훈련기관' 컬럼이 없습니다.")
+            return None
+        
+        # 연도 컬럼 찾기
+        year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'20\d{2}년$', col)]
+        
+        # 컬럼 데이터 타입 변환 - 모든 숫자 컬럼을 float로 변환 (문자열도 처리)
+        numeric_cols = ['수강신청 인원', '수료인원', '누적매출'] + year_columns
+        for col in numeric_cols:
+            if col in df.columns:
+                if df[col].dtype.name == 'Int64' or df[col].dtype.name == 'int64':
+                    df[col] = df[col].astype(float)
+                elif df[col].dtype == 'object':  # 문자열인 경우
+                    # 숫자 형식의 문자열을 숫자로 변환
+                    df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+        
+        # 연도별 매출액이 있고 누적매출이 없는 경우 계산
+        if '누적매출' not in df.columns and year_columns:
+            # 연도별 매출액을 합산하여 누적매출 계산
+            df['누적매출'] = df[year_columns].sum(axis=1)
+        
+        # ========================= #
+        # 1. 선도기업형 데이터 처리 #
+        # ========================= #
+        
+        # 원본 데이터프레임 보존
+        orig_df = df.copy()
+        
+        # 1.1 선도기업 아카데미 과정 식별
+        # '훈련유형' 혹은 '선도기업' 컬럼으로 선도기업형 과정 식별
+        leading_company_mask = pd.Series(False, index=df.index)
+        
+        if '선도기업' in df.columns:
+            # '선도기업' 컬럼에 값이 있으면 선도기업형 과정으로 간주
+            leading_company_mask = leading_company_mask | df['선도기업'].notna() & (df['선도기업'] != '')
+        
+        if '훈련유형' in df.columns:
+            # '훈련유형' 컬럼에 '선도기업형' 문자열이 포함되면 선도기업형 과정으로 간주
+            leading_company_mask = leading_company_mask | df['훈련유형'].astype(str).str.contains('선도기업형', case=False, na=False)
+        
+        # 선도기업형 과정만 필터링
+        leading_company_courses = df[leading_company_mask].copy()
+        
+        # 1.2 비선도기업형 과정만 남기기 (후속 처리를 위해)
+        df = df[~leading_company_mask].copy()
+        
+        # 1.3 파트너기관 및 훈련기관 매출 분배
+        # 처리된 선도기업 과정 추적을 위한 리스트
+        processed_leading_courses = []
+        
+        if not leading_company_courses.empty:
+            for idx, row in leading_company_courses.iterrows():
+                training_institution = row['훈련기관']
+                partner_institution = row.get('파트너기관', None) if '파트너기관' in row else None
+                
+                # 파트너기관이 있고 훈련기관과 다른 경우만 처리
+                if pd.notna(partner_institution) and partner_institution != training_institution and partner_institution != '':
+                    # 1.3.1 훈련기관에 10% 배분
+                    training_row = row.copy()
+                    training_row['누적매출'] = row['누적매출'] * 0.1  # 10% 할당
+                    # 연도별 매출 조정
+                    for year in year_columns:
+                        if pd.notna(row[year]) and row[year] > 0:
+                            training_row[year] = row[year] * 0.1
+                    
+                    # 수정된 행 추가 (훈련기관용)
+                    df = pd.concat([df, pd.DataFrame([training_row])], ignore_index=True)
+                    
+                    # 1.3.2 파트너기관에 90% 배분
+                    partner_row = row.copy()
+                    partner_row['훈련기관'] = partner_institution  # 파트너기관을 훈련기관으로 설정
+                    partner_row['누적매출'] = row['누적매출'] * 0.9  # 90% 할당
+                    # 연도별 매출 조정
+                    for year in year_columns:
+                        if pd.notna(row[year]) and row[year] > 0:
+                            partner_row[year] = row[year] * 0.9
+                    
+                    # 수정된 행 추가 (파트너기관용)
+                    df = pd.concat([df, pd.DataFrame([partner_row])], ignore_index=True)
+                else:
+                    # 파트너기관이 없거나 훈련기관과 같은 경우
+                    # 훈련기관에 10% 배분
+                    training_row = row.copy()
+                    training_row['누적매출'] = row['누적매출'] * 0.1  # 10% 할당
+                    # 연도별 매출 조정
+                    for year in year_columns:
+                        if pd.notna(row[year]) and row[year] > 0:
+                            training_row[year] = row[year] * 0.1
+                    
+                    # 수정된 행 추가 (훈련기관용)
+                    df = pd.concat([df, pd.DataFrame([training_row])], ignore_index=True)
+        
+        # ====================== #
+        # 2. SSAFY 매출 처리    #
+        # ====================== #
+        
+        # 2.1 SSAFY 과정 식별 (더 광범위한 키워드로 검색)
+        ssafy_mask = orig_df['과정명'].astype(str).str.contains('SSAFY|삼성.*SW아카데미|삼성.*소프트웨어아카데미|싸피|SW Academy|Software Academy', case=False, na=False)
+        
+        # 파트너기관이나 훈련기관에 삼성이 포함된 경우도 확인
+        for col in ['파트너기관', '훈련기관']:
+            if col in orig_df.columns:
+                samsung_mask = orig_df[col].astype(str).str.contains('삼성|SSAFY|Samsung', case=False, na=False)
+                ssafy_mask = ssafy_mask | samsung_mask
+        
+        if ssafy_mask.any():
+            # 원본 데이터에서 SSAFY 과정 추출
+            ssafy_courses = orig_df[ssafy_mask].copy()
+            
+            # 2.2 SSAFY 과정 매출의 100%를 대한상공회의소에 할당 (10%에서 100%로 변경)
+            ssafy_total_revenue = ssafy_courses['누적매출'].sum()
+            ssafy_commission = ssafy_total_revenue  # 100% 계산
+            
+            # 연도별 매출 계산
+            yearly_ssafy_revenue = {}
+            for year in year_columns:
+                yearly_ssafy_revenue[year] = ssafy_courses[year].sum()  # 100%
+            
+            # 2.3 대한상공회의소에 SSAFY 과정 매출 추가
+            # 대한상공회의소가 이미 있는지 확인
+            chamber_exists = '대한상공회의소' in df['훈련기관'].values
+            
+            if chamber_exists:
+                # 대한상공회의소의 기존 행 찾기 (SSAFY 관련 과정 제외)
+                chamber_rows = df[df['훈련기관'] == '대한상공회의소']
+                chamber_non_ssafy = chamber_rows[~chamber_rows['과정명'].astype(str).str.contains('SSAFY|삼성|SW 아카데미', case=False, na=False)]
+                
+                # 대한상공회의소의 기존 매출 (SSAFY 제외)
+                existing_revenue = chamber_non_ssafy['누적매출'].sum()
+                
+                # 연도별 기존 매출
+                yearly_existing_revenue = {}
+                for year in year_columns:
+                    yearly_existing_revenue[year] = chamber_non_ssafy[year].sum()
+                
+                # 대한상공회의소의 기존 SSAFY 관련 항목 삭제 (중복 방지)
+                df = df[~((df['훈련기관'] == '대한상공회의소') & 
+                         df['과정명'].astype(str).str.contains('SSAFY|삼성|SW 아카데미', case=False, na=False))]
+                
+                # 대한상공회의소에 SSAFY 과정 추가
+                ssafy_row = {
+                    '훈련기관': '대한상공회의소',
+                    '과정명': '[삼성] 청년 SW 아카데미 (SSAFY)',
+                    '누적매출': ssafy_commission + existing_revenue,  # 기존 매출 + SSAFY 매출
+                    '수강신청 인원': ssafy_courses['수강신청 인원'].sum() + chamber_non_ssafy['수강신청 인원'].sum(),
+                    '수료인원': ssafy_courses['수료인원'].sum() + chamber_non_ssafy['수료인원'].sum(),
+                    '만족도': 95.0  # 고정 만족도
+                }
+                
+                # 연도별 매출 추가 (기존 매출 + SSAFY 매출)
+                for year in year_columns:
+                    ssafy_row[year] = yearly_ssafy_revenue[year] + yearly_existing_revenue.get(year, 0)
+                
+                # 필수 필드 추가
+                if '과정시작일' in df.columns:
+                    ssafy_row['과정시작일'] = pd.Timestamp('2023-01-01')
+                if '과정종료일' in df.columns:
+                    ssafy_row['과정종료일'] = pd.Timestamp('2024-12-31')
+                if '훈련유형' in df.columns:
+                    ssafy_row['훈련유형'] = '선도기업형 훈련'
+                
+                # 나머지 필드 기본값으로
+                for col in df.columns:
+                    if col not in ssafy_row:
+                        ssafy_row[col] = None
+                
+                # 대한상공회의소에 통합된 행 추가
+                df = pd.concat([df, pd.DataFrame([ssafy_row])], ignore_index=True)
+            else:
+                # 대한상공회의소 없으면 새로 생성
+                chamber_row = {
+                    '훈련기관': '대한상공회의소',
+                    '과정명': '[삼성] 청년 SW 아카데미 (SSAFY)',
+                    '누적매출': ssafy_commission,
+                    '수강신청 인원': ssafy_courses['수강신청 인원'].sum(),
+                    '수료인원': ssafy_courses['수료인원'].sum(),
+                    '만족도': 95.0
+                }
+                
+                # 연도별 매출 추가
+                for year in year_columns:
+                    chamber_row[year] = yearly_ssafy_revenue[year]
+                
+                # 필수 필드 추가
+                if '과정시작일' in df.columns:
+                    chamber_row['과정시작일'] = pd.Timestamp('2023-01-01')
+                if '과정종료일' in df.columns:
+                    chamber_row['과정종료일'] = pd.Timestamp('2024-12-31')
+                if '훈련유형' in df.columns:
+                    chamber_row['훈련유형'] = '선도기업형 훈련'
+                
+                # 나머지 필드 기본값으로
+                for col in df.columns:
+                    if col not in chamber_row:
+                        chamber_row[col] = None
+                
+                # 새 행 추가
+                df = pd.concat([df, pd.DataFrame([chamber_row])], ignore_index=True)
+        
+        # ============================= #
+        # 3. 한국표준협회 처리         #
+        # ============================= #
+        
+        # 한국표준협회가 표시되도록 설정
+        if '한국표준협회' in df['훈련기관'].values:
+            # 한국표준협회 행 찾기
+            ksa_rows = df[df['훈련기관'] == '한국표준협회']
+            
+            # 한국표준협회의 매출은 원래값 그대로 유지
+            if ksa_rows.empty or ksa_rows['누적매출'].sum() == 0:
+                # 데이터가 없는 경우에만 기본 행 추가
+                ksa_row = {
+                    '훈련기관': '한국표준협회',
+                    '과정명': 'KDT 기본 과정',
+                    '누적매출': 0.0,  # 매출값 0.0으로 설정
+                    '수강신청 인원': 0,
+                    '수료인원': 0,
+                    '만족도': 90.0  # 만족도는 기본값 설정
+                }
+                
+                # 연도별 매출 추가
+                for year in year_columns:
+                    ksa_row[year] = 0.0  # 연도별 매출도 0.0으로 설정
+                
+                # 필수 필드 추가
+                if '과정시작일' in df.columns:
+                    ksa_row['과정시작일'] = pd.Timestamp('2023-01-01')
+                if '과정종료일' in df.columns:
+                    ksa_row['과정종료일'] = pd.Timestamp('2024-12-31')
+                if '훈련유형' in df.columns:
+                    ksa_row['훈련유형'] = '일반KDT'  # 훈련유형을 일반KDT로 설정
+                
+                # 나머지 필드 기본값으로
+                for col in df.columns:
+                    if col not in ksa_row:
+                        ksa_row[col] = None
+                
+                # 행 추가
+                df = pd.concat([df, pd.DataFrame([ksa_row])], ignore_index=True)
+        else:
+            # 한국표준협회가 없으면 새로 추가
+            ksa_row = {
+                '훈련기관': '한국표준협회',
+                '과정명': 'KDT 기본 과정',
+                '누적매출': 0.0,  # 매출값 0.0으로 설정
+                '수강신청 인원': 0,
+                '수료인원': 0,
+                '만족도': 90.0
+            }
+            
+            # 연도별 매출 추가
+            for year in year_columns:
+                ksa_row[year] = 0.0  # 연도별 매출도 0.0으로 설정
+            
+            # 필수 필드 추가
+            if '과정시작일' in df.columns:
+                ksa_row['과정시작일'] = pd.Timestamp('2023-01-01')
+            if '과정종료일' in df.columns:
+                ksa_row['과정종료일'] = pd.Timestamp('2024-12-31')
+            if '훈련유형' in df.columns:
+                ksa_row['훈련유형'] = '일반KDT'  # 훈련유형을 일반KDT로 설정
+            
+            # 나머지 필드 기본값으로
+            for col in df.columns:
+                if col not in ksa_row:
+                    ksa_row[col] = None
+            
+            # 행 추가
+            df = pd.concat([df, pd.DataFrame([ksa_row])], ignore_index=True)
+        
+        # ============================= #
+        # 2. 대한상공회의소 SSAFY 매출 반영 #
+        # ============================= #
+        
+        # SSAFY(삼성청년SW아카데미) 과정 검색 조건 개선
+        ssafy_rows = df[
+            (df['과정명'].str.contains('SSAFY|삼성청년|삼성 청년|SW 아카데미|SW아카데미|소프트웨어 아카데미', case=False, na=False)) |
+            (df['훈련기관'].str.contains('삼성|SSAFY', case=False, na=False)) |
+            ((df['협약기업'].notna()) & (df['협약기업'].str.contains('삼성|SSAFY', case=False, na=False)))
+        ]
+        
+        # SSAFY 전체 매출 계산
+        if not ssafy_rows.empty:
+            ssafy_total_revenue = ssafy_rows['누적매출'].sum()
+            ssafy_yearly_revenue = {}
+            
+            for year in year_columns:
+                ssafy_yearly_revenue[year] = ssafy_rows[year].sum() if year in ssafy_rows.columns else 0.0
+            
+            # 대한상공회의소 매출에 SSAFY 매출 포함
+            if '대한상공회의소' in df['훈련기관'].values:
+                # 기존 대한상공회의소 행 갱신
+                chamber_idx = df[df['훈련기관'] == '대한상공회의소'].index
+                
+                # 대한상공회의소 중복이 있으면 첫 번째 행에 모두 합산
+                if len(chamber_idx) > 0:
+                    main_idx = chamber_idx[0]
+                    
+                    # SSAFY 매출이 대한상공회의소에 이미 포함되어 있는지 확인
+                    # 대한상공회의소 기존 매출에 SSAFY 매출 추가
+                    df.loc[main_idx, '누적매출'] = df.loc[main_idx, '누적매출'] + ssafy_total_revenue
+                    
+                    # 연도별 매출도 업데이트
+                    for year, revenue in ssafy_yearly_revenue.items():
+                        if year in df.columns:
+                            df.loc[main_idx, year] = df.loc[main_idx, year] + revenue
+                    
+                    # 나머지 행 삭제
+                    if len(chamber_idx) > 1:
+                        df = df.drop(chamber_idx[1:]).reset_index(drop=True)
+            else:
+                # 대한상공회의소가 없으면 새로 추가
+                chamber_row = {
+                    '훈련기관': '대한상공회의소',
+                    '과정명': 'KDT 종합 과정',
+                    '누적매출': ssafy_total_revenue,
+                    '수강신청 인원': ssafy_rows['수강신청 인원'].sum() if '수강신청 인원' in ssafy_rows.columns else 0,
+                    '수료인원': ssafy_rows['수료인원'].sum() if '수료인원' in ssafy_rows.columns else 0,
+                    '만족도': 85.0
+                }
+                
+                # 연도별 매출 추가
+                for year, revenue in ssafy_yearly_revenue.items():
+                    if year in df.columns:
+                        chamber_row[year] = revenue
+                
+                # 필수 필드 추가
+                if '과정시작일' in df.columns:
+                    chamber_row['과정시작일'] = pd.Timestamp('2023-01-01')
+                if '과정종료일' in df.columns:
+                    chamber_row['과정종료일'] = pd.Timestamp('2024-12-31')
+                if '훈련유형' in df.columns:
+                    chamber_row['훈련유형'] = '일반KDT'
+                
+                # 나머지 필드 기본값으로
+                for col in df.columns:
+                    if col not in chamber_row:
+                        chamber_row[col] = None
+                
+                # 행 추가
+                df = pd.concat([df, pd.DataFrame([chamber_row])], ignore_index=True)
+        
+        return df
+    except Exception as e:
+        st.error(f"데이터 로드 중 오류 발생: {str(e)}")
+        import traceback
+        st.error(traceback.format_exc())
+        return None
 
 def main():
     st.set_page_config(layout="wide")
