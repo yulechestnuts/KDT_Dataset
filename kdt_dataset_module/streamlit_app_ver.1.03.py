@@ -806,7 +806,8 @@ def calculate_and_visualize_revenue(df):
             fig_top.update_layout(
                 height=500,  # 높이 증가
                 margin=dict(t=50, b=100),  # 위, 아래 마진 추가
-                xaxis=dict(tickangle=-45)  # x축 레이블 기울기 조정
+                xaxis=dict(tickangle=-30),
+                yaxis=dict(tickangle=0)  # 축 레이블 기울기 조정
             )
             
             st.plotly_chart(fig_top, use_container_width=True)
@@ -1587,7 +1588,7 @@ def create_monthly_revenue_chart(df, institution=None):
 def load_data():
     """데이터를 로드하는 함수"""
     try:
-        url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202503.csv?raw=true"
+        url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202504.csv?raw=true"
         df = pd.read_csv(url, encoding='utf-8')
         
         # 데이터 전처리
