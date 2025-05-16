@@ -32,6 +32,7 @@ from utils.training_type_classification import classify_training_type
 from visualization.reports import analyze_training_institution, analyze_course, analyze_ncs, analyze_top5_institutions
 from visualization.charts import create_monthly_revenue_chart, create_monthly_revenue_summary_chart
 
+@st.cache_data
 def create_ranking_component(df, yearly_data):
     """훈련기관별 랭킹 컴포넌트 생성"""
     if '훈련기관' not in df.columns:
@@ -828,6 +829,7 @@ def calculate_and_visualize_revenue(df):
         st.error(traceback.format_exc())
 
         
+@st.cache_data
 def create_ncs_ranking_component(df):
     """NCS 분류별 랭킹 컴포넌트 생성"""
     try:
@@ -1706,7 +1708,7 @@ def main():
     """, unsafe_allow_html=True)
 
     try:
-        url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202503.csv?raw=true" # Define URL here
+        url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202504.csv?raw=true" # Define URL here
         df = load_data_from_github(url) # Use load_data_from_github
         if df.empty:
             st.error("데이터를 불러올 수 없습니다.")
