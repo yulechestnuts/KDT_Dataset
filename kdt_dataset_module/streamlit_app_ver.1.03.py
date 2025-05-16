@@ -1315,6 +1315,9 @@ def apply_adjusted_revenue(df, current_date=None):
     year_columns = [col for col in adjusted_df.columns if isinstance(col, str) and re.match(r'20\d{2}년$', col)]
     if year_columns:
         for year_col in year_columns:
+            # 먼저 해당 열이 숫자 타입인지 확인하고 필요시 변환
+            adjusted_df[year_col] = pd.to_numeric(adjusted_df[year_col], errors='coerce')
+            
             # 비율 계산 (누적매출 대비 조정_누적매출)
             adjusted_df[f'조정_{year_col}'] = adjusted_df.apply(
                 lambda row: (
@@ -1585,112 +1588,6 @@ def create_monthly_revenue_chart(df, institution=None):
     
     return chart
 
-def load_data():
-    """데이터를 로드하는 함수"""
-    try:
-        url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202503.csv?raw=true"
-        df = pd.read_csv(url, encoding='utf-8')
-        
-        # 데이터 전처리
-        if '훈련기관' not in df.columns:
-            st.error("데이터에 '훈련기관' 컬럼이 없습니다.")
-            return None
-        
-        # 연도 컬럼 찾기
-        year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'20\d{2}년$', col)]
-        
-        # 컬럼 데이터 타입 변환 - 모든 숫자 컬럼을 float로 변환 (문자열도 처리)
-        numeric_cols = ['수강신청 인원', '수료인원', '누적매출'] + year_columns
-        for col in numeric_cols:
-            if col in df.columns:
-                if df[col].dtype.name == 'Int64' or df[col].dtype.name == 'int64':
-                    df[col] = df[col].astype(float)
-                elif df[col].dtype == 'object':  # 문자열인 경우
-                    # 숫자 형식의 문자열을 숫자로 변환
-                    df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
-        
-        # 연도별 매출액이 있고 누적매출이 없는 경우 계산
-        if '누적매출' not in df.columns and year_columns:
-            # 연도별 매출액을 합산하여 누적매출 계산
-            df['누적매출'] = df[year_columns].sum(axis=1)
-        
-        # ========================= #
-        # 1. 선도기업형 데이터 처리 #
-        # ========================= #
-        
-        # 원본 데이터프레임 보존
-        orig_df = df.copy()
-        
-        # 1.1 선도기업 아카데미 과정 식별
-        # '훈련유형' 혹은 '선도기업' 컬럼으로 선도기업형 과정 식별
-        leading_company_mask = pd.Series(False, index=df.index)
-        
-        if '선도기업' in df.columns:
-            # '선도기업' 컬럼에 값이 있으면 선도기업형 과정으로 간주
-            leading_company_mask = leading_company_mask | df['선도기업'].notna() & (df['선도기업'] != '')
-        
-        if '훈련유형' in df.columns:
-            # '훈련유형' 컬럼에 '선도기업형' 문자열이 포함되면 선도기업형 과정으로 간주
-            leading_company_mask = leading_company_mask | df['훈련유형'].astype(str).str.contains('선도기업형', case=False, na=False)
-        
-        # 선도기업형 과정만 필터링
-        leading_company_courses = df[leading_company_mask].copy()
-        
-        # 1.2 비선도기업형 과정만 남기기 (후속 처리를 위해)
-        df = df[~leading_company_mask].copy()
-        
-        # 1.3 파트너기관 및 훈련기관 매출 분배
-        # 처리된 선도기업 과정 추적을 위한 리스트
-        processed_leading_courses = []
-        
-        if not leading_company_courses.empty:
-            for idx, row in leading_company_courses.iterrows():
-                training_institution = row['훈련기관']
-                partner_institution = row.get('파트너기관', None) if '파트너기관' in row else None
-                
-                # 파트너기관이 있고 훈련기관과 다른 경우만 처리
-                if pd.notna(partner_institution) and partner_institution != training_institution and partner_institution != '':
-                    # 1.3.1 훈련기관에 10% 배분
-                    training_row = row.copy()
-                    training_row['누적매출'] = row['누적매출'] * 0.1  # 10% 할당
-                    # 연도별 매출 조정
-                    for year in year_columns:
-                        if pd.notna(row[year]) and row[year] > 0:
-                            training_row[year] = row[year] * 0.1
-                    
-                    # 수정된 행 추가 (훈련기관용)
-                    df = pd.concat([df, pd.DataFrame([training_row])], ignore_index=True)
-                    
-                    # 1.3.2 파트너기관에 90% 배분
-                    partner_row = row.copy()
-                    partner_row['훈련기관'] = partner_institution  # 파트너기관을 훈련기관으로 설정
-                    partner_row['누적매출'] = row['누적매출'] * 0.9  # 90% 할당
-                    # 연도별 매출 조정
-                    for year in year_columns:
-                        if pd.notna(row[year]) and row[year] > 0:
-                            partner_row[year] = row[year] * 0.9
-                    
-                    # 수정된 행 추가 (파트너기관용)
-                    df = pd.concat([df, pd.DataFrame([partner_row])], ignore_index=True)
-                else:
-                    # 파트너기관이 없거나 훈련기관과 같은 경우
-                    # 훈련기관에 10% 배분
-                    training_row = row.copy()
-                    training_row['누적매출'] = row['누적매출'] * 0.1  # 10% 할당
-                    # 연도별 매출 조정
-                    for year in year_columns:
-                        if pd.notna(row[year]) and row[year] > 0:
-                            training_row[year] = row[year] * 0.1
-                    
-                    # 수정된 행 추가 (훈련기관용)
-                    df = pd.concat([df, pd.DataFrame([training_row])], ignore_index=True)
-        
-    except Exception as e:
-        st.error(f"데이터 로드 중 오류 발생: {str(e)}")
-        import traceback
-        st.error(traceback.format_exc())
-        return None
-
 def main():
     st.set_page_config(layout="wide")
 
@@ -1708,7 +1605,7 @@ def main():
     """, unsafe_allow_html=True)
 
     try:
-        url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202503.csv?raw=true" # Define URL here
+        url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202504.csv?raw=true" # Define URL here
         df = load_data_from_github(url) # Use load_data_from_github
         if df.empty:
             st.error("데이터를 불러올 수 없습니다.")
@@ -1725,18 +1622,6 @@ def main():
         for col in numeric_cols:
             if col in df.columns and df[col].dtype.name == 'Int64':
                 df[col] = df[col].astype(float)
-
-        # 알파코의 2025년 매출 체크 (디버깅용)
-        if '알파코' in df['훈련기관'].unique():
-            alpha_co_data = df[df['훈련기관'] == '알파코']
-            alpha_co_2025 = alpha_co_data[pd.to_datetime(alpha_co_data['과정시작일']).dt.year == 2025]
-            alpha_co_revenue = alpha_co_2025['누적매출'].sum() * 10 / 100000000
-            st.sidebar.write(f"알파코 2025년 원래 매출: {alpha_co_revenue:.2f}억원")
-            
-            # 수료율 기반 조정 적용
-            adjusted_alpha_co = apply_adjusted_revenue(alpha_co_2025)
-            adjusted_revenue = adjusted_alpha_co['조정_누적매출'].sum() * 10 / 100000000
-            st.sidebar.write(f"알파코 2025년 조정 매출: {adjusted_revenue:.2f}억원")
 
         # 사이드바에서 매출 계산 방식 선택 (전체 앱에 적용)
         st.sidebar.title("매출 계산 방식")
