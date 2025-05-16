@@ -1411,26 +1411,12 @@ def calculate_adjusted_revenue(row, current_date, overall_completion_rate):
     
     return adjusted_revenue
 
-def create_monthly_revenue_chart_adjusted(df, institution=None, override_date=None):
+def create_monthly_revenue_chart_adjusted(df, institution=None):
     """
     수료율 조정된 월별 매출 흐름 차트 생성 - 기관별 필터링 가능
-    
-    Args:
-        df: 데이터프레임
-        institution: 훈련기관명 (None이면 전체)
-        override_date: 현재 날짜를 덮어쓰는 값 (None이면 시스템 현재 날짜 사용)
     """
-    import pandas as pd
-    import altair as alt
-    
-    # 현재 날짜 설정 - 명시적으로 설정하거나 시스템 현재 날짜 사용
-    if override_date is not None:
-        current_date = pd.Timestamp(override_date)
-    else:
-        current_date = pd.Timestamp.now()
-        
-    # 로깅을 통해 사용된 날짜 확인
-    print(f"월별 차트 생성에 사용된 현재 날짜: {current_date}")
+    # 현재 날짜 설정
+    current_date = pd.Timestamp.now()
     
     # 데이터 복사 및 수료율 기반 매출액 조정 적용
     df_monthly = apply_adjusted_revenue(df, current_date)
@@ -1524,7 +1510,7 @@ def create_monthly_revenue_chart_adjusted(df, institution=None, override_date=No
     ).properties(
         width=800,
         height=400,
-        title=f"{institution or '전체'} 월별 매출 및 수강생 추이 (수료율 조정, 현재 날짜: {current_date.strftime('%Y-%m-%d')})"
+        title=f"{institution or '전체'} 월별 매출 및 수강생 추이 (수료율 조정)"
     )
     
     return chart
