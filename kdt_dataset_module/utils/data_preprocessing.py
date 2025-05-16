@@ -14,7 +14,7 @@ def preprocess_data(df):
                 df[col] = pd.to_numeric(df[col].astype(str), errors='coerce').fillna(0)
 
         # 2. 연도별 매출 관련 열 변환 및 누락된 컬럼 처리
-        year_columns = ['2021년', '2022년', '2023년', '2024년', '2025년']
+        year_columns = ['2021년', '2022년', '2023년', '2024년', '2025년', '2026년']
         for year in year_columns:
             if year in df.columns:
                 # 먼저 소수점 제거 및 정수형으로 변환
