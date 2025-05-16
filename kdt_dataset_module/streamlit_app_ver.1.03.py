@@ -1588,7 +1588,7 @@ def create_monthly_revenue_chart(df, institution=None):
 def load_data():
     """데이터를 로드하는 함수"""
     try:
-        url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202504.csv?raw=true"
+        url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202503.csv?raw=true"
         df = pd.read_csv(url, encoding='utf-8')
         
         # 데이터 전처리
@@ -1708,7 +1708,7 @@ def main():
     """, unsafe_allow_html=True)
 
     try:
-        url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202504.csv?raw=true" # Define URL here
+        url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202503.csv?raw=true" # Define URL here
         df = load_data_from_github(url) # Use load_data_from_github
         if df.empty:
             st.error("데이터를 불러올 수 없습니다.")
