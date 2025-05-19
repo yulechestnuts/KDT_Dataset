@@ -32,24 +32,79 @@ def preprocess_data(df):
         if '과정시작일' in df.columns:
             df['훈련연도'] = df['과정시작일'].dt.year.fillna(0).astype(int)
 
+
         # 4. 파트너기관 처리
         if '파트너기관' in df.columns:
             partner_mask = df['파트너기관'].notna()
-            non_partner_rows = df[~partner_mask].copy()
-            partner_rows = df[partner_mask].copy()
             
-            # 파트너 기관이 있는 경우 훈련기관을 파트너기관으로 변경
-            partner_rows['훈련기관'] = partner_rows['파트너기관']
-            
-            for year in year_columns:
-               if year in partner_rows.columns:
-                  # 파트너 기관이 있는 경우 원본 데이터에서 매출액을 10%로 조정
-                    df.loc[partner_mask, year] = (df.loc[partner_mask, year] * 0.1).fillna(0).astype(int).astype('Int64')
-                    # 파트너 기관의 매출액을 90%로 조정
-                    partner_rows[year] = (partner_rows[year] * 0.9).fillna(0).astype(int).astype('Int64')
-            
-            df = pd.concat([non_partner_rows, partner_rows], ignore_index=True)
-
+            if partner_mask.sum() > 0:
+                # 파트너기관이 없는 행은 그대로 유지
+                non_partner_rows = df[~partner_mask].copy()
+                
+                # 파트너기관이 있는 원본 데이터 복사
+                partner_rows = df[partner_mask].copy()
+                
+                # 원본 매출액 저장 (나중에 정확한 분배를 위해)
+                original_sales = {}
+                for year in year_columns:
+                    if year in partner_rows.columns:
+                        original_sales[year] = partner_rows[year].copy()
+                
+                # 원래 '훈련기관' 값을 임시로 저장
+                original_training = partner_rows['훈련기관'].copy()
+                
+                # 1. 파트너기관 행 생성 (실제 훈련 주체로 전환)
+                new_training_rows = partner_rows.copy()
+                # 훈련기관명을 파트너기관명으로 변경
+                new_training_rows['훈련기관'] = new_training_rows['파트너기관']
+                # 파트너기관 칼럼에 원래 훈련기관명 설정
+                new_training_rows['파트너기관'] = original_training
+                
+                # 2. 수수료 받는 행 생성 (원래 훈련기관이 파트너로서 10% 수수료만 받음)
+                commission_rows = partner_rows.copy()
+                
+                # 매출액 정확히 분배 - 원본 매출액 기준으로 계산
+                for year in year_columns:
+                    if year in original_sales:
+                        # 파트너기관(신규 훈련기관)에 90% 할당
+                        new_training_rows[year] = (original_sales[year] * 0.9).fillna(0).astype(int).astype('Int64')
+                        
+                        # 원래 훈련기관(이제는 파트너역할)은 10% 수수료만 가져감
+                        commission_rows[year] = (original_sales[year] * 0.1).fillna(0).astype(int).astype('Int64')
+                
+                # ===== 추가: '실 매출 대비' 컬럼도 분배 처리 =====
+                if '실 매출 대비' in df.columns:
+                    # 원본 실 매출 대비 저장
+                    original_actual_sales = partner_rows['실 매출 대비'].copy()
+                    
+                    # 문자열을 숫자로 변환하여 계산
+                    actual_sales_numeric = pd.to_numeric(original_actual_sales.astype(str).str.replace(',', '').str.strip(), 
+                                                       errors='coerce').fillna(0)
+                    
+                    # 파트너기관(신규 훈련기관)에 90% 할당
+                    new_training_rows['실 매출 대비'] = (actual_sales_numeric * 0.9).astype(int)
+                    
+                    # 원래 훈련기관(이제는 파트너역할)은 10% 수수료만 가져감
+                    commission_rows['실 매출 대비'] = (actual_sales_numeric * 0.1).astype(int)
+                # ==================================================
+                
+                # 수료/수강 인원은 실제 훈련 주체인 파트너기관(신규 훈련기관)에만 기록
+                # 수수료만 받는 기존 훈련기관에는 인원수 0으로 설정
+                people_columns = [col for col in df.columns if '인원' in col]
+                for col in people_columns:
+                    if col in commission_rows.columns:
+                        commission_rows[col] = 0
+                
+                # 총 매출액 계산을 위한 '총매출' 컬럼이 있는지 확인
+                if '총매출' in df.columns:
+                    # 파트너기관(신규 훈련기관)의 총매출 계산 - 연도별 매출액의 합으로 갱신
+                    new_training_rows['총매출'] = new_training_rows[year_columns].sum(axis=1, skipna=True)
+                    
+                    # 수수료 받는 기관의 총매출 계산
+                    commission_rows['총매출'] = commission_rows[year_columns].sum(axis=1, skipna=True)
+                
+                # 최종 데이터프레임 구성
+                df = pd.concat([non_partner_rows, new_training_rows, commission_rows], ignore_index=True)
         # 5. 회차 처리
         if '회차' in df.columns:
             # 수정된 부분: '\d'를 '\\d'로 변경
