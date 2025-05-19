@@ -891,6 +891,99 @@ def create_ncs_ranking_component(df):
         st.error(traceback.format_exc())
         return None
 
+def create_monthly_performance_summary(df_for_summary, use_adjusted_revenue_flag):
+    st.subheader("월별 Top 훈련기관 성과 조회")
+
+    # 필수 컬럼 확인
+    required_cols_summary = ['훈련연도', '과정시작일', '누적매출', '수강신청 인원', '훈련기관']
+    if any(col not in df_for_summary.columns for col in required_cols_summary):
+        st.error("월별 성과 요약에 필요한 컬럼(훈련연도, 과정시작일, 누적매출, 수강신청 인원, 훈련기관)이 부족합니다.")
+        return
+
+    # 데이터 정제 (결측치 처리 및 타입 변환)
+    df_summary_cleaned = df_for_summary.dropna(subset=['과정시작일', '훈련연도']).copy()
+    try:
+        df_summary_cleaned['과정시작일'] = pd.to_datetime(df_summary_cleaned['과정시작일'])
+        df_summary_cleaned['훈련연도'] = df_summary_cleaned['훈련연도'].astype(int)
+    except Exception as e:
+        st.error(f"월별 요약 정보 생성 중 날짜 또는 연도 컬럼 처리 오류: {e}")
+        return
+
+    # 사용자 입력 UI
+    col_yr, col_mon, col_top_n = st.columns([2, 2, 1])
+    with col_yr:
+        unique_years_in_data = sorted(df_summary_cleaned['훈련연도'].unique(), reverse=True)
+        if not unique_years_in_data: # 데이터에 유효한 연도가 없는 경우
+            st.warning("분석할 연도 데이터가 없습니다.")
+            return
+        selected_year = st.selectbox("연도 선택 ", unique_years_in_data, key="perf_summary_year_selector") # 고유한 key
+    with col_mon:
+        # 현재 선택된 연도가 올해와 같으면 현재 월, 아니면 1월을 기본값으로
+        default_month_index = datetime.now().month - 1 if selected_year == datetime.now().year else 0
+        selected_month = st.selectbox("월 선택 ", range(1, 13),
+                                      index=default_month_index,
+                                      format_func=lambda x: f"{x}월",
+                                      key="perf_summary_month_selector") # 고유한 key
+    with col_top_n:
+        top_n = st.number_input("Top N ", min_value=1, value=10, step=1, key="perf_summary_top_n_selector") # 고유한 key
+
+    # 선택된 연/월 데이터 필터링
+    monthly_filtered_data = df_summary_cleaned[
+        (df_summary_cleaned['훈련연도'] == selected_year) &
+        (df_summary_cleaned['과정시작일'].dt.month == selected_month)
+    ]
+
+    if monthly_filtered_data.empty:
+        st.info(f"{selected_year}년 {selected_month}월에 해당하는 과정 데이터가 없습니다.")
+        return
+
+    # '누적매출' 컬럼은 이미 main 함수에서 use_adjusted_revenue_flag에 따라 조정된 상태로 전달됨
+    total_revenue_for_month_display = monthly_filtered_data['누적매출'].sum() * 10 # 최종 표시는 10배수
+    total_students_for_month_display = monthly_filtered_data['수강신청 인원'].sum()
+    adj_text_display = " (수료율 조정 적용)" if use_adjusted_revenue_flag else ""
+
+    # 총계 정보 표시
+    st.markdown("---") # 구분선
+    metric_col1, metric_col2 = st.columns(2)
+    metric_col1.metric(
+        label=f"{selected_year}년 {selected_month}월 총 매출{adj_text_display}",
+        value=format_revenue(total_revenue_for_month_display) # format_revenue는 10배수된 값을 받아 처리
+    )
+    metric_col2.metric(
+        label=f"{selected_year}년 {selected_month}월 총 수강생",
+        value=f"{int(total_students_for_month_display)}명"
+    )
+    st.markdown("---") # 구분선
+
+    # 훈련기관별 성과 집계
+    institution_summary_perf = monthly_filtered_data.groupby('훈련기관').agg(
+        total_revenue_inst=('누적매출', 'sum'), # 이미 조정된 '누적매출' 사용
+        num_students_inst=('수강신청 인원', 'sum')
+    ).reset_index()
+
+    # 매출액 10배수 및 억원 단위 변환 (표시용)
+    institution_summary_perf['매출액(억)'] = institution_summary_perf['total_revenue_inst'] * 10 / 100000000
+
+    # Top N 기관 필터링 및 표시
+    top_n_institutions_display = institution_summary_perf.sort_values('매출액(억)', ascending=False).head(top_n)
+
+    if not top_n_institutions_display.empty:
+        st.write(f"**{selected_year}년 {selected_month}월 Top {top_n} 훈련기관{adj_text_display}**")
+        st.dataframe(
+            top_n_institutions_display[['훈련기관', '매출액(억)', 'num_students_inst']].rename(
+                columns={'num_students_inst': '수강생 수'}
+            ),
+            use_container_width=True,
+            column_config={
+                "매출액(억)": st.column_config.NumberColumn(format="%.1f억원"), # format_revenue 대신 직접 포맷팅
+                "수강생 수": st.column_config.NumberColumn(format="%d명"),
+            },
+            hide_index=True
+        )
+    else:
+        st.info(f"{selected_year}년 {selected_month}월에 집계된 훈련기관 성과 데이터가 없습니다.")
+
+
 def render_institution_info(data, show_leading_only=False):
     """훈련기관 정보를 시각화합니다."""
     
@@ -1295,6 +1388,56 @@ def calculate_adjusted_revenue(row, current_date=None):
     
     return final_adjusted_revenue
 
+def create_monthly_ranking_component(df):
+    st.subheader("월별 훈련기관 매출 랭킹")
+
+    df['과정시작일'] = pd.to_datetime(df['과정시작일'])
+    df['연도'] = df['과정시작일'].dt.year
+    df['월'] = df['과정시작일'].dt.month
+
+    # 연도/월 선택
+    col1, col2 = st.columns(2)
+    with col1:
+        selected_year = st.selectbox("연도 선택", sorted(df['연도'].unique()), index=0)
+    with col2:
+        selected_month = st.selectbox("월 선택", list(range(1, 13)), format_func=lambda x: f"{x}월")
+
+    # 필터링
+    monthly_df = df[(df['연도'] == selected_year) & (df['월'] == selected_month)]
+
+    if monthly_df.empty:
+        st.info(f"{selected_year}년 {selected_month}월에 해당하는 과정이 없습니다.")
+        return
+
+    # 기관별 집계
+    ranking_df = monthly_df.groupby('훈련기관').agg({
+        '누적매출': 'sum',
+        '수강신청 인원': 'sum'
+    }).reset_index().rename(columns={'누적매출': '총매출', '수강신청 인원': '총인원'})
+
+    ranking_df = ranking_df.sort_values('총매출', ascending=False)
+    ranking_df['총매출(억)'] = ranking_df['총매출'] / 100000000
+
+    # 표 표시
+    st.dataframe(
+        ranking_df[['훈련기관', '총매출(억)', '총인원']].reset_index(drop=True),
+        use_container_width=True
+    )
+
+    # 상위 10개 그래프
+    st.markdown("### 상위 10개 기관 매출 시각화")
+    fig = px.bar(
+        ranking_df.head(10),
+        x='훈련기관',
+        y='총매출(억)',
+        text='총매출(억)',
+        title=f"{selected_year}년 {selected_month}월 훈련기관 매출 TOP 10",
+        color='총매출(억)',
+        color_continuous_scale='Blues'
+    )
+    fig.update_traces(texttemplate='%{text:.1f}억', textposition='outside')
+    fig.update_layout(xaxis_tickangle=-30)
+    st.plotly_chart(fig, use_container_width=True)
 
 
 def main():
@@ -1515,6 +1658,7 @@ def main():
             
             if use_adjusted_revenue:
                 # 수료율 조정된 월별 매출 차트
+                create_monthly_ranking_component(df)
                 st.subheader("전체 월별 매출 및 수강생 추이 (수료율 조정)")
                 try:
                     adjusted_monthly_chart = create_monthly_revenue_chart_adjusted(df if not use_adjusted_revenue else temp_df)
@@ -1608,7 +1752,10 @@ def main():
                 st.error(f"월별 통합 차트 생성 중 오류가 발생했습니다: {e}")
                 import traceback
                 st.error(traceback.format_exc())
-            
+                # 월별 성과 요약 정보 표시
+                create_monthly_performance_summary(df, use_adjusted_revenue, original_df if use_adjusted_revenue else None)
+
+
             # 월별 매출 요약 테이블 금액 수정
             st.subheader("월별 매출 요약")
             try:
@@ -1640,7 +1787,7 @@ def main():
                             # 원래 데이터가 없는 경우 그대로 유지
                             monthly_adjusted.append({
                                 '월': month,
-                                '매출(억)': row['매출(억)'] * 10,
+                                '매출(억)': row['매출(억)'],
                                 '수강신청 인원': row['수강신청 인원'],
                                 '수료인원': row['수료인원'],
                                 '과정수': row['과정수']
@@ -1649,7 +1796,7 @@ def main():
                     monthly_display = pd.DataFrame(monthly_adjusted)
                 else:
                     # 기존 방식 - 단순 10배
-                    monthly_data['매출(억)'] = monthly_data['매출(억)'] * 10
+                    monthly_data['매출(억)'] = monthly_data['매출(억)']
                     monthly_display = monthly_data
                 
                 st.dataframe(
