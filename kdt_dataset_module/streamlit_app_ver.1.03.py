@@ -397,7 +397,7 @@ def create_ranking_component(df, yearly_data):
                             fontSize: '16px',
                             color: '#888',
                             marginTop: '10px'
-                        }}>2025년 3월 31일 기준 개설된 과정 기준</p>
+                        }}>2025년 4월 30일 기준 개설된 과정 기준</p>
 
                         <div style={{
                             margin: '20px 0',
@@ -1412,15 +1412,16 @@ def create_monthly_ranking_component(df):
     # 기관별 집계
     ranking_df = monthly_df.groupby('훈련기관').agg({
         '누적매출': 'sum',
-        '수강신청 인원': 'sum'
-    }).reset_index().rename(columns={'누적매출': '총매출', '수강신청 인원': '총인원'})
+        '수강신청 인원': 'sum',
+        '과정명': 'count'  # 과정 갯수 추가
+    }).reset_index().rename(columns={'누적매출': '총매출', '수강신청 인원': '총인원', '과정명': '과정 갯수'})
 
     ranking_df = ranking_df.sort_values('총매출', ascending=False)
     ranking_df['총매출(억)'] = ranking_df['총매출'] / 100000000
 
     # 표 표시
     st.dataframe(
-        ranking_df[['훈련기관', '총매출(억)', '총인원']].reset_index(drop=True),
+        ranking_df[['훈련기관', '총매출(억)', '총인원', '과정 갯수']].reset_index(drop=True),
         use_container_width=True
     )
 
@@ -1438,6 +1439,87 @@ def create_monthly_ranking_component(df):
     fig.update_traces(texttemplate='%{text:.1f}억', textposition='outside')
     fig.update_layout(xaxis_tickangle=-30)
     st.plotly_chart(fig, use_container_width=True)
+
+    # 표에 확장 기능 추가 - 각 행을 확장하면 과정 목록을 볼 수 있도록
+    st.markdown("### 기관별 과정 목록")
+    
+    # 각 기관별로 expander 생성
+    for idx, row in ranking_df.iterrows():
+        institution = row['훈련기관']
+        total_revenue = row['총매출(억)']
+        total_students = row['총인원']
+        course_count = row['과정 갯수']
+        
+        with st.expander(f"**{institution}** - 매출: {total_revenue:.1f}억원 | 수강생: {total_students}명 | 과정 수: {course_count}개"):
+            # 해당 기관의 과정 목록 가져오기
+            courses_df = monthly_df[monthly_df['훈련기관'] == institution]
+            courses_df = courses_df.sort_values('누적매출', ascending=False)
+            courses_df['누적매출(억)'] = courses_df['누적매출'] / 100000000
+            
+            # 과정 목록 테이블 표시
+            st.dataframe(
+                courses_df[['과정명', '누적매출(억)', '수강신청 인원']].reset_index(drop=True),
+                use_container_width=True
+            )
+            
+            # 과정별 매출 시각화 (상위 5개)
+            if not courses_df.empty:
+                fig = px.bar(
+                    courses_df.head(5),  # 상위 5개 과정만 표시
+                    x='과정명',
+                    y='누적매출(억)',
+                    text='누적매출(억)',
+                    title=f"{institution}의 과정별 매출 (상위 5개)",
+                    color='누적매출(억)',
+                    color_continuous_scale='Greens'
+                )
+                fig.update_traces(texttemplate='%{text:.1f}억', textposition='outside')
+                fig.update_layout(xaxis_tickangle=-45)
+                st.plotly_chart(fig, use_container_width=True)
+
+                # JavaScript 코드 삽입
+                js_code = """
+                <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    // Streamlit이 로드된 후에 테이블 셀에 이벤트 리스너 추가
+                    setTimeout(function() {
+                        const tables = document.querySelectorAll('.stDataFrame table');
+                        if (tables.length > 0) {
+                            const firstTable = tables[0];
+                            const rows = firstTable.querySelectorAll('tbody tr');
+                            
+                            rows.forEach(row => {
+                                row.style.cursor = 'pointer';
+                                row.addEventListener('click', function() {
+                                    const cells = this.querySelectorAll('td');
+                                    if (cells.length > 0) {
+                                        const institution = cells[0].textContent.trim();
+                                        // 해당 기관명을 가진 expander 찾기
+                                        const expanders = document.querySelectorAll('.streamlit-expanderHeader');
+                                        for (let expander of expanders) {
+                                            if (expander.textContent.includes(institution)) {
+                                                // 스크롤하여 expander로 이동
+                                                expander.scrollIntoView({ behavior: 'smooth' });
+                                                // expander가 닫혀있으면 클릭하여 열기
+                                                if (!expander.parentElement.classList.contains('streamlit-expander--expanded')) {
+                                                    setTimeout(() => {
+                                                        expander.click();
+                                                    }, 300);
+                                                }
+                                                break;
+                                            }
+                                        }
+                                    }
+                                });
+                            });
+                        }
+                    }, 1000); // Streamlit이 DOM을 완전히 렌더링할 시간 부여
+                });
+                </script>
+                """
+                
+    # JavaScript 코드 삽입
+    st.components.v1.html(js_code, height=0)
 
 
 def main():
