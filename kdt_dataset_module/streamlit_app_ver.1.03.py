@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import altair as alt
+import plotly.express as px
 from datetime import datetime
 import requests
 import io
@@ -26,11 +27,137 @@ class NumpyEncoder(json.JSONEncoder):
 # utils 모듈에서 함수 직접 임포트 (가독성 및 명시성 향상)
 from utils.data_loader import load_data_from_github
 from utils.data_preprocessing import preprocess_data
-from utils.data import calculate_yearly_revenue, apply_adjusted_revenue, create_monthly_only_revenue_chart, create_monthly_revenue_chart, create_monthly_revenue_chart_adjusted
+from utils.data import calculate_yearly_revenue, apply_adjusted_revenue
 from utils.institution_grouping import group_institutions_advanced
 from utils.training_type_classification import classify_training_type
 from visualization.reports import analyze_training_institution, analyze_course, analyze_ncs, analyze_top5_institutions
-from visualization.charts import create_monthly_revenue_chart, create_monthly_revenue_summary_chart
+from visualization.charts import create_monthly_revenue_summary_chart
+
+# 차트 함수 직접 구현
+# 월별 매출 차트 생성 함수
+def create_monthly_revenue_chart(df, selected_year):
+    # 선택된 연도의 데이터만 필터링
+    year_df = df[df['연도'] == selected_year].copy()
+    
+    # 월별 매출 계산
+    monthly_revenue = year_df.groupby('월')['누적매출'].sum().reset_index()
+    monthly_revenue['매출(억원)'] = monthly_revenue['누적매출'] / 100000000  # 억원 단위로 변환
+    
+    # 피보팅 테이블 생성
+    chart = alt.Chart(monthly_revenue).mark_bar().encode(
+        x=alt.X('월:O', title='월'),
+        y=alt.Y('매출(억원):Q', title='매출 (억원)'),
+        tooltip=['월:O', alt.Tooltip('매출(억원):Q', format='.1f')]
+    ).properties(
+        title=f'{selected_year}년 월별 매출',
+        width=600
+    )
+    
+    return chart
+
+# 월별 누적 매출 차트 생성 함수
+def create_monthly_only_revenue_chart(df, selected_year):
+    # 선택된 연도의 데이터만 필터링
+    year_df = df[df['연도'] == selected_year].copy()
+    
+    # 월별 매출 계산
+    monthly_revenue = year_df.groupby('월')['누적매출'].sum().reset_index()
+    monthly_revenue['매출(억원)'] = monthly_revenue['누적매출'] / 100000000  # 억원 단위로 변환
+    
+    # 누적 계산
+    monthly_revenue = monthly_revenue.sort_values('월')
+    monthly_revenue['누적 매출(억원)'] = monthly_revenue['매출(억원)'].cumsum()
+    
+    # 피보팅 테이블 생성
+    chart = alt.Chart(monthly_revenue).mark_line(point=True).encode(
+        x=alt.X('월:O', title='월'),
+        y=alt.Y('누적 매출(억원):Q', title='누적 매출 (억원)'),
+        tooltip=['월:O', alt.Tooltip('누적 매출(억원):Q', format='.1f')]
+    ).properties(
+        title=f'{selected_year}년 월별 누적 매출',
+        width=600
+    )
+    
+    return chart
+
+# 조정된 매출 기준 월별 매출 차트 생성 함수
+def create_monthly_revenue_chart_adjusted(df, selected_year):
+    # 기본 차트 함수 사용 (조정된 매출은 이미 df에 적용되어 있음)
+    return create_monthly_revenue_chart(df, selected_year)
+
+# 월별 랭킹 컴포넌트 생성 함수
+def create_monthly_ranking_component(df):
+    # 필요한 컬럼 존재 여부 확인 및 디버깅 메시지 추가
+    missing_columns = []
+    for col in ['훈련기관', '연월', '누적매출']:
+        if col not in df.columns:
+            missing_columns.append(col)
+    
+    if missing_columns:
+        print(f"월별 랭킹 컴포넌트 생성 실패: 다음 컬럼이 없습니다 - {', '.join(missing_columns)}")
+        print(f"사용 가능한 컬럼: {df.columns.tolist()}")
+        return None
+    
+    # 데이터 유효성 검사 - 누적매출이 숫자형인지 확인
+    if not pd.api.types.is_numeric_dtype(df['누적매출']):
+        df['누적매출'] = pd.to_numeric(df['누적매출'], errors='coerce')
+        # NaN 값 제거
+        df = df.dropna(subset=['누적매출'])
+        
+    if df.empty:
+        print("월별 랭킹 컴포넌트 생성 실패: 유효한 데이터가 없습니다.")
+        return None
+    
+    # 훈련기관별 월별 매출 집계
+    monthly_revenue = df.groupby(['연월', '훈련기관'])['누적매출'].sum().reset_index()
+    
+    if monthly_revenue.empty:
+        print("월별 랭킹 컴포넌트 생성 실패: 그룹핑 후 데이터가 없습니다.")
+        return None
+    
+    # 연월별 상위 10개 기관 추출
+    top_institutions_by_month = {}
+    for month in monthly_revenue['연월'].unique():
+        month_data = monthly_revenue[monthly_revenue['연월'] == month]
+        top_institutions = month_data.sort_values('누적매출', ascending=False).head(10)
+        top_institutions['매출(억원)'] = (top_institutions['누적매출'] / 100000000).round(1)  # 억원 단위 변환
+        top_institutions_by_month[month] = top_institutions
+    
+    if not top_institutions_by_month:
+        print("월별 랭킹 컴포넌트 생성 실패: 추출된 상위 기관 데이터가 없습니다.")
+        return None
+    
+    # HTML 테이블 생성
+    html_content = '<div style="max-width: 100%; overflow-x: auto;">\n'
+    html_content += '<style>\n'
+    html_content += 'table { border-collapse: collapse; width: 100%; }\n'
+    html_content += 'th, td { padding: 8px; text-align: left; }\n'
+    html_content += 'th { background-color: #f2f2f2; position: sticky; top: 0; }\n'
+    html_content += 'tr:nth-child(even) { background-color: #f9f9f9; }\n'
+    html_content += 'tr:hover { background-color: #eaeaea; }\n'
+    html_content += '</style>\n'
+    
+    # 랭킹 테이블 생성
+    for month, top_data in sorted(top_institutions_by_month.items(), reverse=True):
+        try:
+            year, month_num = month.split('-')
+            html_content += f'<h3>{year}년 {int(month_num)}월 상위 훈련기관</h3>\n'
+        except ValueError:
+            # 연월 형식이 예상과 다른 경우 처리
+            html_content += f'<h3>{month} 상위 훈련기관</h3>\n'
+            
+        html_content += '<table>\n'
+        html_content += '<tr><th>순위</th><th>훈련기관</th><th>매출(억원)</th></tr>\n'
+        
+        for i, (_, row) in enumerate(top_data.iterrows(), 1):
+            html_content += f'<tr><td>{i}</td><td>{row["훈련기관"]}</td><td>{row["매출(억원)"]}억원</td></tr>\n'
+        
+        html_content += '</table>\n'
+        html_content += '<hr>\n'
+    
+    html_content += '</div>'
+    
+    return html_content
 
 @st.cache_data
 def create_ranking_component(df, yearly_data):
@@ -144,18 +271,26 @@ def create_ranking_component(df, yearly_data):
         })
 
     def calculate_completion_rate(year=None):
-        """연도별 수료율 계산 - 과정종료일 기준"""
+        """연도별 수료율 계산 - 과정종료일 기준, 3주 이내 종료된 과정은 제외"""
+        current_date = pd.Timestamp.now()
+        # 3주 전 날짜 계산 (21일)
+        three_weeks_ago = current_date - pd.Timedelta(days=21)
+        
         if year:
             # 해당 연도에 종료된 과정만 필터링
             year_data = df[pd.to_datetime(df['과정종료일']).dt.year == int(year)]
+            # 종료일이 3주 이전인 과정만 포함 (최근 3주 내 종료된 과정 제외)
+            year_data = year_data[pd.to_datetime(year_data['과정종료일']) < three_weeks_ago]
             # 수료인원이 0인 과정 제외
             valid_data = year_data[year_data['수료인원'] > 0]
             if len(valid_data) == 0:
                 return 0
             completion_rate = (valid_data['수료인원'].sum() / valid_data['수강신청 인원'].sum()) * 100
         else:
-            # 전체 기간 중 종료된 과정만 필터링
-            completed_data = df[pd.to_datetime(df['과정종료일']) <= pd.Timestamp.now()]
+            # 전체 기간 중 종료된 과정만 필터링 (현재 날짜 이전)
+            completed_data = df[pd.to_datetime(df['과정종료일']) <= current_date]
+            # 종료일이 3주 이전인 과정만 포함 (최근 3주 내 종료된 과정 제외)
+            completed_data = completed_data[pd.to_datetime(completed_data['과정종료일']) < three_weeks_ago]
             # 수료인원이 0인 과정 제외
             valid_data = completed_data[completed_data['수료인원'] > 0]
             if len(valid_data) == 0:
@@ -938,7 +1073,7 @@ def create_monthly_performance_summary(df_for_summary, use_adjusted_revenue_flag
         return
 
     # '누적매출' 컬럼은 이미 main 함수에서 use_adjusted_revenue_flag에 따라 조정된 상태로 전달됨
-    total_revenue_for_month_display = monthly_filtered_data['누적매출'].sum() * 10 # 최종 표시는 10배수
+    total_revenue_for_month_display = monthly_filtered_data['누적매출'].sum() # 최종 표시는 10배수
     total_students_for_month_display = monthly_filtered_data['수강신청 인원'].sum()
     adj_text_display = " (수료율 조정 적용)" if use_adjusted_revenue_flag else ""
 
@@ -962,7 +1097,7 @@ def create_monthly_performance_summary(df_for_summary, use_adjusted_revenue_flag
     ).reset_index()
 
     # 매출액 10배수 및 억원 단위 변환 (표시용)
-    institution_summary_perf['매출액(억)'] = institution_summary_perf['total_revenue_inst'] * 10 / 100000000
+    institution_summary_perf['매출액(억)'] = institution_summary_perf['total_revenue_inst'] / 100000000
 
     # Top N 기관 필터링 및 표시
     top_n_institutions_display = institution_summary_perf.sort_values('매출액(억)', ascending=False).head(top_n)
@@ -1020,7 +1155,7 @@ def render_institution_info(data, show_leading_only=False):
                 # 카드 콘텐츠
                 institution_name = row['훈련기관']
                 course_count = int(row['과정명'])
-                revenue = row['누적매출'] * 10  # 실제 금액(10배)으로 표시
+                revenue = row['누적매출'] # 실제 금액(10배)으로 표시
                 satisfaction = row['만족도']
                 
                 # 매출액 포맷팅 (10억 단위)
@@ -1122,8 +1257,9 @@ def visualize_by_institutions(df):
         if selected_institution:
             st.markdown(f"### {selected_institution} 상세 분석")
             
-            # 선택된 훈련기관 데이터
-            selected_data = filtered_df[filtered_df['훈련기관'] == selected_institution]
+            # 선택된 훈련기관 데이터 - 원본 데이터(df)에서 직접 가져와 필터링
+            # 이렇게 하면 훈련유형 선택에 영향을 받지 않고 메인 컴포넌트와 동일한 결과값 산출
+            selected_data = df[df['훈련기관'] == selected_institution]
             
             # 연도별 데이터 준비
             year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'20\d{2}년$', col)]
@@ -1134,27 +1270,35 @@ def visualize_by_institutions(df):
             yearly_normal = {}
             
             for year in year_columns:
-                year_data = selected_data[selected_data['훈련연도'] == int(year[:4])]
-                leading_data = year_data[year_data['훈련유형'].str.contains('선도기업형 훈련', na=False)]
-                normal_data = year_data[~year_data['훈련유형'].str.contains('선도기업형 훈련', na=False)]
+                # 연도를 기준으로 필터링하지 않고 직접 각 연도 컬럼 값 합산
+                yearly_revenue[year] = selected_data[year].sum()
                 
-                yearly_revenue[year] = year_data[year].sum()
-                yearly_leading[year] = leading_data[year].sum()
-                yearly_normal[year] = normal_data[year].sum()
+                # 선도기업형 훈련 필터링
+                leading_data = selected_data[selected_data['훈련유형'].str.contains('선도기업형 훈련', na=False)]
+                yearly_leading[year] = leading_data[year].sum() if not leading_data.empty else 0
+                
+                # 일반KDT 훈련 필터링
+                normal_data = selected_data[~selected_data['훈련유형'].str.contains('선도기업형 훈련', na=False)]
+                yearly_normal[year] = normal_data[year].sum() if not normal_data.empty else 0
             
             # 매출 정보 표시
             col1, col2, col3 = st.columns(3)
             with col1:
-                total_revenue = sum(yearly_revenue.values())
+                # 누적매출 컬럼을 사용하여 계산 (메인 컴포넌트와 동일한 방식)
+                total_revenue = selected_data['누적매출'].sum()
                 st.metric("총 매출", format_revenue(total_revenue))
             with col2:
-                total_leading = sum(yearly_leading.values())
+                # 선도기업형 매출 계산 (누적매출 컬럼 사용)
+                leading_data = selected_data[selected_data['훈련유형'].str.contains('선도기업형 훈련', na=False)]
+                total_leading = leading_data['누적매출'].sum() if not leading_data.empty else 0
                 st.metric("선도기업형 매출", format_revenue(total_leading))
             with col3:
-                total_normal = sum(yearly_normal.values())
+                # 일반KDT 매출 계산 (누적매출 컬럼 사용)
+                normal_data = selected_data[~selected_data['훈련유형'].str.contains('선도기업형 훈련', na=False)]
+                total_normal = normal_data['누적매출'].sum() if not normal_data.empty else 0
                 st.metric("일반KDT 매출", format_revenue(total_normal))
             
-            # 연도별 매출 추이 차트
+            # 연도별 매출 추이 차트 (동일한 방식으로 유지하지만, 이후 연도별 집계에는 연도별 컬럼 필요)
             yearly_data = pd.DataFrame({
                 '연도': [year[:4] for year in year_columns],
                 '총매출': [yearly_revenue[year] for year in year_columns],
@@ -1179,30 +1323,55 @@ def visualize_by_institutions(df):
             
             # 비교 기관이 있는 경우 비교 차트 표시
             if compare_institution:
-                compare_data = filtered_df[filtered_df['훈련기관'] == compare_institution]
+                # 비교 기관 데이터도 원본 데이터(df)에서 직접 가져오도록 수정
+                compare_data = df[df['훈련기관'] == compare_institution]
                 
-                # 비교 기관의 연도별 매출 계산
+                # 비교 기관의 데이터 계산
+                # 연도별 차트를 위한 연도별 매출 계산
                 compare_yearly_revenue = {}
                 compare_yearly_leading = {}
                 compare_yearly_normal = {}
                 
+                # 연도별 차트를 위해 연도별 컬럼 데이터 계산 유지
                 for year in year_columns:
-                    year_data = compare_data[compare_data['훈련연도'] == int(year[:4])]
-                    leading_data = year_data[year_data['훈련유형'].str.contains('선도기업형 훈련', na=False)]
-                    normal_data = year_data[~year_data['훈련유형'].str.contains('선도기업형 훈련', na=False)]
+                    # 연도별 컬럼 값 직접 합산
+                    compare_yearly_revenue[year] = compare_data[year].sum()
                     
-                    compare_yearly_revenue[year] = year_data[year].sum()
-                    compare_yearly_leading[year] = leading_data[year].sum() * 0.1
-                    compare_yearly_normal[year] = normal_data[year].sum()
+                    # 선도기업형 훈련 필터링
+                    leading_data = compare_data[compare_data['훈련유형'].str.contains('선도기업형 훈련', na=False)]
+                    compare_yearly_leading[year] = leading_data[year].sum() if not leading_data.empty else 0
+                    
+                    # 일반KDT 훈련 필터링
+                    normal_data = compare_data[~compare_data['훈련유형'].str.contains('선도기업형 훈련', na=False)]
+                    compare_yearly_normal[year] = normal_data[year].sum() if not normal_data.empty else 0
                 
-                # 비교 차트 데이터 준비
-                comparison_data = pd.DataFrame({
-                    '연도': [year[:4] for year in year_columns],
-                    '훈련기관': [selected_institution] * len(year_columns) + [compare_institution] * len(year_columns),
-                    '총매출': [yearly_revenue[year] for year in year_columns] + [compare_yearly_revenue[year] for year in year_columns],
-                    '선도기업형': [yearly_leading[year] for year in year_columns] + [compare_yearly_leading[year] for year in year_columns],
-                    '일반KDT': [yearly_normal[year] for year in year_columns] + [compare_yearly_normal[year] for year in year_columns]
-                })
+                # 비교 차트 데이터 준비 (데이터 형태 변경)
+                # 각 훈련기관별 데이터를 별도로 생성한 후 합치는 방식으로 변경
+                inst1_data = []
+                inst2_data = []
+                
+                # 선택된 훈련기관 데이터
+                for year in year_columns:
+                    inst1_data.append({
+                        '연도': year[:4],
+                        '훈련기관': selected_institution,
+                        '총매출': yearly_revenue[year],
+                        '선도기업형': yearly_leading[year],
+                        '일반KDT': yearly_normal[year]
+                    })
+                
+                # 비교 훈련기관 데이터
+                for year in year_columns:
+                    inst2_data.append({
+                        '연도': year[:4],
+                        '훈련기관': compare_institution,
+                        '총매출': compare_yearly_revenue[year],
+                        '선도기업형': compare_yearly_leading[year],
+                        '일반KDT': compare_yearly_normal[year]
+                    })
+                
+                # 두 기관 데이터 합치기
+                comparison_data = pd.DataFrame(inst1_data + inst2_data)
                 
                 # 비교 차트 표시 (누적 막대 차트로 변경)
                 fig = px.bar(
@@ -1402,26 +1571,109 @@ def create_monthly_ranking_component(df):
     with col2:
         selected_month = st.selectbox("월 선택", list(range(1, 13)), format_func=lambda x: f"{x}월")
 
-    # 필터링
+    # 필터링 및 매출액 계산 개선
+    # 중요: 월별 매출 요약에서는 "실제로 그 월에 개강한" 과정 중 유효한 과정만 포함하여 매출액을 계산합니다.
+    
+    # 데이터 타입 변환 추가 - 수치형 컬럼 변환
+    if '수강신청 인원' in df.columns:
+        df['수강신청 인원'] = pd.to_numeric(df['수강신청 인원'], errors='coerce').fillna(0)
+    
+    if '누적매출' in df.columns:
+        # 문자열이 있을 수 있으므로 숫자형으로 변환
+        df['누적매출'] = pd.to_numeric(df['누적매출'], errors='coerce').fillna(0)
+    
+    # 1. 과정 시작일이 선택한 연도/월에 해당하는 과정만 필터링 (개강 기준)
     monthly_df = df[(df['연도'] == selected_year) & (df['월'] == selected_month)]
-
+    
+    # 2. 수강신청 인원이 0보다 큰 과정만 포함 (중요: 실제 수강신청 인원이 있는 과정만 포함)
+    if '수강신청 인원' in monthly_df.columns:
+        monthly_df = monthly_df[monthly_df['수강신청 인원'] > 0]
+    
+    # 3. 누적매출이 0보다 크고 null이 아닌 과정만 포함
+    if '누적매출' in monthly_df.columns:
+        monthly_df = monthly_df[(monthly_df['누적매출'] > 0)]
+    
+    # 4. 중복 과정 제거 - 훈련기관, 과정명, 과정시작일 기준
+    if '과정ID' in monthly_df.columns:
+        monthly_df = monthly_df.drop_duplicates(subset=['과정ID'])
+    else:
+        monthly_df = monthly_df.drop_duplicates(subset=['훈련기관', '과정명', '과정시작일'])
+    
+    # 5. 추가 데이터 검사 - 과정 시작일과 종료일 확인
+    # 과정 시작일과 종료일이 합리적인 과정만 포함
+    if '과정시작일' in monthly_df.columns and '과정종료일' in monthly_df.columns:
+        # 날짜 형식 확인
+        monthly_df['과정시작일'] = pd.to_datetime(monthly_df['과정시작일'], errors='coerce')
+        monthly_df['과정종료일'] = pd.to_datetime(monthly_df['과정종료일'], errors='coerce')
+        
+        # null 값 제거
+        monthly_df = monthly_df[monthly_df['과정시작일'].notna() & monthly_df['과정종료일'].notna()]
+        
+        # 시작일이 종료일보다 이전인지 확인
+        monthly_df = monthly_df[monthly_df['과정시작일'] < monthly_df['과정종료일']]
+    
+    # 6. 매출액 계산 방식 - '누적매출' 필드 사용
+    # 해당 월에 개강한 과정의 전체 누적매출을 사용
+    if '누적매출' not in monthly_df.columns:
+        st.error("누적매출 필드가 데이터에 없습니다.")
+        return
+        
     if monthly_df.empty:
-        st.info(f"{selected_year}년 {selected_month}월에 해당하는 과정이 없습니다.")
+        st.info(f"{selected_year}년 {selected_month}월에 해당하는 유효한 과정이 없습니다.")
         return
 
-    # 기관별 집계
+    # monthly_df.empty 체크는 위에서 이미 함
+
+    # 수강신청 인원이 0인 과정 추가 확인 및 제거
+    if '수강신청 인원' in monthly_df.columns:
+        if monthly_df[monthly_df['수강신청 인원'] == 0].shape[0] > 0:
+            st.warning(f"수강신청 인원이 0인 과정 {monthly_df[monthly_df['수강신청 인원'] == 0].shape[0]}개가 제외되었습니다.")
+        monthly_df = monthly_df[monthly_df['수강신청 인원'] > 0]
+        
+    # 데이터 타입 변환 확인
+    for col in ['누적매출', '수강신청 인원', '수료인원']:
+        if col in monthly_df.columns:
+            monthly_df[col] = pd.to_numeric(monthly_df[col], errors='coerce').fillna(0)
+            
+    # 중복 과정 추가 확인 및 제거
+    if '과정ID' in monthly_df.columns:
+        duplicates = monthly_df[monthly_df.duplicated(subset=['과정ID'], keep=False)]
+        if not duplicates.empty:
+            st.warning(f"{duplicates.shape[0]}개의 중복 과정이 발견되어 제거되었습니다.")
+    elif all(col in monthly_df.columns for col in ['훈련기관', '과정명', '과정시작일']):
+        duplicates = monthly_df[monthly_df.duplicated(subset=['훈련기관', '과정명', '과정시작일'], keep=False)]
+        if not duplicates.empty:
+            st.warning(f"{duplicates.shape[0]}개의 중복 과정이 발견되어 제거되었습니다.")
+    
+    # 기관별 집계 - 누적매출 필드 사용
+    # 중요: 여기서 기관별 매출 계산이 이루어짐
     ranking_df = monthly_df.groupby('훈련기관').agg({
-        '누적매출': 'sum',
+        '누적매출': 'sum',  # 누적매출 사용 (훈련기관 분석과 동일)
         '수강신청 인원': 'sum',
-        '과정명': 'count'  # 과정 갯수 추가
-    }).reset_index().rename(columns={'누적매출': '총매출', '수강신청 인원': '총인원', '과정명': '과정 갯수'})
-
+        '수료인원': 'sum',  # 수료인원 추가
+        '과정명': 'count'  # 과정 개수 추가
+    }).reset_index().rename(columns={
+        '누적매출': '총매출', 
+        '수강신청 인원': '총인원', 
+        '수료인원': '총수료인원',
+        '과정명': '과정 개수'})
+    
+    # 억단위 표시를 위한 계산 (반올림하여 1억 단위로 표시)
+    ranking_df['총매출(억)'] = (ranking_df['총매출'] / 100000000).round(1)
+    
+    # 매출 데이터 추가 검증
+    if ranking_df['총매출'].max() > 1000000000000:  # 1조원 이상인 경우
+        st.warning(f"비정상적으로 큰 매출액이 발견되었습니다: {ranking_df['총매출'].max() / 100000000:.1f}억원")
+    
+    # 수료율 계산
+    ranking_df['수료율'] = (ranking_df['총수료인원'] / ranking_df['총인원'] * 100).round(1)
+    
+    # 매출액 기준 정렬
     ranking_df = ranking_df.sort_values('총매출', ascending=False)
-    ranking_df['총매출(억)'] = ranking_df['총매출'] / 100000000
 
-    # 표 표시
+    # 표 표시 (수료율 컬럼 추가)
     st.dataframe(
-        ranking_df[['훈련기관', '총매출(억)', '총인원', '과정 갯수']].reset_index(drop=True),
+        ranking_df[['훈련기관', '총매출(억)', '총인원', '총수료인원', '수료율', '과정 개수']].reset_index(drop=True),
         use_container_width=True
     )
 
@@ -1448,17 +1700,44 @@ def create_monthly_ranking_component(df):
         institution = row['훈련기관']
         total_revenue = row['총매출(억)']
         total_students = row['총인원']
-        course_count = row['과정 갯수']
+        total_completed = row['총수료인원']
+        completion_rate = row['수료율']
+        course_count = row['과정 개수']
         
-        with st.expander(f"**{institution}** - 매출: {total_revenue:.1f}억원 | 수강생: {total_students}명 | 과정 수: {course_count}개"):
+        # 수료율 정보 추가
+        with st.expander(f"**{institution}** - 매출: {total_revenue:.1f}억원 | 수강생: {total_students}명 | 수료인원: {total_completed}명 | 수료율: {completion_rate}% | 과정 수: {course_count}개"):
             # 해당 기관의 과정 목록 가져오기
             courses_df = monthly_df[monthly_df['훈련기관'] == institution]
-            courses_df = courses_df.sort_values('누적매출', ascending=False)
-            courses_df['누적매출(억)'] = courses_df['누적매출'] / 100000000
+            # 누적매출 기준 정렬 (훈련기관 분석과 동일)
+            # 기관별 과정 데이터에서 수강신청 인원 0인 과정 제거
+            if '수강신청 인원' in courses_df.columns:
+                courses_df = courses_df[courses_df['수강신청 인원'] > 0]
+                
+            # 데이터 타입 변환 확인
+            for col in ['누적매출', '수강신청 인원', '수료인원']:
+                if col in courses_df.columns:
+                    courses_df[col] = pd.to_numeric(courses_df[col], errors='coerce').fillna(0)
             
-            # 과정 목록 테이블 표시
+            # 누적매출 기준 정렬 - 해당 과정의 전체 매출액 기준
+            courses_df = courses_df.sort_values('누적매출', ascending=False)
+            
+            # 억단위로 변환 (반올림하여 1억 단위로 표시)
+            # 각 과정의 전체 기간 매출액을 1억 단위로 표시
+            courses_df['매출액(억)'] = (courses_df['누적매출'] / 100000000).round(1)  # 누적매출 사용
+            
+            # 비정상적으로 큰 매출액 검사
+            if not courses_df.empty and courses_df['매출액(억)'].max() > 1000:
+                # 1000억 원 이상의 비정상적인 과정 발견 시 경고
+                abnormal_courses = courses_df[courses_df['매출액(억)'] > 1000]
+                for _, row in abnormal_courses.iterrows():
+                    st.warning(f"비정상적으로 큰 매출액이 발견되었습니다: {row['과정명']} - {row['매출액(억)']:.1f}억원")
+            
+            # 과정별 수료율 계산
+            courses_df['수료율'] = (courses_df['수료인원'] / courses_df['수강신청 인원'] * 100).round(1)
+            
+            # 과정 목록 테이블 표시 (수료율 컬럼 추가)
             st.dataframe(
-                courses_df[['과정명', '누적매출(억)', '수강신청 인원']].reset_index(drop=True),
+                courses_df[['과정명', '매출액(억)', '수강신청 인원', '수료인원', '수료율']].reset_index(drop=True),
                 use_container_width=True
             )
             
@@ -1467,10 +1746,10 @@ def create_monthly_ranking_component(df):
                 fig = px.bar(
                     courses_df.head(5),  # 상위 5개 과정만 표시
                     x='과정명',
-                    y='누적매출(억)',
-                    text='누적매출(억)',
+                    y='매출액(억)',
+                    text='매출액(억)',
                     title=f"{institution}의 과정별 매출 (상위 5개)",
-                    color='누적매출(억)',
+                    color='매출액(억)',
                     color_continuous_scale='Greens'
                 )
                 fig.update_traces(texttemplate='%{text:.1f}억', textposition='outside')
@@ -1592,9 +1871,10 @@ def main():
         df, yearly_data = calculate_yearly_revenue(df)
 
         # 사이드바에서 분석 유형 선택
-        analysis_type = st.sidebar.selectbox(
-            "분석 유형 선택",
-            ["훈련기관 분석", "과정 분석", "NCS 분석", "월별 매출 분석"]
+        analysis_type = st.sidebar.radio(
+            "분석 유형",
+            ["훈련기관 분석", "월별 매출 분석", "NCS 분석", "전체 매출 분석", "훈련과정 분석"],
+            index=0
         )
 
         st.markdown("""
@@ -1627,7 +1907,7 @@ def main():
                     {js_code}
                 </div>
             """
-            html(js_code, height=800)
+            st.components.v1.html(js_code, height=800)
 
             # 선도기업 비중 및 SSAFY 사업 분류 시각화
             calculate_and_visualize_revenue(df)
@@ -1635,13 +1915,14 @@ def main():
             visualize_by_institutions(df)
 
             analyze_top5_institutions(df, yearly_data)
-            
             # 원래 df로 복구 (다른 분석 페이지를 위해)
             if use_adjusted_revenue:
                 df = original_df.copy()
 
-        elif analysis_type == "과정 분석":
-            # 매출 계산 방식 안내
+        elif analysis_type == "NCS 분석":
+            st.title("NCS 분석")
+            
+            # 조정된 데이터 사용 시 df를 업데이트
             if use_adjusted_revenue:
                 st.info("""
                     **수료율 기반 조정 매출을 사용 중입니다.**
@@ -1651,28 +1932,46 @@ def main():
                     - 수료율 기반 조정은 통합 수료율과 실제 수료인원을 기준으로 매출을 재계산
                     - 수료율이 평균보다 높은 과정은 추가 가중치를 부여하여 실제 매출에 가깝게 조정
                 """)
+                
                 # 조정된 매출로 df 업데이트
                 adjusted_df = apply_adjusted_revenue(df)
-                original_df = df.copy()
+                temp_df = df.copy()
                 df['누적매출'] = adjusted_df['조정_누적매출']
                 
                 # 연도별 매출 컬럼도 업데이트
-                year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'20\d{2}년$', col)]
+                year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'20\d{2}\ub144$', col)]
                 for year in year_columns:
                     if f'조정_{year}' in adjusted_df.columns:
                         df[year] = adjusted_df[f'조정_{year}']
-                
+                        
                 # 연도별 매출 재계산
                 df, yearly_data = calculate_yearly_revenue(df)
-
-            analyze_course(df, yearly_data)
+                
+                # 원본 데이터 보관
+                original_df = df.copy()
             
-            # 원래 df로 복구
-            if use_adjusted_revenue:
-                df = original_df.copy()
+            try:
+                # NCS 랭킹 컴포넌트 생성 및 표시
+                js_code = create_ncs_ranking_component(df)
+                if js_code:
+                    st.components.v1.html(js_code, height=800)
+                # calculate_and_visualize_revenue(df)
 
-        elif analysis_type == "NCS 분석":
-            # 매출 계산 방식 안내
+                # NCS명 입력 받기
+                ncs_name = st.text_input("NCS명 검색")
+
+                analyze_ncs(df, yearly_data, ncs_name)  # ncs_name 전달
+                
+                # 원래 df로 복구
+                if use_adjusted_revenue:
+                    df = original_df.copy()
+            except Exception as e:
+                st.error(f"NCS 분석 중 오류가 발생했습니다: {e}")
+                import traceback
+                st.error(traceback.format_exc())
+                
+        elif analysis_type == "훈련과정 분석":
+            # 수료율 기반 조정 매출 안내
             if use_adjusted_revenue:
                 st.info("""
                     **수료율 기반 조정 매출을 사용 중입니다.**
@@ -1682,35 +1981,36 @@ def main():
                     - 수료율 기반 조정은 통합 수료율과 실제 수료인원을 기준으로 매출을 재계산
                     - 수료율이 평균보다 높은 과정은 추가 가중치를 부여하여 실제 매출에 가깝게 조정
                 """)
-            # 조정된 매출로 df 업데이트
-            adjusted_df = apply_adjusted_revenue(df)
-            original_df = df.copy()
-            df['누적매출'] = adjusted_df['조정_누적매출']
+                
+                # 조정된 매출로 df 업데이트
+                adjusted_df = apply_adjusted_revenue(df)
+                temp_df = df.copy()
+                df['누적매출'] = adjusted_df['조정_누적매출']
+                
+                # 연도별 매출 컬럼도 업데이트
+                year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'20\d{2}\ub144$', col)]
+                for year in year_columns:
+                    if f'조정_{year}' in adjusted_df.columns:
+                        df[year] = adjusted_df[f'조정_{year}']
+                        
+                # 연도별 매출 재계산
+                df, yearly_data = calculate_yearly_revenue(df)
+                
+                # 원본 데이터 보관
+                original_df = df.copy()
             
-            # 연도별 매출 컬럼도 업데이트
-            year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'20\d{2}년$', col)]
-            for year in year_columns:
-                if f'조정_{year}' in adjusted_df.columns:
-                    df[year] = adjusted_df[f'조정_{year}']
-            
-            # 연도별 매출 재계산
-            df, yearly_data = calculate_yearly_revenue(df)
-            
-            # NCS 랭킹 컴포넌트 생성 및 표시
-            js_code = create_ncs_ranking_component(df)
-            if js_code:
-                html(js_code, height=800)
-            # calculate_and_visualize_revenue(df)
-
-            # NCS명 입력 받기
-            ncs_name = st.text_input("NCS명 검색")
-
-            analyze_ncs(df, yearly_data, ncs_name)  # ncs_name 전달
-            
-            # 원래 df로 복구
-            if use_adjusted_revenue:
-                df = original_df.copy()
-
+            try:
+                # 훈련과정 분석 함수 호출
+                analyze_courses(df)
+                
+                # 원래 df로 복구
+                if use_adjusted_revenue:
+                    df = original_df.copy()
+            except Exception as e:
+                st.error(f"훈련과정 분석 중 오류가 발생했습니다: {e}")
+                import traceback
+                st.error(traceback.format_exc())
+                
         elif analysis_type == "월별 매출 분석":
             st.title("월별 매출 분석")
             
@@ -1793,7 +2093,7 @@ def main():
                     monthly_adjusted_data = monthly_adjusted_data.sort_values('월_정렬')
                     
                     # 실제 금액(10배)으로 표시
-                    monthly_adjusted_data['조정_매출(억)'] = monthly_adjusted_data['조정_누적매출'] * 10 / 100000000
+                    monthly_adjusted_data['조정_매출(억)'] = monthly_adjusted_data['조정_누적매출'] / 100000000
                     
                     # 차트 생성
                     base = alt.Chart(monthly_adjusted_data).encode(
@@ -1853,11 +2153,26 @@ def main():
                     monthly_adjusted = []
                     for _, row in monthly_data.iterrows():
                         month = row['월']
-                        month_df = temp_df[pd.to_datetime(temp_df['과정시작일']).dt.to_period('M').astype(str) == month]
+                        # 월별 분석용 데이터프레임에서 해당 월 데이터 추출
+                        # 안전하게 이미 확인된 컬럼만 사용
+                        try:
+                            # 월 컬럼 사용 시도
+                            if '월' in df.columns:
+                                month_df = df[df['월'].astype(str) == month.split('-')[-1] if '-' in month else month]
+                            # 과정시작일 컬럼 사용 시도
+                            elif '과정시작일' in df.columns:
+                                month_df = df[pd.to_datetime(df['과정시작일']).dt.to_period('M').astype(str) == month]
+                            else:
+                                # 둘 다 없으면 빈 데이터프레임 사용
+                                month_df = pd.DataFrame()
+                        except Exception as e:
+                            st.warning(f"월별 데이터 추출 오류: {e}")
+                            month_df = pd.DataFrame()
                         
                         if not month_df.empty:
                             adjusted_month_df = apply_adjusted_revenue(month_df, current_date)
-                            adjusted_sum = adjusted_month_df['조정_누적매출'].sum() * 10 / 100000000
+                            # 10배 곱하기 제거하여 올바른 금액 계산 (억원 단위로 변환)
+                            adjusted_sum = adjusted_month_df['조정_누적매출'].sum() / 100000000
                             monthly_adjusted.append({
                                 '월': month,
                                 '매출(억)': adjusted_sum,
@@ -1944,7 +2259,7 @@ def main():
                             monthly_inst_data = monthly_inst_data.sort_values('월_정렬')
                             
                             # 실제 금액(10배)으로 표시
-                            monthly_inst_data['조정_매출(억)'] = monthly_inst_data['조정_누적매출'] * 10 / 100000000
+                            monthly_inst_data['조정_매출(억)'] = monthly_inst_data['조정_누적매출'] / 100000000
                             
                             # 차트 생성
                             base = alt.Chart(monthly_inst_data).encode(
@@ -1995,7 +2310,7 @@ def main():
                     if use_adjusted_revenue:
                         orig_inst_data = temp_df[temp_df['훈련기관'] == selected_institution]
                         adjusted_inst_data = apply_adjusted_revenue(orig_inst_data)
-                        adjusted_revenue = adjusted_inst_data['조정_누적매출'].sum() * 10 / 100000000
+                        adjusted_revenue = adjusted_inst_data['조정_누적매출'].sum() / 100000000
                     
                     # 기본 통계
                     col1, col2, col3, col4 = st.columns(4)
@@ -2003,14 +2318,14 @@ def main():
                         st.metric("총 과정수", f"{len(inst_data)}개")
                     with col2:
                         if use_adjusted_revenue and adjusted_revenue is not None:
-                            original_rev = orig_inst_data['누적매출'].sum() * 10 / 100000000
+                            original_rev = orig_inst_data['누적매출'].sum() / 100000000
                             st.metric(
                                 "총 매출액 (조정)", 
                                 f"{adjusted_revenue:.1f}억원",
                                 delta=f"{adjusted_revenue - original_rev:.1f}억원"
                             )
                         else:
-                            st.metric("총 매출액", f"{inst_data['누적매출'].sum() * 10 / 100000000:.1f}억원")
+                            st.metric("총 매출액", f"{inst_data['누적매출'].sum() / 100000000:.1f}억원")
                     with col3:
                         st.metric("총 수강생", f"{inst_data['수강신청 인원'].sum():.0f}명")
                     with col4:
@@ -2029,8 +2344,8 @@ def main():
                         display_df['조정_누적매출'] = adjusted_inst_data['조정_누적매출'].values
                         
                         # 표시할 억단위 매출 계산
-                        display_df['매출(억)'] = display_df['누적매출'] * 10 / 100000000
-                        display_df['조정_매출(억)'] = display_df['조정_누적매출'] * 10 / 100000000
+                        display_df['매출(억)'] = display_df['누적매출'] / 100000000
+                        display_df['조정_매출(억)'] = display_df['조정_누적매출'] / 100000000
                         
                         # 표시할 컬럼 선택
                         st.dataframe(
@@ -2040,7 +2355,7 @@ def main():
                     else:
                         # 기존 표시
                         display_df = inst_data[['과정명', '과정시작일', '과정종료일', '수강신청 인원', '수료인원', '누적매출']].copy()
-                        display_df['매출(억)'] = display_df['누적매출'] * 10 / 100000000
+                        display_df['매출(억)'] = display_df['누적매출'] / 100000000
                         st.dataframe(
                             display_df[['과정명', '과정시작일', '과정종료일', '수강신청 인원', '수료인원', '매출(억)']].sort_values('과정시작일', ascending=False),
                             use_container_width=True
@@ -2051,7 +2366,7 @@ def main():
             ## KDT 훈련현황 및 매출 비중 표시 (선택 사항)
             js_code = create_ncs_ranking_component(df)
             if js_code:
-                html(js_code, height=800)
+                st.components.v1.html(js_code, height=800)
             # calculate_and_visualize_revenue(df)
 
             # NCS명 입력 받기
@@ -2064,4 +2379,743 @@ def main():
         st.error(traceback.format_exc())
 
 if __name__ == "__main__":
-    main()
+    # 훈련과정 분석 기능
+    def analyze_courses(df):
+        st.title("훈련과정 분석")
+        
+        # 기본 필터링 옵션
+        col1, col2 = st.columns(2)
+        with col1:
+            training_type_filter = st.radio(
+                "훈련유형 선택",
+                ["전체", "선도기업형 훈련", "일반KDT"],
+                horizontal=True
+            )
+        
+        with col2:
+            year_filter = st.selectbox(
+                "연도 선택",
+                ["전체연도"] + sorted(df['연도'].unique().tolist(), reverse=True)
+            )
+        
+        # 필터링 적용
+        filtered_df = df.copy()
+        
+        if training_type_filter == "선도기업형 훈련":
+            filtered_df = filtered_df[filtered_df['훈련유형'].str.contains('선도기업형 훈련', na=False)]
+        elif training_type_filter == "일반KDT":
+            filtered_df = filtered_df[~filtered_df['훈련유형'].str.contains('선도기업형 훈련', na=False)]
+        
+        if year_filter != "전체연도":
+            filtered_df = filtered_df[filtered_df['연도'] == year_filter]
+        
+        # 과정 검색 기능
+        st.subheader("훈련과정 검색")
+        
+        search_tab1, search_tab2 = st.tabs(["과정명 검색", "훈련과정 ID 검색"])
+        
+        with search_tab1:
+            course_name_search = st.text_input("과정명 검색 (일부 포함)", key="course_name_search")
+            
+            if course_name_search:
+                # 과정명 검색 실행
+                search_results = filtered_df[filtered_df['과정명'].str.contains(course_name_search, case=False, na=False)]
+                
+                if not search_results.empty:
+                    st.write(f"{len(search_results)} 개의 검색 결과가 있습니다.")
+                    
+                    # 유니크한 과정명 검색 결과 출력
+                    unique_courses = search_results['과정명'].unique()
+                    selected_course = st.selectbox("조회할 과정 선택", unique_courses)
+                    
+                    if selected_course:
+                        # 선택한 과정의 모든 회차 정보 출력
+                        course_instances = search_results[search_results['과정명'] == selected_course].sort_values('과정시작일', ascending=False)
+                        
+                        # 과정 정보 요약
+                        total_instances = len(course_instances)
+                        total_students = course_instances['수강신청 인원'].sum()
+                        total_completions = course_instances['수료인원'].sum()
+                        avg_completion_rate = (total_completions / total_students * 100) if total_students > 0 else 0
+                        total_revenue = course_instances['누적매출'].sum() / 100000000  # 억원 단위
+                        
+                        # 요약 정보 표시
+                        summary_col1, summary_col2, summary_col3 = st.columns(3)
+                        with summary_col1:
+                            st.metric("개설 회차 수", f"{total_instances}회")
+                        with summary_col2:
+                            st.metric("총 수강생 수", f"{int(total_students)}명")
+                        with summary_col3:
+                            st.metric("평균 수료율", f"{avg_completion_rate:.1f}%")
+                        
+                        summary_col4, summary_col5 = st.columns(2)
+                        with summary_col4:
+                            st.metric("총 매출액", f"{total_revenue:.1f}억원")
+                        with summary_col5:
+                            main_institution = course_instances['훈련기관'].value_counts().index[0] if not course_instances.empty else "정보 없음"
+                            st.metric("주요 훈련기관", main_institution)
+                        
+                        # 과정 상세 정보 데이터프레임 표시
+                        st.subheader(f"{selected_course} - 회차별 정보")
+                        
+                        # 표시할 정보 준비
+                        display_df = course_instances[[
+                            '훈련기관', '과정시작일', '과정종료일', 
+                            '훈련유형', '수강신청 인원', '수료인원', '누적매출'
+                        ]].copy()
+                        
+                        # 수료율 계산 추가
+                        display_df['수료율'] = (display_df['수료인원'] / display_df['수강신청 인원'] * 100).round(1)
+                        
+                        # 매출액 단위 변환 (억원)
+                        display_df['매출액(억)'] = (display_df['누적매출'] / 100000000).round(1)
+                        
+                        # 축약된 데이터프레임 표시
+                        st.dataframe(
+                            display_df[[
+                                '훈련기관', '과정시작일', '과정종료일', 
+                                '훈련유형', '수강신청 인원', '수료인원', '수료율', '매출액(억)'
+                            ]],
+                            use_container_width=True,
+                            column_config={
+                                "훈련기관": st.column_config.TextColumn("훈련기관"),
+                                "과정시작일": st.column_config.DateColumn("과정시작일", format="YYYY-MM-DD"),
+                                "과정종료일": st.column_config.DateColumn("과정종료일", format="YYYY-MM-DD"),
+                                "훈련유형": st.column_config.TextColumn("훈련유형"),
+                                "수강신청 인원": st.column_config.NumberColumn("수강신청 인원", format="%d명"),
+                                "수료인원": st.column_config.NumberColumn("수료인원", format="%d명"),
+                                "수료율": st.column_config.NumberColumn("수료율", format="%.1f%%"),
+                                "매출액(억)": st.column_config.NumberColumn("매출액", format="%.1f억원")
+                            },
+                            hide_index=True
+                        )
+                        
+                        # 회차별 수강생 추이 차트
+                        if len(course_instances) > 1:
+                            st.subheader(f"{selected_course} - 회차별 추이")
+                            
+                            # 차트용 데이터 준비
+                            chart_df = course_instances.copy()
+                            chart_df['과정시작일_str'] = pd.to_datetime(chart_df['과정시작일']).dt.strftime('%Y-%m-%d')
+                            chart_df = chart_df.sort_values('과정시작일')
+                            
+                            # 차트 생성
+                            fig = px.line(
+                                chart_df, 
+                                x='과정시작일_str', 
+                                y=['수강신청 인원', '수료인원'],
+                                title=f"{selected_course} - 회차별 수강생 추이",
+                                labels={'과정시작일_str': '과정 시작일', 'value': '인원 수', 'variable': '구분'},
+                                markers=True
+                            )
+                            
+                            # y축 레이블 수정
+                            fig.update_layout(
+                                yaxis_title='인원 수',
+                                xaxis_title='과정 시작일',
+                                legend_title='구분',
+                                hovermode='x unified'
+                            )
+                            
+                            # 차트 표시
+                            st.plotly_chart(fig, use_container_width=True)
+                            
+                            # 수료율 추이 차트
+                            fig2 = px.line(
+                                chart_df, 
+                                x='과정시작일_str', 
+                                y='수료율',
+                                title=f"{selected_course} - 회차별 수료율 추이",
+                                labels={'과정시작일_str': '과정 시작일', '수료율': '수료율 (%)'},
+                                markers=True
+                            )
+                            
+                            # y축 레이블 수정
+                            fig2.update_layout(
+                                yaxis_title='수료율 (%)',
+                                xaxis_title='과정 시작일',
+                                hovermode='x unified'
+                            )
+                            
+                            # 차트 표시
+                            st.plotly_chart(fig2, use_container_width=True)
+                else:
+                    st.warning(f"{course_name_search} 검색 결과가 없습니다.")
+        
+        with search_tab2:
+            course_id_search = st.text_input("훈련과정 ID 검색", key="course_id_search")
+            
+            if course_id_search:
+                # ID 검색 실행
+                id_search_results = filtered_df[filtered_df['과정ID'].astype(str).str.contains(course_id_search, case=False, na=False)]
+                
+                if not id_search_results.empty:
+                    st.write(f"{len(id_search_results)} 개의 검색 결과가 있습니다.")
+                    
+                    # 유니크한 과정ID 검색 결과 출력
+                    unique_course_ids = id_search_results['과정ID'].unique()
+                    selected_course_id = st.selectbox("조회할 과정 ID 선택", unique_course_ids)
+                    
+                    if selected_course_id:
+                        # 선택한 과정ID의 정보 출력
+                        course_id_instance = id_search_results[id_search_results['과정ID'] == selected_course_id].sort_values('과정시작일', ascending=False)
+                        
+                        # 과정 정보 표시
+                        course_name = course_id_instance['과정명'].iloc[0] if not course_id_instance.empty else "정보 없음"
+                        st.subheader(f"과정 ID: {selected_course_id} - {course_name}")
+                        
+                        # 과정 상세 정보 데이터프레임 표시
+                        if not course_id_instance.empty:
+                            # 표시할 정보 준비
+                            display_df = course_id_instance[[
+                                '훈련기관', '과정시작일', '과정종료일', 
+                                '훈련유형', '수강신청 인원', '수료인원', '누적매출'
+                            ]].copy()
+                            
+                            # 수료율 계산 추가
+                            display_df['수료율'] = (display_df['수료인원'] / display_df['수강신청 인원'] * 100).round(1)
+                            
+                            # 매출액 단위 변환 (억원)
+                            display_df['매출액(억)'] = (display_df['누적매출'] / 100000000).round(1)
+                            
+                            # 축약된 데이터프레임 표시
+                            st.dataframe(
+                                display_df[[
+                                    '훈련기관', '과정시작일', '과정종료일', 
+                                    '훈련유형', '수강신청 인원', '수료인원', '수료율', '매출액(억)'
+                                ]],
+                                use_container_width=True,
+                                column_config={
+                                    "훈련기관": st.column_config.TextColumn("훈련기관"),
+                                    "과정시작일": st.column_config.DateColumn("과정시작일", format="YYYY-MM-DD"),
+                                    "과정종료일": st.column_config.DateColumn("과정종료일", format="YYYY-MM-DD"),
+                                    "훈련유형": st.column_config.TextColumn("훈련유형"),
+                                    "수강신청 인원": st.column_config.NumberColumn("수강신청 인원", format="%d명"),
+                                    "수료인원": st.column_config.NumberColumn("수료인원", format="%d명"),
+                                    "수료율": st.column_config.NumberColumn("수료율", format="%.1f%%"),
+                                    "매출액(억)": st.column_config.NumberColumn("매출액", format="%.1f억원")
+                                },
+                                hide_index=True
+                            )
+                        else:
+                            st.info("해당 과정ID에 대한 정보가 없습니다.")
+                else:
+                    st.warning(f"과정 ID {course_id_search}에 대한 검색 결과가 없습니다.")
+    
+# 페이지 설정 함수 정의
+def setup_page():
+    st.set_page_config(layout="wide")
+    
+    st.markdown("""
+        <style>
+        .stHtmlFrame-container {
+            height: 800px;
+            overflow-y: scroll !important;
+        }
+        iframe {
+            height: 100% !important;
+            min-height: 800px !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
+# 데이터 로딩 및 전처리 함수 정의
+def load_and_preprocess_data():
+    url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202504.csv?raw=true"
+    df = load_data_from_github(url)
+    if df.empty:
+        st.error("데이터를 불러올 수 없습니다.")
+        return pd.DataFrame()
+
+    # 데이터 전처리
+    df = preprocess_data(df)
+    if df.empty:  # preprocess_data에서 '훈련기관' 컬럼이 없는 경우
+        st.error("데이터 전처리 중 오류가 발생했습니다. '훈련기관' 컬럼이 없습니다.")
+        return pd.DataFrame()
+
+    # Int64 타입을 float로 변환
+    numeric_cols = ['누적매출', '수강신청 인원', '수료인원']
+    for col in numeric_cols:
+        if col in df.columns and df[col].dtype.name == 'Int64':
+            df[col] = df[col].astype(float)
+    
+    # '과정시작일' 컬럼에서 '연도'와 '월' 컬럼 추출
+    if '과정시작일' in df.columns:
+        # 문자열인 경우 날짜형으로 변환
+        if df['과정시작일'].dtype == 'object':
+            try:
+                df['과정시작일'] = pd.to_datetime(df['과정시작일'])
+            except:
+                pass  # 변환 오류 무시
+        
+        # 날짜형으로 변환되었다면 연도와 월 추출
+        if pd.api.types.is_datetime64_any_dtype(df['과정시작일']):
+            df['연도'] = df['과정시작일'].dt.year
+            df['월'] = df['과정시작일'].dt.month
+            # 연월 컴포지트 컬럼 (정렬을 위해)
+            df['연월'] = df['연도'].astype(str) + '-' + df['월'].astype(str).str.zfill(2)
+        else:
+            # 문자열에서 연도와 월 추출 시도 (YYYY-MM-DD 형태 가정)
+            try:
+                df['연도'] = df['과정시작일'].str.slice(0, 4).astype(int)
+                df['월'] = df['과정시작일'].str.slice(5, 7).astype(int)
+                df['연월'] = df['과정시작일'].str.slice(0, 7)
+            except:
+                # 연도 추출 실패 시 기본값 설정
+                df['연도'] = 2023  # 기본값으로 2023년 설정
+                df['월'] = 1      # 기본값으로 1월 설정
+                df['연월'] = '2023-01'
+    else:
+        # '과정시작일' 컬럼이 없는 경우 기본값 설정
+        df['연도'] = 2023  # 기본값으로 2023년 설정
+        df['월'] = 1      # 기본값으로 1월 설정
+        df['연월'] = '2023-01'
+    
+    # 매출액 필터링은 필요한 부분에서만 선택적으로 적용할 수 있도록 중지
+    # 원본 데이터는 보존하고, 월별 분석 등에서 필요할 때 별도로 필터링된 복사본 사용
+    
+    return df
+
+def main():
+    try:
+        # 페이지 설정
+        setup_page()
+        
+        # 데이터 로딩 및 전처리
+        df = load_and_preprocess_data()
+        
+        # 수료율 기반 조정 매출 계산 방식 선택 (기본값을 수료율 기반 조정으로 설정)
+        revenue_calculation = st.sidebar.radio(
+            "매출 계산 방식",
+            ["기본 계산", "수료율 기반 조정"],
+            index=1,  # 수료율 기반 조정을 기본값으로 설정
+            help="수료율 기반 조정 옵션은 실제 수료인원과 수료율을 고려하여 매출을 계산합니다."
+        )
+        
+        # 수료율 기반 조정 여부
+        use_adjusted_revenue = revenue_calculation == "수료율 기반 조정"
+
+        # 조정된 매출 계산 (옵션 선택 시)
+        if use_adjusted_revenue:
+            adjusted_df = apply_adjusted_revenue(df)
+            
+            # 기존 df 백업 및 조정된 값으로 대체
+            original_df = df.copy()
+            
+            # 연도별 매출 컬럼 처리
+            year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'20\d{2}\ub144$', col)]
+            
+            # 누적매출 컬럼 대체
+            df['\ub204\uc801\ub9e4\ucd9c'] = adjusted_df['\uc870\uc815_\ub204\uc801\ub9e4\ucd9c']
+            
+            # 연도별 매출 컬럼 대체
+            for year in year_columns:
+                if f'\uc870\uc815_{year}' in adjusted_df.columns:
+                    df[year] = adjusted_df[f'\uc870\uc815_{year}']
+        
+        # 연도별 매출 계산 (전처리 후 수행) - 조정된 df 기준으로 계산
+        year_columns = [str(col) for col in df.columns if re.match(r'^\d{4}\ub144$', str(col))]
+        df, yearly_data = calculate_yearly_revenue(df)
+
+        # 사이드바에서 분석 유형 선택
+        analysis_type = st.sidebar.radio(
+            "분석 유형",
+            ["훈련기관 분석", "월별 매출 분석", "NCS 분석", "전체 매출 분석", "훈련과정 분석"],
+            index=0
+        )
+
+        st.markdown("""
+            <style>
+                .streamlit-dataframe th {
+                    writing-mode: horizontal;
+                }
+            </style>
+        """, unsafe_allow_html=True)
+
+        if analysis_type == "훈련기관 분석":
+            # 매출 계산 방식 안내
+            if use_adjusted_revenue:
+                st.info("""
+                    **수료율 기반 조정 매출을 사용 중입니다.**
+                    
+                    이 방식은 실제 수료율을 반영하여 매출액을 조정합니다:
+                    - 기존 방식은 수강신청인원의 80%를 기준으로 매출을 계산
+                    - 수료율 기반 조정은 통합 수료율과 실제 수료인원을 기준으로 매출을 재계산
+                    - 수료율이 평균보다 높은 과정은 추가 가중치를 부여하여 실제 매출에 가깝게 조정
+                """)
+            
+            # 랭킹 컴포넌트 생성 및 표시
+            js_code = create_ranking_component(df, yearly_data)
+            if js_code is None:
+              st.error("랭킹 컴포넌트 생성에 실패했습니다. '훈련기관' 컬럼이 없는지 확인해주세요.")
+              return
+            js_code = f"""
+                <div style="height: 800px; overflow-y: auto;">
+                    {js_code}
+                </div>
+            """
+            st.components.v1.html(js_code, height=800)
+
+            # 선도기업 비중 및 SSAFY 사업 분류 시각화
+            calculate_and_visualize_revenue(df)
+
+            visualize_by_institutions(df)
+
+            analyze_top5_institutions(df, yearly_data)
+            # 원래 df로 복구 (다른 분석 페이지를 위해)
+            if use_adjusted_revenue:
+                df = original_df.copy()
+
+        elif analysis_type == "NCS 분석":
+            st.title("NCS 분석")
+            
+            # 조정된 데이터 사용 시 df를 업데이트
+            if use_adjusted_revenue:
+                st.info("""
+                    **수료율 기반 조정 매출을 사용 중입니다.**
+                    
+                    이 방식은 실제 수료율을 반영하여 매출액을 조정합니다:
+                    - 기존 방식은 수강신청인원의 80%를 기준으로 매출을 계산
+                    - 수료율 기반 조정은 통합 수료율과 실제 수료인원을 기준으로 매출을 재계산
+                    - 수료율이 평균보다 높은 과정은 추가 가중치를 부여하여 실제 매출에 가깝게 조정
+                """)
+                
+                # 조정된 매출로 df 업데이트
+                adjusted_df = apply_adjusted_revenue(df)
+                temp_df = df.copy()
+                df['\ub204\uc801\ub9e4\ucd9c'] = adjusted_df['\uc870\uc815_\ub204\uc801\ub9e4\ucd9c']
+                
+                # 연도별 매출 컬럼도 업데이트
+                year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'20\d{2}\ub144$', col)]
+                for year in year_columns:
+                    if f'\uc870\uc815_{year}' in adjusted_df.columns:
+                        df[year] = adjusted_df[f'\uc870\uc815_{year}']
+                        
+                # 연도별 매출 재계산
+                df, yearly_data = calculate_yearly_revenue(df)
+                
+                # 원본 데이터 보관
+                original_df = df.copy()
+                
+            # NCS 랭킹 컴포넌트 생성 및 표시
+            ncs_js_code = create_ncs_ranking_component(df)
+            
+            if ncs_js_code is None:
+                st.error("NCS 랭킹 컴포넌트 생성에 실패했습니다. 'NCS명' 컬럼이 없는지 확인해주세요.")
+            else:
+                st.components.v1.html(ncs_js_code, height=800)
+                
+            # NCS 세부 분석
+            ncs_name = st.text_input("NCS명 검색")
+            
+            analyze_ncs(df, yearly_data, ncs_name)  # ncs_name 전달
+            
+            # 원래 df로 복구
+            if use_adjusted_revenue:
+                df = original_df.copy()
+
+        elif analysis_type == "월별 매출 분석":
+            st.title("월별 매출 분석")
+            
+            if use_adjusted_revenue:
+                st.info("""
+                    **수료율 기반 조정 매출을 사용 중입니다.**
+                    
+                    이 방식은 실제 수료율을 반영하여 매출액을 조정합니다:
+                    - 기존 방식은 수강신청인원의 80%를 기준으로 매출을 계산
+                    - 수료율 기반 조정은 통합 수료율과 실제 수료인원을 기준으로 매출을 재계산
+                    - 수료율이 평균보다 높은 과정은 추가 가중치를 부여하여 실제 매출에 가깝게 조정
+                """)
+            
+            # 월별 분석용 데이터프레임 생성 (원본 보존)
+            analysis_df = df.copy()
+            
+            # 비정상적인 매출액 필터링 (월별 분석에만 적용)
+            if '누적매출' in analysis_df.columns:
+                # 매출액 누각치 계산
+                q1 = analysis_df['누적매출'].quantile(0.25)
+                q3 = analysis_df['누적매출'].quantile(0.75)
+                iqr = q3 - q1
+                upper_bound = q3 + 1.5 * iqr
+                
+                # 매출액 필터링 (너무 높은 값 정상화)
+                extreme_mask = analysis_df['누적매출'] > upper_bound
+                if extreme_mask.sum() > 0:
+                    st.info(f"{extreme_mask.sum()}개의 비정상적으로 높은 매출액이 조정되었습니다.")
+                    analysis_df.loc[extreme_mask, '누적매출'] = upper_bound
+            
+            # '연월' 컬럼 생성 확인 (없을 경우 생성)
+            if '연월' not in analysis_df.columns and '연도' in analysis_df.columns and '월' in analysis_df.columns:
+                analysis_df['연월'] = analysis_df['연도'].astype(str) + '-' + analysis_df['월'].astype(str).str.zfill(2)
+            
+            # 월별 매출 시각화
+            col1, col2 = st.columns(2)
+            with col1:
+                selected_year = st.selectbox(
+                    "연도 선택", 
+                    sorted(analysis_df['연도'].unique(), reverse=True), 
+                    index=0
+                )
+            
+            with col2:
+                show_monthly_revenue_option = st.radio(
+                    "매출 표시 방식",
+                    ["월별 매출", "월별 누적 매출"],
+                    index=0,
+                    horizontal=True
+                )
+            
+            # 차트 생성
+            if show_monthly_revenue_option == "월별 매출":
+                if use_adjusted_revenue:
+                    # 조정된 매출 기준 차트
+                    monthly_chart = create_monthly_revenue_chart_adjusted(analysis_df, selected_year)
+                else:
+                    # 기본 매출 차트
+                    monthly_chart = create_monthly_revenue_chart(analysis_df, selected_year)
+            else:
+                # 누적 매출 차트
+                monthly_chart = create_monthly_only_revenue_chart(analysis_df, selected_year)
+            
+            st.altair_chart(monthly_chart, use_container_width=True)
+            
+            # 월별 요약 정보 표시
+            create_monthly_performance_summary(analysis_df, use_adjusted_revenue)
+            
+            # 월별 랭킹
+            st.subheader(f"{selected_year}년 월별 상위 훈련기관 랭킹")
+            
+            # 월별 랭킹 컴포넌트 생성
+            monthly_ranking_js = create_monthly_ranking_component(analysis_df)
+            if monthly_ranking_js is not None:
+                st.components.v1.html(monthly_ranking_js, height=600)
+            else:
+                st.error("월별 랭킹 컴포넌트 생성에 실패했습니다.")
+
+        elif analysis_type == "전체 매출 분석":
+            st.title("전체 매출 분석")
+            
+            if use_adjusted_revenue:
+                st.info("""
+                    **수료율 기반 조정 매출을 사용 중입니다.**
+                    
+                    이 방식은 실제 수료율을 반영하여 매출액을 조정합니다:
+                    - 기존 방식은 수강신청인원의 80%를 기준으로 매출을 계산
+                    - 수료율 기반 조정은 통합 수료율과 실제 수료인원을 기준으로 매출을 재계산
+                    - 수료율이 평균보다 높은 과정은 추가 가중치를 부여하여 실제 매출에 가깝게 조정
+                """)
+            
+            # 연도별 매출 합계 차트
+            yearly_chart = create_yearly_revenue_chart(yearly_data)
+            st.altair_chart(yearly_chart, use_container_width=True)
+            
+            # 원래 df로 복구
+            if use_adjusted_revenue:
+                df = original_df.copy()
+        
+        elif analysis_type == "훈련과정 분석":
+            # 훈련과정 분석 함수 호출
+            try:
+                # 훈련과정 검색 기능
+                st.subheader("훈련과정 검색")
+                
+                search_tab1, search_tab2 = st.tabs(["과정명 검색", "훈련과정 ID 검색"])
+                
+                with search_tab1:
+                    course_name_search = st.text_input("과정명 검색 (일부 포함)", key="course_name_search")
+                    
+                    if course_name_search:
+                        # 과정명 검색 실행
+                        search_results = df[df['과정명'].str.contains(course_name_search, case=False, na=False)]
+                        
+                        if not search_results.empty:
+                            st.write(f"{len(search_results)} 개의 검색 결과가 있습니다.")
+                            
+                            # 유니크한 과정명 검색 결과 출력
+                            unique_courses = search_results['과정명'].unique()
+                            selected_course = st.selectbox("조회할 과정 선택", unique_courses)
+                            
+                            if selected_course:
+                                # 선택한 과정의 모든 회차 정보 출력
+                                course_instances = search_results[search_results['과정명'] == selected_course].sort_values('과정시작일', ascending=False)
+                                
+                                # 과정 정보 요약
+                                total_instances = len(course_instances)
+                                total_students = course_instances['수강신청 인원'].sum()
+                                total_completions = course_instances['수료인원'].sum()
+                                avg_completion_rate = (total_completions / total_students * 100) if total_students > 0 else 0
+                                total_revenue = course_instances['누적매출'].sum() / 100000000  # 억원 단위
+                                
+                                # 요약 정보 표시
+                                summary_col1, summary_col2, summary_col3 = st.columns(3)
+                                with summary_col1:
+                                    st.metric("개설 회차 수", f"{total_instances}회")
+                                with summary_col2:
+                                    st.metric("총 수강생 수", f"{int(total_students)}명")
+                                with summary_col3:
+                                    st.metric("평균 수료율", f"{avg_completion_rate:.1f}%")
+                                
+                                summary_col4, summary_col5 = st.columns(2)
+                                with summary_col4:
+                                    st.metric("총 매출액", f"{total_revenue:.1f}억원")
+                                with summary_col5:
+                                    main_institution = course_instances['훈련기관'].value_counts().index[0] if not course_instances.empty else "정보 없음"
+                                    st.metric("주요 훈련기관", main_institution)
+                                
+                                # 과정 상세 정보 데이터프레임 표시
+                                st.subheader(f"{selected_course} - 회차별 정보")
+                                
+                                # 표시할 정보 준비
+                                display_df = course_instances[[
+                                    '훈련기관', '과정시작일', '과정종료일', 
+                                    '훈련유형', '수강신청 인원', '수료인원', '누적매출'
+                                ]].copy()
+                                
+                                # 수료율 계산 추가
+                                display_df['수료율'] = (display_df['수료인원'] / display_df['수강신청 인원'] * 100).round(1)
+                                
+                                # 매출액 단위 변환 (억원)
+                                display_df['매출액(억)'] = (display_df['누적매출'] / 100000000).round(1)
+                                
+                                # 축약된 데이터프레임 표시
+                                st.dataframe(
+                                    display_df[[
+                                        '훈련기관', '과정시작일', '과정종료일', 
+                                        '훈련유형', '수강신청 인원', '수료인원', '수료율', '매출액(억)'
+                                    ]],
+                                    use_container_width=True,
+                                    column_config={
+                                        "훈련기관": st.column_config.TextColumn("훈련기관"),
+                                        "과정시작일": st.column_config.DateColumn("과정시작일", format="YYYY-MM-DD"),
+                                        "과정종료일": st.column_config.DateColumn("과정종료일", format="YYYY-MM-DD"),
+                                        "훈련유형": st.column_config.TextColumn("훈련유형"),
+                                        "수강신청 인원": st.column_config.NumberColumn("수강신청 인원", format="%d명"),
+                                        "수료인원": st.column_config.NumberColumn("수료인원", format="%d명"),
+                                        "수료율": st.column_config.NumberColumn("수료율", format="%.1f%%"),
+                                        "매출액(억)": st.column_config.NumberColumn("매출액", format="%.1f억원")
+                                    },
+                                    hide_index=True
+                                )
+                                
+                                # 회차별 수강생 추이 차트
+                                if len(course_instances) > 1:
+                                    st.subheader(f"{selected_course} - 회차별 추이")
+                                    
+                                    # 차트용 데이터 준비
+                                    chart_df = course_instances.copy()
+                                    chart_df['과정시작일_str'] = pd.to_datetime(chart_df['과정시작일']).dt.strftime('%Y-%m-%d')
+                                    chart_df = chart_df.sort_values('과정시작일')
+                                    
+                                    # 차트 생성
+                                    fig = px.line(
+                                        chart_df, 
+                                        x='과정시작일_str', 
+                                        y=['수강신청 인원', '수료인원'],
+                                        title=f"{selected_course} - 회차별 수강생 추이",
+                                        labels={'과정시작일_str': '과정 시작일', 'value': '인원 수', 'variable': '구분'},
+                                        markers=True
+                                    )
+                                    
+                                    # y축 레이블 수정
+                                    fig.update_layout(
+                                        yaxis_title='인원 수',
+                                        xaxis_title='과정 시작일',
+                                        legend_title='구분',
+                                        hovermode='x unified'
+                                    )
+                                    
+                                    # 차트 표시
+                                    st.plotly_chart(fig, use_container_width=True)
+                                    
+                                    # 수료율 추이 차트
+                                    fig2 = px.line(
+                                        chart_df, 
+                                        x='과정시작일_str', 
+                                        y='수료율',
+                                        title=f"{selected_course} - 회차별 수료율 추이",
+                                        labels={'과정시작일_str': '과정 시작일', '수료율': '수료율 (%)'},
+                                        markers=True
+                                    )
+                                    
+                                    # y축 레이블 수정
+                                    fig2.update_layout(
+                                        yaxis_title='수료율 (%)',
+                                        xaxis_title='과정 시작일',
+                                        hovermode='x unified'
+                                    )
+                                    
+                                    # 차트 표시
+                                    st.plotly_chart(fig2, use_container_width=True)
+                        else:
+                            st.warning(f"{course_name_search} 검색 결과가 없습니다.")
+                
+                with search_tab2:
+                    course_id_search = st.text_input("훈련과정 ID 검색", key="course_id_search")
+                    
+                    if course_id_search:
+                        # ID 검색 실행
+                        id_search_results = df[df['과정ID'].astype(str).str.contains(course_id_search, case=False, na=False)]
+                        
+                        if not id_search_results.empty:
+                            st.write(f"{len(id_search_results)} 개의 검색 결과가 있습니다.")
+                            
+                            # 유니크한 과정ID 검색 결과 출력
+                            unique_course_ids = id_search_results['과정ID'].unique()
+                            selected_course_id = st.selectbox("조회할 과정 ID 선택", unique_course_ids)
+                            
+                            if selected_course_id:
+                                # 선택한 과정ID의 정보 출력
+                                course_id_instance = id_search_results[id_search_results['과정ID'] == selected_course_id].sort_values('과정시작일', ascending=False)
+                                
+                                # 과정 정보 표시
+                                course_name = course_id_instance['과정명'].iloc[0] if not course_id_instance.empty else "정보 없음"
+                                st.subheader(f"과정 ID: {selected_course_id} - {course_name}")
+                                
+                                # 과정 상세 정보 데이터프레임 표시
+                                if not course_id_instance.empty:
+                                    # 표시할 정보 준비
+                                    display_df = course_id_instance[[
+                                        '훈련기관', '과정시작일', '과정종료일', 
+                                        '훈련유형', '수강신청 인원', '수료인원', '누적매출'
+                                    ]].copy()
+                                    
+                                    # 수료율 계산 추가
+                                    display_df['수료율'] = (display_df['수료인원'] / display_df['수강신청 인원'] * 100).round(1)
+                                    
+                                    # 매출액 단위 변환 (억원)
+                                    display_df['매출액(억)'] = (display_df['누적매출'] / 100000000).round(1)
+                                    
+                                    # 축약된 데이터프레임 표시
+                                    st.dataframe(
+                                        display_df[[
+                                            '훈련기관', '과정시작일', '과정종료일', 
+                                            '훈련유형', '수강신청 인원', '수료인원', '수료율', '매출액(억)'
+                                        ]],
+                                        use_container_width=True,
+                                        column_config={
+                                            "훈련기관": st.column_config.TextColumn("훈련기관"),
+                                            "과정시작일": st.column_config.DateColumn("과정시작일", format="YYYY-MM-DD"),
+                                            "과정종료일": st.column_config.DateColumn("과정종료일", format="YYYY-MM-DD"),
+                                            "훈련유형": st.column_config.TextColumn("훈련유형"),
+                                            "수강신청 인원": st.column_config.NumberColumn("수강신청 인원", format="%d명"),
+                                            "수료인원": st.column_config.NumberColumn("수료인원", format="%d명"),
+                                            "수료율": st.column_config.NumberColumn("수료율", format="%.1f%%"),
+                                            "매출액(억)": st.column_config.NumberColumn("매출액", format="%.1f억원")
+                                        },
+                                        hide_index=True
+                                    )
+                                else:
+                                    st.info("해당 과정ID에 대한 정보가 없습니다.")
+                        else:
+                            st.warning(f"과정 ID {course_id_search}에 대한 검색 결과가 없습니다.")
+            except Exception as e:
+                st.error(f"훈련과정 분석 중 오류가 발생했습니다: {e}")
+                import traceback
+                st.error(traceback.format_exc())
+    
+    except Exception as e:
+        st.error(f"오류가 발생했습니다: {e}")
+        import traceback
+        st.error(traceback.format_exc())
+
+main()
