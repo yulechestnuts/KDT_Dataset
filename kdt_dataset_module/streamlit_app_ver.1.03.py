@@ -3,13 +3,13 @@ import pandas as pd
 import numpy as np
 import altair as alt
 import plotly.express as px
+import plotly.graph_objects as go
 from datetime import datetime
 import requests
 import io
 from streamlit.components.v1 import html
 import json
 import re
-import plotly.express as px
 from difflib import SequenceMatcher
 import math
 
@@ -94,29 +94,33 @@ def create_monthly_ranking_component(df):
             missing_columns.append(col)
     
     if missing_columns:
-        print(f"월별 랭킹 컴포넌트 생성 실패: 다음 컬럼이 없습니다 - {', '.join(missing_columns)}")
-        print(f"사용 가능한 컬럼: {df.columns.tolist()}")
+        st.error(f"월별 랭킹 컴포넌트 생성 실패: 필수 컬럼이 없습니다: {', '.join(missing_columns)}")
         return None
     
-    # 데이터 유효성 검사 - 누적매출이 숫자형인지 확인
-    if not pd.api.types.is_numeric_dtype(df['누적매출']):
-        df['누적매출'] = pd.to_numeric(df['누적매출'], errors='coerce')
-        # NaN 값 제거
-        df = df.dropna(subset=['누적매출'])
-        
-    if df.empty:
-        print("월별 랭킹 컴포넌트 생성 실패: 유효한 데이터가 없습니다.")
-        return None
+    # 데이터 복사 (원본 보존)
+    df = df.copy()
     
-    # 파트너기관 컬럼 확인 (없으면 빈 컬럼 추가)
+    # 연월 컬럼 확인 및 생성
+    if '연월' not in df.columns:
+        if '연도' in df.columns and '월' in df.columns:
+            # 연월 형식 YYYY-MM 으로 생성
+            df['연월'] = df['연도'].astype(str) + '-' + df['월'].astype(str).str.zfill(2)
+        else:
+            st.error("월별 랭킹 컴포넌트 생성 실패: '연월' 컬럼이 없고, '연도'와 '월' 컬럼도 없습니다.")
+            return None
+    
+    # NaN 값 처리
+    df['누적매출'] = df['누적매출'].fillna(0)
+    
+    # 파트너기관 컬럼 확인 및 생성
     if '파트너기관' not in df.columns:
         df['파트너기관'] = ''
     
-    # 훈련유형 컬럼 확인 (없으면 빈 컬럼 추가)
+    # 훈련유형 컬럼 확인 및 생성
     if '훈련유형' not in df.columns:
         df['훈련유형'] = ''
-        
-    # 표시용 기관 컬럼 추가 (선도기업형 훈련은 파트너기관 표시)
+    
+    # 표시용_기관 컬럼 생성 (기본값은 훈련기관)
     df['표시용_기관'] = df['훈련기관']
     
     # 선도기업형 훈련인 경우 파트너기관을 표시
@@ -127,23 +131,40 @@ def create_monthly_ranking_component(df):
     mask = mask_leading_company | has_partner
     df.loc[mask & has_partner, '표시용_기관'] = df.loc[mask & has_partner, '파트너기관']
     
+    # 누적매출이 0 이상인 데이터만 사용
+    df = df[df['누적매출'] > 0]
+    
+    # 데이터가 비어있는지 확인
+    if len(df) == 0:
+        st.warning("월별 랭킹 컴포넌트 생성 실패: 누적매출이 0보다 큰 데이터가 없습니다.")
+        return None
+    
     # 훈련기관별 월별 매출 집계 (표시용 기관 사용)
-    monthly_revenue = df.groupby(['연월', '표시용_기관'])['누적매출'].sum().reset_index()
+    try:
+        monthly_revenue = df.groupby(['연월', '표시용_기관'])['누적매출'].sum().reset_index()
+    except Exception as e:
+        st.error(f"월별 랭킹 컴포넌트 생성 실패: 데이터 집계 중 오류 발생 - {e}")
+        return None
     
     if monthly_revenue.empty:
-        print("월별 랭킹 컴포넌트 생성 실패: 그룹핑 후 데이터가 없습니다.")
+        st.warning("월별 랭킹 컴포넌트 생성 실패: 그룹핑 후 데이터가 없습니다.")
         return None
     
     # 연월별 상위 10개 기관 추출
     top_institutions_by_month = {}
-    for month in monthly_revenue['연월'].unique():
-        month_data = monthly_revenue[monthly_revenue['연월'] == month]
+    for month in sorted(monthly_revenue['연월'].unique(), reverse=True):
+        month_data = monthly_revenue[monthly_revenue['연월'] == month].copy()
+        if len(month_data) == 0:
+            continue
+            
+        # 누적매출 기준으로 정렬하고 상위 10개 추출
         top_institutions = month_data.sort_values('누적매출', ascending=False).head(10)
-        top_institutions['매출(억원)'] = (top_institutions['누적매출'] / 100000000).round(1)  # 억원 단위 변환
+        # 억원 단위 변환 (소수점 첫째 자리까지)
+        top_institutions['매출(억원)'] = (top_institutions['누적매출'] / 100000000).round(1)
         top_institutions_by_month[month] = top_institutions
     
     if not top_institutions_by_month:
-        print("월별 랭킹 컴포넌트 생성 실패: 추출된 상위 기관 데이터가 없습니다.")
+        st.warning("월별 랭킹 컴포넌트 생성 실패: 추출된 상위 기관 데이터가 없습니다.")
         return None
     
     # HTML 테이블 생성
@@ -154,10 +175,17 @@ def create_monthly_ranking_component(df):
     html_content += 'th { background-color: #f2f2f2; position: sticky; top: 0; }\n'
     html_content += 'tr:nth-child(even) { background-color: #f9f9f9; }\n'
     html_content += 'tr:hover { background-color: #eaeaea; }\n'
+    html_content += '.institution-ranking { margin-bottom: 20px; }\n'
     html_content += '</style>\n'
     
-    # 랭킹 테이블 생성
-    for month, top_data in sorted(top_institutions_by_month.items(), reverse=True):
+    # 랭킹 테이블 생성 (최근 6개월만 표시)
+    months_to_show = list(top_institutions_by_month.keys())[:6]
+    
+    for month in months_to_show:
+        top_data = top_institutions_by_month[month]
+        
+        html_content += '<div class="institution-ranking">\n'
+        
         try:
             year, month_num = month.split('-')
             html_content += f'<h3>{year}년 {int(month_num)}월 상위 훈련기관</h3>\n'
@@ -170,10 +198,16 @@ def create_monthly_ranking_component(df):
         
         for i, (_, row) in enumerate(top_data.iterrows(), 1):
             # 표시용_기관 컬럼 사용 (선도기업형 훈련은 파트너기관 표시)
-            html_content += f'<tr><td>{i}</td><td>{row["표시용_기관"]}</td><td>{row["매출(억원)"]}억원</td></tr>\n'
+            institution = row["표시용_기관"]
+            revenue = row["매출(억원)"]
+            
+            # HTML 이스케이프 처리
+            institution = institution.replace('<', '&lt;').replace('>', '&gt;')
+            
+            html_content += f'<tr><td>{i}</td><td>{institution}</td><td>{revenue}억원</td></tr>\n'
         
         html_content += '</table>\n'
-        html_content += '<hr>\n'
+        html_content += '</div>\n'
     
     html_content += '</div>'
     
@@ -1579,68 +1613,108 @@ def calculate_adjusted_revenue(row, current_date=None):
 
 def create_monthly_ranking_component(df):
     st.subheader("월별 훈련기관 매출 랭킹")
-
-    df['과정시작일'] = pd.to_datetime(df['과정시작일'])
-    df['연도'] = df['과정시작일'].dt.year
-    df['월'] = df['과정시작일'].dt.month
-
+    
+    # 필수 컬럼 검증
+    required_columns = ['과정시작일', '훈련기관', '과정명', '누적매출', '수강신청 인원']
+    missing_columns = [col for col in required_columns if col not in df.columns]
+    
+    if missing_columns:
+        st.error(f"필수 컬럼이 누락되었습니다: {', '.join(missing_columns)}")
+        return None
+    
+    # 초기 데이터 상태 기록
+    st.info(f"초기 데이터 건수: {len(df)}건")
+    
+    # 날짜 변환 및 연도/월 컬럼 생성
+    try:
+        df = df.copy()  # 원본 데이터 보존
+        df['과정시작일'] = pd.to_datetime(df['과정시작일'], errors='coerce')
+        # 날짜 변환 실패한 레코드 제외
+        df = df[df['과정시작일'].notna()]
+        df['연도'] = df['과정시작일'].dt.year
+        df['월'] = df['과정시작일'].dt.month
+    except Exception as e:
+        st.error(f"날짜 변환 중 오류 발생: {e}")
+        return None
+    
     # 연도/월 선택
     col1, col2 = st.columns(2)
     with col1:
-        selected_year = st.selectbox("연도 선택", sorted(df['연도'].unique()), index=0)
+        available_years = sorted(df['연도'].dropna().unique())
+        if not available_years:
+            st.error("유효한 연도 데이터가 없습니다.")
+            return None
+        selected_year = st.selectbox("연도 선택", available_years, index=len(available_years)-1)  # 가장 최근 연도를 기본값으로
+    
     with col2:
         selected_month = st.selectbox("월 선택", list(range(1, 13)), format_func=lambda x: f"{x}월")
-
-    # 필터링 및 매출액 계산 개선
-    # 중요: 월별 매출 요약에서는 "실제로 그 월에 개강한" 과정 중 유효한 과정만 포함하여 매출액을 계산합니다.
     
-    # 데이터 타입 변환 추가 - 수치형 컬럼 변환
-    if '수강신청 인원' in df.columns:
-        df['수강신청 인원'] = pd.to_numeric(df['수강신청 인원'], errors='coerce').fillna(0)
-    
-    if '누적매출' in df.columns:
-        # 문자열이 있을 수 있으므로 숫자형으로 변환
-        df['누적매출'] = pd.to_numeric(df['누적매출'], errors='coerce').fillna(0)
+    # 데이터 전처리 - 숫자형 컬럼 변환
+    numeric_columns = ['누적매출', '수강신청 인원', '수료인원']
+    for col in numeric_columns:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     
     # 1. 과정 시작일이 선택한 연도/월에 해당하는 과정만 필터링 (개강 기준)
-    monthly_df = df[(df['연도'] == selected_year) & (df['월'] == selected_month)]
-    
-    # 2. 수강신청 인원이 0보다 큰 과정만 포함 (중요: 실제 수강신청 인원이 있는 과정만 포함)
-    if '수강신청 인원' in monthly_df.columns:
-        monthly_df = monthly_df[monthly_df['수강신청 인원'] > 0]
-    
-    # 3. 누적매출이 0보다 크고 null이 아닌 과정만 포함
-    if '누적매출' in monthly_df.columns:
-        monthly_df = monthly_df[(monthly_df['누적매출'] > 0)]
-    
-    # 4. 중복 과정 제거 - 훈련기관, 과정명, 과정시작일 기준
-    if '과정ID' in monthly_df.columns:
-        monthly_df = monthly_df.drop_duplicates(subset=['과정ID'])
-    else:
-        monthly_df = monthly_df.drop_duplicates(subset=['훈련기관', '과정명', '과정시작일'])
-    
-    # 5. 추가 데이터 검사 - 과정 시작일과 종료일 확인
-    # 과정 시작일과 종료일이 합리적인 과정만 포함
-    if '과정시작일' in monthly_df.columns and '과정종료일' in monthly_df.columns:
-        # 날짜 형식 확인
-        monthly_df['과정시작일'] = pd.to_datetime(monthly_df['과정시작일'], errors='coerce')
-        monthly_df['과정종료일'] = pd.to_datetime(monthly_df['과정종료일'], errors='coerce')
+    try:
+        monthly_df = df[(df['연도'] == selected_year) & (df['월'] == selected_month)]
+        st.info(f"1차 필터링 후 데이터 건수: {selected_year}년 {selected_month}월 개강 과정 {len(monthly_df)}건")
         
-        # null 값 제거
-        monthly_df = monthly_df[monthly_df['과정시작일'].notna() & monthly_df['과정종료일'].notna()]
+        if monthly_df.empty:
+            st.warning(f"{selected_year}년 {selected_month}월에 개강한 과정이 없습니다.")
+            return None
+            
+        # 2. 수강신청 인원 처리 (0 이하 값 필터링)
+        if '수강신청 인원' in monthly_df.columns:
+            zero_students = monthly_df[monthly_df['수강신청 인원'] <= 0].shape[0]
+            if zero_students > 0:
+                monthly_df = monthly_df[monthly_df['수강신청 인원'] > 0]
+                st.info(f"수강신청 인원이 0인 과정 {zero_students}건 제외 (남은 건수: {len(monthly_df)})")
         
-        # 시작일이 종료일보다 이전인지 확인
-        monthly_df = monthly_df[monthly_df['과정시작일'] < monthly_df['과정종료일']]
-    
-    # 6. 매출액 계산 방식 - '누적매출' 필드 사용
-    # 해당 월에 개강한 과정의 전체 누적매출을 사용
-    if '누적매출' not in monthly_df.columns:
-        st.error("누적매출 필드가 데이터에 없습니다.")
-        return
+        # 3. 누적매출 처리 (0 이하 값 필터링)
+        if '누적매출' in monthly_df.columns:
+            zero_revenue = monthly_df[monthly_df['누적매출'] <= 0].shape[0]
+            if zero_revenue > 0:
+                monthly_df = monthly_df[monthly_df['누적매출'] > 0]
+                st.info(f"누적매출이 0인 과정 {zero_revenue}건 제외 (남은 건수: {len(monthly_df)})")
         
-    if monthly_df.empty:
-        st.info(f"{selected_year}년 {selected_month}월에 해당하는 유효한 과정이 없습니다.")
-        return
+        # 4. 중복 과정 제거
+        before_dedup = len(monthly_df)
+        if '과정ID' in monthly_df.columns:
+            monthly_df = monthly_df.drop_duplicates(subset=['과정ID'])
+            if len(monthly_df) < before_dedup:
+                st.info(f"과정ID 기준 중복 제거: {before_dedup - len(monthly_df)}건 (남은 건수: {len(monthly_df)})")
+        else:
+            monthly_df = monthly_df.drop_duplicates(subset=['훈련기관', '과정명', '과정시작일'])
+            if len(monthly_df) < before_dedup:
+                st.info(f"훈련기관, 과정명, 과정시작일 기준 중복 제거: {before_dedup - len(monthly_df)}건 (남은 건수: {len(monthly_df)})")
+        
+        # 5. 날짜 유효성 검사
+        if '과정종료일' in monthly_df.columns:
+            # 날짜는 이미 datetime 형식으로 변환되어 있음 (시작 부분에서 처리)
+            # 시작일이 종료일보다 이전인지 확인
+            invalid_dates = monthly_df[~(monthly_df['과정시작일'] < monthly_df['과정종료일'])].shape[0]
+            if invalid_dates > 0:
+                monthly_df = monthly_df[monthly_df['과정시작일'] < monthly_df['과정종료일']]
+                st.info(f"시작일/종료일 오류 과정 {invalid_dates}건 제외 (남은 건수: {len(monthly_df)})")
+        
+        # 6. 매출액 검증 및 전처리
+        if '누적매출' not in monthly_df.columns:
+            st.error("누적매출 필드가 데이터에 없습니다.")
+            return None
+            
+        # 7. 최종 데이터 건수 확인
+        if monthly_df.empty:
+            st.warning(f"{selected_year}년 {selected_month}월에 해당하는 유효한 과정이 없습니다.")
+            return None
+            
+        st.success(f"최종 분석 데이터: {len(monthly_df)}건의 과정 (훈련기관 개수: {monthly_df['훈련기관'].nunique()}개)")
+        
+    except Exception as e:
+        st.error(f"데이터 필터링 중 오류 발생: {e}")
+        import traceback
+        st.exception(traceback.format_exc())
+        return None
 
     # monthly_df.empty 체크는 위에서 이미 함
 
@@ -1697,19 +1771,59 @@ def create_monthly_ranking_component(df):
         use_container_width=True
     )
 
-    # 상위 10개 그래프
-    st.markdown("### 상위 10개 기관 매출 시각화")
+    # 상위 10개 그래프 - 매출과 훈련생 수를 동시에 표시하는 듀얼 축 차트 생성
+    st.markdown("### 상위 10개 기관 매출 및 훈련생 수 시각화")
+    
+    # 상위 10개 기관 데이터 준비
+    top10_df = ranking_df.head(10).copy()
+    
+    # 매출과 훈련생 수를 함께 표시하는 듀얼 축 차트 생성
     fig = px.bar(
-        ranking_df.head(10),
+        top10_df,
         x='훈련기관',
         y='총매출(억)',
         text='총매출(억)',
-        title=f"{selected_year}년 {selected_month}월 훈련기관 매출 TOP 10",
-        color='총매출(억)',
-        color_continuous_scale='Blues'
+        title=f"{selected_year}년 {selected_month}월 훈련기관 매출 및 훈련생 TOP 10",
+        color_discrete_sequence=['#1f77b4']
     )
-    fig.update_traces(texttemplate='%{text:.1f}억', textposition='outside')
-    fig.update_layout(xaxis_tickangle=-30)
+    
+    # 훈련생 수를 선 그래프로 추가 (보조 y축 사용)
+    fig.add_trace(
+        go.Scatter(
+            x=top10_df['훈련기관'], 
+            y=top10_df['총인원'],
+            mode='lines+markers',
+            name='수강신청 인원',
+            line=dict(color='#ff7f0e', width=3),
+            marker=dict(size=8),
+            yaxis='y2'
+        )
+    )
+    
+    # 레이아웃 설정
+    fig.update_layout(
+        yaxis=dict(title='매출(억원)', titlefont=dict(color='#1f77b4')),
+        yaxis2=dict(
+            title='수강신청 인원',
+            titlefont=dict(color='#ff7f0e'),
+            anchor='x',
+            overlaying='y',
+            side='right'
+        ),
+        xaxis=dict(title='훈련기관'),
+        xaxis_tickangle=0,  # x축 레이블을 수평으로 유지
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+        height=500,
+        margin=dict(l=50, r=50, t=80, b=80)
+    )
+    
+    # 텍스트 레이블 포맷팅
+    fig.update_traces(
+        texttemplate='%{text:.1f}억', 
+        textposition='outside',
+        selector=dict(type='bar')
+    )
+    
     st.plotly_chart(fig, use_container_width=True)
 
     # 표에 확장 기능 추가 - 각 행을 확장하면 과정 목록을 볼 수 있도록
@@ -1819,6 +1933,9 @@ def create_monthly_ranking_component(df):
                 
     # JavaScript 코드 삽입
     st.components.v1.html(js_code, height=0)
+    
+    # 이 함수는 None 값이 아닌 JavaScript 코드를 반환해야 함
+    return js_code
 
 
 def main():
