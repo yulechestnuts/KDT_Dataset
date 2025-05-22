@@ -108,8 +108,27 @@ def create_monthly_ranking_component(df):
         print("월별 랭킹 컴포넌트 생성 실패: 유효한 데이터가 없습니다.")
         return None
     
-    # 훈련기관별 월별 매출 집계
-    monthly_revenue = df.groupby(['연월', '훈련기관'])['누적매출'].sum().reset_index()
+    # 파트너기관 컬럼 확인 (없으면 빈 컬럼 추가)
+    if '파트너기관' not in df.columns:
+        df['파트너기관'] = ''
+    
+    # 훈련유형 컬럼 확인 (없으면 빈 컬럼 추가)
+    if '훈련유형' not in df.columns:
+        df['훈련유형'] = ''
+        
+    # 표시용 기관 컬럼 추가 (선도기업형 훈련은 파트너기관 표시)
+    df['표시용_기관'] = df['훈련기관']
+    
+    # 선도기업형 훈련인 경우 파트너기관을 표시
+    mask_leading_company = df['훈련유형'].str.contains('선도기업형', na=False)
+    has_partner = (df['파트너기관'].notna()) & (df['파트너기관'] != '')
+    
+    # 훈련유형이 선도기업형이거나 파트너기관이 있는 경우
+    mask = mask_leading_company | has_partner
+    df.loc[mask & has_partner, '표시용_기관'] = df.loc[mask & has_partner, '파트너기관']
+    
+    # 훈련기관별 월별 매출 집계 (표시용 기관 사용)
+    monthly_revenue = df.groupby(['연월', '표시용_기관'])['누적매출'].sum().reset_index()
     
     if monthly_revenue.empty:
         print("월별 랭킹 컴포넌트 생성 실패: 그룹핑 후 데이터가 없습니다.")
@@ -150,7 +169,8 @@ def create_monthly_ranking_component(df):
         html_content += '<tr><th>순위</th><th>훈련기관</th><th>매출(억원)</th></tr>\n'
         
         for i, (_, row) in enumerate(top_data.iterrows(), 1):
-            html_content += f'<tr><td>{i}</td><td>{row["훈련기관"]}</td><td>{row["매출(억원)"]}억원</td></tr>\n'
+            # 표시용_기관 컬럼 사용 (선도기업형 훈련은 파트너기관 표시)
+            html_content += f'<tr><td>{i}</td><td>{row["표시용_기관"]}</td><td>{row["매출(억원)"]}억원</td></tr>\n'
         
         html_content += '</table>\n'
         html_content += '<hr>\n'
@@ -2830,19 +2850,8 @@ def main():
             # 월별 분석용 데이터프레임 생성 (원본 보존)
             analysis_df = df.copy()
             
-            # 비정상적인 매출액 필터링 (월별 분석에만 적용)
-            if '누적매출' in analysis_df.columns:
-                # 매출액 누각치 계산
-                q1 = analysis_df['누적매출'].quantile(0.25)
-                q3 = analysis_df['누적매출'].quantile(0.75)
-                iqr = q3 - q1
-                upper_bound = q3 + 1.5 * iqr
-                
-                # 매출액 필터링 (너무 높은 값 정상화)
-                extreme_mask = analysis_df['누적매출'] > upper_bound
-                if extreme_mask.sum() > 0:
-                    st.info(f"{extreme_mask.sum()}개의 비정상적으로 높은 매출액이 조정되었습니다.")
-                    analysis_df.loc[extreme_mask, '누적매출'] = upper_bound
+            # 매출액 필터링 제거 (사용자 요청에 따름)
+            # 원본 데이터 그대로 사용
             
             # '연월' 컬럼 생성 확인 (없을 경우 생성)
             if '연월' not in analysis_df.columns and '연도' in analysis_df.columns and '월' in analysis_df.columns:
