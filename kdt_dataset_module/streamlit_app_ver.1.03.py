@@ -1680,10 +1680,10 @@ def create_monthly_ranking_component(df):
         
         # 4. 중복 과정 제거
         before_dedup = len(monthly_df)
-        if '과정ID' in monthly_df.columns:
-            monthly_df = monthly_df.drop_duplicates(subset=['과정ID'])
+        if '훈련과정 ID' in monthly_df.columns:
+            monthly_df = monthly_df.drop_duplicates(subset=['훈련과정 ID'])
             if len(monthly_df) < before_dedup:
-                st.info(f"과정ID 기준 중복 제거: {before_dedup - len(monthly_df)}건 (남은 건수: {len(monthly_df)})")
+                st.info(f"훈련과정 ID 기준 중복 제거: {before_dedup - len(monthly_df)}건 (남은 건수: {len(monthly_df)})")
         elif '회차' in monthly_df.columns:
             # 회차 정보가 있는 경우 회차 정보도 중복 제거 기준에 포함
             monthly_df = monthly_df.drop_duplicates(subset=['훈련기관', '과정명', '회차', '과정시작일'])
@@ -3190,18 +3190,18 @@ def main():
                     
                     if course_id_search:
                         # ID 검색 실행
-                        id_search_results = df[df['과정ID'].astype(str).str.contains(course_id_search, case=False, na=False)]
+                        id_search_results = df[df['훈련과정 ID'].astype(str).str.contains(course_id_search, case=False, na=False)]
                         
                         if not id_search_results.empty:
                             st.write(f"{len(id_search_results)} 개의 검색 결과가 있습니다.")
                             
                             # 유니크한 과정ID 검색 결과 출력
-                            unique_course_ids = id_search_results['과정ID'].unique()
+                            unique_course_ids = id_search_results['훈련과정 ID'].unique()
                             selected_course_id = st.selectbox("조회할 훈련과정 ID 선택", unique_course_ids)
                             
                             if selected_course_id:
                                 # 선택한 과정ID의 정보 출력
-                                course_id_instance = id_search_results[id_search_results['과정ID'] == selected_course_id].sort_values('과정시작일', ascending=False)
+                                course_id_instance = id_search_results[id_search_results['훈련과정 ID'] == selected_course_id].sort_values('과정시작일', ascending=False)
                                 
                                 # 과정 정보 표시
                                 course_name = course_id_instance['과정명'].iloc[0] if not course_id_instance.empty else "정보 없음"
@@ -3241,7 +3241,7 @@ def main():
                                         hide_index=True
                                     )
                                 else:
-                                    st.info("해당 과정ID에 대한 정보가 없습니다.")
+                                    st.info("해당 훈련과정 ID에 대한 정보가 없습니다.")
                         else:
                             st.warning(f"훈련과정 ID {course_id_search}에 대한 검색 결과가 없습니다.")
             except Exception as e:
