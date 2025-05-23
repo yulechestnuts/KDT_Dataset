@@ -2747,7 +2747,7 @@ if __name__ == "__main__":
                         else:
                             st.info("해당 과정ID에 대한 정보가 없습니다.")
                 else:
-                    st.warning(f"과정 ID {course_id_search}에 대한 검색 결과가 없습니다.")
+                    st.warning(f"훈련과정 ID {course_id_search}에 대한 검색 결과가 없습니다.")
     
 # 페이지 설정 함수 정의
 def setup_page():
@@ -3197,7 +3197,7 @@ def main():
                             
                             # 유니크한 과정ID 검색 결과 출력
                             unique_course_ids = id_search_results['과정ID'].unique()
-                            selected_course_id = st.selectbox("조회할 과정 ID 선택", unique_course_ids)
+                            selected_course_id = st.selectbox("조회할 훈련과정 ID 선택", unique_course_ids)
                             
                             if selected_course_id:
                                 # 선택한 과정ID의 정보 출력
@@ -3205,7 +3205,7 @@ def main():
                                 
                                 # 과정 정보 표시
                                 course_name = course_id_instance['과정명'].iloc[0] if not course_id_instance.empty else "정보 없음"
-                                st.subheader(f"과정 ID: {selected_course_id} - {course_name}")
+                                st.subheader(f"훈련과정 ID: {selected_course_id} - {course_name}")
                                 
                                 # 과정 상세 정보 데이터프레임 표시
                                 if not course_id_instance.empty:
@@ -3243,7 +3243,7 @@ def main():
                                 else:
                                     st.info("해당 과정ID에 대한 정보가 없습니다.")
                         else:
-                            st.warning(f"과정 ID {course_id_search}에 대한 검색 결과가 없습니다.")
+                            st.warning(f"훈련과정 ID {course_id_search}에 대한 검색 결과가 없습니다.")
             except Exception as e:
                 st.error(f"훈련과정 분석 중 오류가 발생했습니다: {e}")
                 import traceback
