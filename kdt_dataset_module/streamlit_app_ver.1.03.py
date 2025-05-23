@@ -1684,6 +1684,11 @@ def create_monthly_ranking_component(df):
             monthly_df = monthly_df.drop_duplicates(subset=['과정ID'])
             if len(monthly_df) < before_dedup:
                 st.info(f"과정ID 기준 중복 제거: {before_dedup - len(monthly_df)}건 (남은 건수: {len(monthly_df)})")
+        elif '회차' in monthly_df.columns:
+            # 회차 정보가 있는 경우 회차 정보도 중복 제거 기준에 포함
+            monthly_df = monthly_df.drop_duplicates(subset=['훈련기관', '과정명', '회차', '과정시작일'])
+            if len(monthly_df) < before_dedup:
+                st.info(f"훈련기관, 과정명, 회차, 과정시작일 기준 중복 제거: {before_dedup - len(monthly_df)}건 (남은 건수: {len(monthly_df)})")
         else:
             monthly_df = monthly_df.drop_duplicates(subset=['훈련기관', '과정명', '과정시작일'])
             if len(monthly_df) < before_dedup:
@@ -1732,6 +1737,11 @@ def create_monthly_ranking_component(df):
     # 중복 과정 추가 확인 및 제거
     if '과정ID' in monthly_df.columns:
         duplicates = monthly_df[monthly_df.duplicated(subset=['과정ID'], keep=False)]
+        if not duplicates.empty:
+            st.warning(f"{duplicates.shape[0]}개의 중복 과정이 발견되어 제거되었습니다.")
+    elif '회차' in monthly_df.columns and all(col in monthly_df.columns for col in ['훈련기관', '과정명', '과정시작일']):
+        # 회차 정보가 있는 경우 회차 정보도 중복 제거 기준에 포함
+        duplicates = monthly_df[monthly_df.duplicated(subset=['훈련기관', '과정명', '회차', '과정시작일'], keep=False)]
         if not duplicates.empty:
             st.warning(f"{duplicates.shape[0]}개의 중복 과정이 발견되어 제거되었습니다.")
     elif all(col in monthly_df.columns for col in ['훈련기관', '과정명', '과정시작일']):
