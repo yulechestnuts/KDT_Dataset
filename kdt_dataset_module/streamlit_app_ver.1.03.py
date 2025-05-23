@@ -2694,22 +2694,22 @@ if __name__ == "__main__":
             
             if course_id_search:
                 # ID 검색 실행
-                id_search_results = filtered_df[filtered_df['과정ID'].astype(str).str.contains(course_id_search, case=False, na=False)]
+                id_search_results = filtered_df[filtered_df['훈련과정 ID'].astype(str).str.contains(course_id_search, case=False, na=False)]
                 
                 if not id_search_results.empty:
                     st.write(f"{len(id_search_results)} 개의 검색 결과가 있습니다.")
                     
                     # 유니크한 과정ID 검색 결과 출력
-                    unique_course_ids = id_search_results['과정ID'].unique()
+                    unique_course_ids = id_search_results['훈련과정ID'].unique()
                     selected_course_id = st.selectbox("조회할 과정 ID 선택", unique_course_ids)
                     
                     if selected_course_id:
                         # 선택한 과정ID의 정보 출력
-                        course_id_instance = id_search_results[id_search_results['과정ID'] == selected_course_id].sort_values('과정시작일', ascending=False)
+                        course_id_instance = id_search_results[id_search_results['훈련과정 ID'] == selected_course_id].sort_values('과정시작일', ascending=False)
                         
                         # 과정 정보 표시
                         course_name = course_id_instance['과정명'].iloc[0] if not course_id_instance.empty else "정보 없음"
-                        st.subheader(f"과정 ID: {selected_course_id} - {course_name}")
+                        st.subheader(f"훈련련과정 ID: {selected_course_id} - {course_name}")
                         
                         # 과정 상세 정보 데이터프레임 표시
                         if not course_id_instance.empty:
