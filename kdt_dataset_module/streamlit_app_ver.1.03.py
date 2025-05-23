@@ -1212,8 +1212,8 @@ def render_institution_info(data, show_leading_only=False):
                 revenue = row['누적매출'] # 실제 금액(10배)으로 표시
                 satisfaction = row['만족도']
                 
-                # 매출액 포맷팅 (10억 단위)
-                revenue_billions = revenue / 1000000000
+                # 매출액 포맷팅 (1억 단위)
+                revenue_billions = revenue / 100000000
                 
                 # HTML 카드 디자인
                 card_html = f"""
