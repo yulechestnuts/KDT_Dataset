@@ -472,7 +472,7 @@ def create_ranking_component(df, yearly_data):
                             '데이터 없음'
                     }))
                     .sort((a, b) => b.revenue - a.revenue)
-                    .slice(0, 5);
+                    .slice(0, 10);
             };
 
             // 필터링된 데이터 생성 (훈련 유형 필터 추가)
@@ -778,7 +778,7 @@ def create_ranking_component(df, yearly_data):
                                             marginBottom: '16px',
                                             marginLeft: '20px'
                                         }}>
-                                            <h3 style={{color: '#4299e1', marginBottom: '12px'}}>Top 5 과정</h3>
+                                            <h3 style={{color: '#4299e1', marginBottom: '12px'}}>Top 10 과정</h3>
                                             {getTop5Courses(item.coursesData, selectedYear).map((course, idx) => (
                                                 <div key={idx} style={{
                                                     marginBottom: '8px',
