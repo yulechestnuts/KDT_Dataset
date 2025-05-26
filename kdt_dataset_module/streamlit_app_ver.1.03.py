@@ -268,7 +268,7 @@ def create_ranking_component(df, yearly_data):
             {
                 'name': row['과정명'],
                 'yearlyRevenue': {
-                    year: float(row[year]) if pd.notna(row[year]) else 0
+                    year: round(float(row[year])) if pd.notna(row[year]) else 0  # 정수로 반올림 처리
                     for year in year_columns
                 },
                 'satisfaction': float(row['만족도']) if pd.notna(row['만족도']) else 0,
@@ -1158,13 +1158,16 @@ def create_monthly_performance_summary(df_for_summary, use_adjusted_revenue_flag
 
     if not top_n_institutions_display.empty:
         st.write(f"**{selected_year}년 {selected_month}월 Top {top_n} 훈련기관{adj_text_display}**")
+        # 매출액(억) 컬럼 반올림 처리 - 소수점 첫째 자리까지 표시
+        top_n_institutions_display['매출액(억)'] = top_n_institutions_display['매출액(억)'].round(1)
+        
         st.dataframe(
             top_n_institutions_display[['훈련기관', '매출액(억)', 'num_students_inst']].rename(
                 columns={'num_students_inst': '수강생 수'}
             ),
             use_container_width=True,
             column_config={
-                "매출액(억)": st.column_config.NumberColumn(format="%.1f억원"), # format_revenue 대신 직접 포맷팅
+                "매출액(억)": st.column_config.NumberColumn(format="%.1f억원"), # 소수점 첫째 자리까지 표시
                 "수강생 수": st.column_config.NumberColumn(format="%d명"),
             },
             hide_index=True
@@ -1214,6 +1217,8 @@ def render_institution_info(data, show_leading_only=False):
                 
                 # 매출액 포맷팅 (1억 단위)
                 revenue_billions = revenue / 100000000
+                # 소수점 첫째 자리까지 반올림
+                revenue_billions_rounded = round(revenue_billions, 1)
                 
                 # HTML 카드 디자인
                 card_html = f"""
@@ -1228,7 +1233,7 @@ def render_institution_info(data, show_leading_only=False):
                         {institution_name}
                     </h3>
                     <div style="color: #48BB78; font-size: 28px; font-weight: bold; text-align: center; margin-bottom: 10px;">
-                        {revenue_billions:.1f}억원
+                        {revenue_billions_rounded:.1f}억원
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-top: 15px;">
                         <div style="text-align: center; width: 100%;">
@@ -1318,22 +1323,34 @@ def visualize_by_institutions(df):
             # 연도별 데이터 준비
             year_columns = [col for col in df.columns if isinstance(col, str) and re.match(r'20\d{2}년$', col)]
             
-            # 연도별 매출 계산
+            # 연도별 매출 계산 - 누적매출 컬럼 사용
+            # 각 과정의 연도별 매출액 산출을 위해 각 연도에 해당하는 과정만 필터링하여 누적매출 사용
             yearly_revenue = {}
             yearly_leading = {}
             yearly_normal = {}
             
             for year in year_columns:
-                # 연도를 기준으로 필터링하지 않고 직접 각 연도 컬럼 값 합산
-                yearly_revenue[year] = selected_data[year].sum()
+                # 해당 연도에 해당하는 과정 필터링
+                year_str = year[:4]  # '2022년' -> '2022'
+                year_start = f"{year_str}-01-01"
+                year_end = f"{year_str}-12-31"
+                
+                # 해당 연도에 시작된 과정만 필터링
+                year_data = selected_data[
+                    (pd.to_datetime(selected_data['과정시작일']) >= year_start) & 
+                    (pd.to_datetime(selected_data['과정시작일']) <= year_end)
+                ]
+                
+                # 누적매출 사용
+                yearly_revenue[year] = year_data['누적매출'].sum()
                 
                 # 선도기업형 훈련 필터링
-                leading_data = selected_data[selected_data['훈련유형'].str.contains('선도기업형 훈련', na=False)]
-                yearly_leading[year] = leading_data[year].sum() if not leading_data.empty else 0
+                leading_year_data = year_data[year_data['훈련유형'].str.contains('선도기업형 훈련', na=False)]
+                yearly_leading[year] = leading_year_data['누적매출'].sum() if not leading_year_data.empty else 0
                 
                 # 일반KDT 훈련 필터링
-                normal_data = selected_data[~selected_data['훈련유형'].str.contains('선도기업형 훈련', na=False)]
-                yearly_normal[year] = normal_data[year].sum() if not normal_data.empty else 0
+                normal_year_data = year_data[~year_data['훈련유형'].str.contains('선도기업형 훈련', na=False)]
+                yearly_normal[year] = normal_year_data['누적매출'].sum() if not normal_year_data.empty else 0
             
             # 매출 정보 표시
             col1, col2, col3 = st.columns(3)
@@ -1370,7 +1387,7 @@ def visualize_by_institutions(df):
             fig.update_layout(
                 yaxis_title='매출액(원)',
                 legend_title='훈련유형',
-                yaxis_tickformat=',.0f',
+                yaxis_tickformat=',.1f',  # 소수점 첫째 자리까지 표시
                 xaxis_type='category'
             )
             st.plotly_chart(fig, use_container_width=True)
@@ -1386,18 +1403,29 @@ def visualize_by_institutions(df):
                 compare_yearly_leading = {}
                 compare_yearly_normal = {}
                 
-                # 연도별 차트를 위해 연도별 컬럼 데이터 계산 유지
+                # 연도별 계산 - 누적매출 컬럼 사용
                 for year in year_columns:
-                    # 연도별 컬럼 값 직접 합산
-                    compare_yearly_revenue[year] = compare_data[year].sum()
+                    # 해당 연도에 해당하는 과정 필터링
+                    year_str = year[:4]  # '2022년' -> '2022'
+                    year_start = f"{year_str}-01-01"
+                    year_end = f"{year_str}-12-31"
+                    
+                    # 해당 연도에 시작된 과정만 필터링
+                    year_data = compare_data[
+                        (pd.to_datetime(compare_data['과정시작일']) >= year_start) & 
+                        (pd.to_datetime(compare_data['과정시작일']) <= year_end)
+                    ]
+                    
+                    # 누적매출 사용
+                    compare_yearly_revenue[year] = year_data['누적매출'].sum()
                     
                     # 선도기업형 훈련 필터링
-                    leading_data = compare_data[compare_data['훈련유형'].str.contains('선도기업형 훈련', na=False)]
-                    compare_yearly_leading[year] = leading_data[year].sum() if not leading_data.empty else 0
+                    leading_year_data = year_data[year_data['훈련유형'].str.contains('선도기업형 훈련', na=False)]
+                    compare_yearly_leading[year] = leading_year_data['누적매출'].sum() if not leading_year_data.empty else 0
                     
                     # 일반KDT 훈련 필터링
-                    normal_data = compare_data[~compare_data['훈련유형'].str.contains('선도기업형 훈련', na=False)]
-                    compare_yearly_normal[year] = normal_data[year].sum() if not normal_data.empty else 0
+                    normal_year_data = year_data[~year_data['훈련유형'].str.contains('선도기업형 훈련', na=False)]
+                    compare_yearly_normal[year] = normal_year_data['누적매출'].sum() if not normal_year_data.empty else 0
                 
                 # 비교 차트 데이터 준비 (데이터 형태 변경)
                 # 각 훈련기관별 데이터를 별도로 생성한 후 합치는 방식으로 변경
@@ -1440,7 +1468,7 @@ def visualize_by_institutions(df):
                 fig.update_layout(
                     yaxis_title='매출액(원)',
                     legend_title='훈련기관',
-                    yaxis_tickformat=',.0f',
+                    yaxis_tickformat=',.1f',  # 소수점 첫째 자리까지 표시
                     xaxis_type='category'
                 )
                 st.plotly_chart(fig, use_container_width=True)
