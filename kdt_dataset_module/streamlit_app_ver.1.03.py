@@ -45,13 +45,18 @@ def create_monthly_revenue_chart(df, selected_year):
     
     # 피보팅 테이블 생성
     chart = alt.Chart(monthly_revenue).mark_bar().encode(
-        x=alt.X('월:O', title='월'),
-        y=alt.Y('매출(억원):Q', title='매출 (억원)'),
-        tooltip=['월:O', alt.Tooltip('매출(억원):Q', format='.1f')]
-    ).properties(
-        title=f'{selected_year}년 월별 매출',
-        width=600
-    )
+        x=alt.X('월:O', title='월',axis=alt.Axis(labelAngle=0)),
+        y=alt.Y(
+            '매출(억원):Q',
+            title='매출 (억원)',
+            axis=alt.Axis(
+                titleAngle=0,        # 제목 가로로
+                titleAlign='left',   # 왼쪽 정렬
+                titleAnchor='start', # 시작점 기준 정렬
+                titleX=-40,          # x축 기준 왼쪽으로 이동 (음수일수록 더 왼쪽)
+                titleY=-10           # y축 기준 위쪽으로 이동 (음수일수록 더 위)
+            )
+        ))
     
     return chart
 
@@ -1804,8 +1809,14 @@ def create_monthly_ranking_component(df):
     ranking_df = ranking_df.sort_values('총매출', ascending=False)
 
     # 표 표시 (수료율 컬럼 추가)
+    # 1부터 시작하는 랭킹 만들기
+    ranking_with_rank = ranking_df.copy()
+    ranking_with_rank.reset_index(drop=True, inplace=True)
+    ranking_with_rank.index = ranking_with_rank.index + 1  # 0부터 시작하는 인덱스를 1부터 시작하도록 변경
+    ranking_with_rank.index.name = '순위'  # 인덱스 이름을 '순위'로 설정
+    
     st.dataframe(
-        ranking_df[['훈련기관', '총매출(억)', '총인원', '총수료인원', '수료율', '과정 개수']].reset_index(drop=True),
+        ranking_with_rank[['훈련기관', '총매출(억)', '총인원', '총수료인원', '수료율', '과정 개수']],
         use_container_width=True
     )
 
