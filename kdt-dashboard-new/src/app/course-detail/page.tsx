@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState, useEffect } from 'react';
 import Papa from 'papaparse';
 import { CourseData } from '@/lib/data-utils';

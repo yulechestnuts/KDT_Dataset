@@ -1,3 +1,5 @@
+"use client";
+
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { CourseData } from "@/lib/data-utils";
 import React from 'react';
