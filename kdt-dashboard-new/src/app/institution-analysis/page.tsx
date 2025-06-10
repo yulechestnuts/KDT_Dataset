@@ -1,0 +1,315 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { loadDataFromGithub, preprocessData, applyRevenueAdjustment, calculateCompletionRate } from "@/utils/data-utils";
+import { CourseData, RawCourseData, InstitutionStat, calculateInstitutionStats, aggregateCoursesByCourseName, AggregatedCourseData } from "@/lib/data-utils";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { formatCurrency, formatNumber } from "@/utils/formatters";
+import { parse as parseCsv } from 'papaparse';
+import {
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+} from 'recharts';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+
+export default function InstitutionAnalysis() {
+  const [institutionStats, setInstitutionStats] = useState<InstitutionStat[]>([]);
+  const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
+  const [availableYears, setAvailableYears] = useState<number[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedInstitutionCourses, setSelectedInstitutionCourses] = useState<AggregatedCourseData[]>([]);
+  const [selectedInstitutionName, setSelectedInstitutionName] = useState<string>('');
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const rawDataString = await loadDataFromGithub();
+        const parsedData: any = parseCsv(rawDataString as string, { header: true, skipEmptyLines: true, dynamicTyping: false, trimHeaders: true });
+        const processedData = preprocessData(parsedData.data as RawCourseData[]);
+        
+        // 사용 가능한 연도 목록 추출
+        const years = Array.from(new Set(processedData.map(course => course.훈련연도)))
+          .filter(year => year !== 0)
+          .sort((a, b) => a - b);
+        setAvailableYears(years);
+
+        // 초기 데이터 로드
+        const stats = calculateInstitutionStats(processedData);
+        setInstitutionStats(stats);
+      } catch (error) {
+        console.error('데이터 로드 중 오류 발생:', error);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  // 연도 변경 시 통계 재계산
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const rawDataString = await loadDataFromGithub();
+        const parsedData: any = parseCsv(rawDataString as string, { header: true, skipEmptyLines: true, dynamicTyping: false, trimHeaders: true });
+        const processedData = preprocessData(parsedData.data as RawCourseData[]);
+        const stats = calculateInstitutionStats(processedData, selectedYear === 'all' ? undefined : selectedYear);
+        setInstitutionStats(stats);
+      } catch (error) {
+        console.error('데이터 로드 중 오류 발생:', error);
+      }
+    };
+
+    fetchData();
+  }, [selectedYear]);
+
+  const handleViewDetails = (institutionName: string, courses: CourseData[]) => {
+    setSelectedInstitutionName(institutionName);
+    
+    // 선택된 연도에 따라 과정 필터링
+    const filteredCourses = selectedYear === 'all' 
+      ? courses 
+      : courses.filter(course => {
+          const courseYear = new Date(course.과정시작일).getFullYear();
+          return courseYear === selectedYear;
+        });
+    
+    const aggregated = aggregateCoursesByCourseName(filteredCourses);
+    setSelectedInstitutionCourses(aggregated);
+    setIsModalOpen(true);
+  };
+
+  // 선택된 기관의 통계 계산
+  const calculateSelectedInstitutionStats = (courses: AggregatedCourseData[]) => {
+    return {
+      totalCourses: courses.length,
+      totalStudents: courses.reduce((sum, course) => sum + course.총훈련생수, 0),
+      totalCompleted: courses.reduce((sum, course) => sum + course.총수료인원, 0),
+      totalRevenue: courses.reduce((sum, course) => sum + course.총누적매출, 0),
+      avgSatisfaction: courses.reduce((sum, course) => sum + course.평균만족도, 0) / courses.length
+    };
+  };
+
+  // 매출액을 억 단위로 변환하는 함수
+  const formatRevenue = (value: number) => {
+    return `${(value / 100000000).toFixed(1)}억`;
+  };
+
+  return (
+    <div className="p-6">
+      <h1 className="text-2xl font-bold mb-6">훈련기관별 분석</h1>
+
+      {/* 연도 선택 */}
+      <div className="mb-10 relative z-10">
+        <label htmlFor="year-select" className="block text-sm font-medium text-gray-700 mb-2">
+          연도 선택
+        </label>
+        <Select
+          value={selectedYear.toString()}
+          onValueChange={(value) => setSelectedYear(value === 'all' ? 'all' : parseInt(value))}
+        >
+          <SelectTrigger className="w-[180px] bg-white">
+            <SelectValue placeholder="연도 선택" />
+          </SelectTrigger>
+          <SelectContent className="bg-white z-20">
+            <SelectItem value="all">전체 연도</SelectItem>
+            {availableYears.map(year => (
+              <SelectItem key={year} value={year.toString()}>{year}년</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      
+      {/* 매출액 차트 */}
+      <div className="bg-white rounded-lg shadow p-6 mt-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">훈련기관별 매출액 (억원)</h3>
+        <div className="h-[400px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={institutionStats.slice(0, 10)}>
+              <XAxis 
+                dataKey="institutionName" 
+                angle={-45} 
+                textAnchor="end" 
+                height={100}
+                tick={{ fontSize: 12 }}
+                tickFormatter={(value: string, index: number) => {
+                  const rank = index + 1;
+                  let displayValue = `${rank}. ${value}`;
+                  if (value === '주식회사 코드스테이츠') {
+                    displayValue += ' (2023년 감사를 통해 훈련비 전액 반환)';
+                  }
+                  return displayValue;
+                }}
+              />
+              <YAxis 
+                tickFormatter={formatRevenue}
+                tick={{ fontSize: 12 }}
+              />
+              <Tooltip 
+                formatter={(value: number) => [formatRevenue(value), '매출액']}
+                labelFormatter={(label) => {
+                  let institutionName = label.replace(/\d+\. /, '').replace(/ \(2023년 감사를 통해 훈련비 전액 반환\)/, '');
+                  if (institutionName === '주식회사 코드스테이츠') {
+                      return `기관명: ${institutionName} (2023년 감사를 통해 훈련비 전액 반환)`;
+                  }
+                  return `기관명: ${institutionName}`;
+                }}
+              />
+              <Bar dataKey="totalRevenue" fill="#4F46E5" name="매출액" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* 상세 통계 테이블 */}
+      <div className="bg-white rounded-lg shadow overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">순위 및 훈련기관</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">매출액</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">훈련과정 수</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">훈련생 수</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">수료인원</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">수료율</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">평균 만족도</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">상세</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {institutionStats.map((stat, index) => (
+                <tr key={stat.institutionName} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {index + 1}. {stat.institutionName}
+                    {stat.institutionName === '주식회사 코드스테이츠' && (
+                      <span className="ml-2 text-red-500 text-xs">(2023년 감사를 통해 훈련비 전액 반환)</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatRevenue(stat.totalRevenue)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{stat.totalCourses}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{stat.totalStudents}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{stat.completedStudents}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{stat.completionRate.toFixed(1)}%</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{stat.avgSatisfaction.toFixed(1)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <button
+                      onClick={() => handleViewDetails(stat.institutionName, stat.courses)}
+                      className="text-indigo-600 hover:text-indigo-900"
+                    >
+                      상세보기
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 상세 모달 */}
+      <Dialog
+        open={isModalOpen}
+        onOpenChange={setIsModalOpen}
+      >
+        <DialogContent className="mx-auto max-w-[90vw] w-full bg-white rounded-xl shadow-lg p-0">
+          <DialogHeader className="p-6 border-b">
+            <DialogTitle className="text-lg font-medium leading-6 text-gray-900">
+              {selectedInstitutionName} - 훈련과정 상세
+              {selectedYear !== 'all' && ` (${selectedYear}년)`}
+            </DialogTitle>
+            <DialogDescription>
+              선택된 훈련기관의 {selectedYear === 'all' ? '모든' : `${selectedYear}년`} 훈련과정 목록입니다. (매출액 기준 내림차순 정렬)
+            </DialogDescription>
+          </DialogHeader>
+          <div className="p-6">
+            {/* 통계 요약 */}
+            <div className="grid grid-cols-5 gap-4 mb-6">
+              {(() => {
+                const stats = calculateSelectedInstitutionStats(selectedInstitutionCourses);
+                return (
+                  <>
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="text-sm text-gray-500">훈련과정 수</div>
+                      <div className="text-lg font-semibold">{stats.totalCourses}</div>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="text-sm text-gray-500">훈련생 수</div>
+                      <div className="text-lg font-semibold">{stats.totalStudents}</div>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="text-sm text-gray-500">수료인원</div>
+                      <div className="text-lg font-semibold">{stats.totalCompleted}</div>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="text-sm text-gray-500">매출액</div>
+                      <div className="text-lg font-semibold">{formatRevenue(stats.totalRevenue)}</div>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="text-sm text-gray-500">평균 만족도</div>
+                      <div className="text-lg font-semibold">{stats.avgSatisfaction.toFixed(1)}</div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+            <div className="overflow-x-auto max-h-[70vh]">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[25%]">과정명</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[15%]">훈련유형</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">훈련생 수</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">수료인원</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">수료율</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">매출액</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">만족도</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">원천과정수</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {selectedInstitutionCourses.map((course) => (
+                    <tr key={course.과정명} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{course.과정명}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.훈련유형들?.join(', ') || '-'}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.총훈련생수}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.총수료인원}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+                        {((course.총수료인원 / course.총훈련생수) * 100).toFixed(1)}%
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatRevenue(course.총누적매출)}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.평균만족도.toFixed(1)}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.원천과정수}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div className="bg-gray-50 px-6 py-3 flex justify-end">
+            <button
+              type="button"
+              className="bg-white px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
+              onClick={() => setIsModalOpen(false)}
+            >
+              닫기
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+} 
