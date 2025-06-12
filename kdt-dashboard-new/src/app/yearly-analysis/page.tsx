@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import Papa from 'papaparse';
+import { CourseDetailDialog } from "@/components/CourseDetailDialog";
 
 export default function YearlyAnalysisPage() {
   const [data, setData] = useState<CourseData[]>([]);
@@ -116,6 +117,28 @@ export default function YearlyAnalysisPage() {
     setSelectedYearForModal(year);
     setSelectedYearCourses(courses);
     setIsModalOpen(true);
+  };
+
+  const handleCourseUpdate = (updatedCourse: CourseData) => {
+    // 전체 데이터에서 해당 과정을 찾아 업데이트
+    setData(prevData => {
+      const newData = prevData.map(course => 
+        course.과정ID === updatedCourse.과정ID ? updatedCourse : course
+      );
+      
+      // 연도별 통계 재계산
+      const stats = generateYearlyStats(newData);
+      setYearlyStats(stats);
+      
+      return newData;
+    });
+
+    // 선택된 연도의 과정 목록도 업데이트
+    setSelectedYearCourses(prevCourses => 
+      prevCourses.map(course => 
+        course.과정ID === updatedCourse.과정ID ? updatedCourse : course
+      )
+    );
   };
 
   const aggregatedCoursesForModal = aggregateCoursesByName(selectedYearCourses);
@@ -258,18 +281,32 @@ export default function YearlyAnalysisPage() {
                     <TableHead>과정 수</TableHead>
                     <TableHead>총 수강신청 인원</TableHead>
                     <TableHead>총 수료인원</TableHead>
+                    <TableHead>상세보기</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {aggregatedCoursesForModal.map((aggCourse, index) => (
-                    <TableRow key={index}>
-                      <TableCell>{aggCourse.courseName}</TableCell>
-                      <TableCell>{formatCurrency(aggCourse.totalRevenue)}</TableCell>
-                      <TableCell>{aggCourse.count}개</TableCell>
-                      <TableCell>{aggCourse.totalStudents}명</TableCell>
-                      <TableCell>{aggCourse.totalCompletedStudents}명</TableCell>
-                    </TableRow>
-                  ))}
+                  {aggregatedCoursesForModal.map((aggCourse, index) => {
+                    const course = selectedYearCourses.find(c => c.과정명 === aggCourse.courseName);
+                    return (
+                      <TableRow key={index}>
+                        <TableCell>{aggCourse.courseName}</TableCell>
+                        <TableCell>{formatCurrency(aggCourse.totalRevenue)}</TableCell>
+                        <TableCell>{aggCourse.count}개</TableCell>
+                        <TableCell>{aggCourse.totalStudents}명</TableCell>
+                        <TableCell>{aggCourse.totalCompletedStudents}명</TableCell>
+                        <TableCell>
+                          {course && (
+                            <CourseDetailDialog
+                              course={course}
+                              isOpen={true}
+                              onClose={() => {}}
+                              onUpdate={handleCourseUpdate}
+                            />
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             ) : (
