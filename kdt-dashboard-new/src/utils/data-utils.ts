@@ -67,25 +67,187 @@ export const generateYearlyStats = (data: CourseData[]): YearlyStats[] => {
   return Array.from(yearlyMap.values()).sort((a, b) => a.year - b.year);
 };
 
+// 연도별 실제 매출 대비 조정 계수
+const YEARLY_ADJUSTMENT_FACTORS = {
+  '2021': 810 / 687,  // 약 1.18
+  '2022': 2340 / 2033, // 약 1.15
+  '2023': 3690 / 3091, // 약 1.19
+  '2024': 4755 / 4022  // 약 1.18
+};
+
 // 수료율에 따른 매출액 조정 계수 계산
 export const calculateRevenueAdjustmentFactor = (completionRate: number): number => {
-  if (completionRate >= 75) {
-    // 75% 이상인 경우: 1.0 ~ 1.25 배수
-    // 75%에서 1.0배, 100%에서 1.25배로 선형 증가
-    return 1.0 + ((completionRate - 75) / 25) * 0.25;
+  if (completionRate >= 65) {
+    // 65% 이상인 경우: 1.0 ~ 1.25 배수
+    // 65%에서 1.0배, 100%에서 1.25배로 선형 증가
+    return 1.0 + ((completionRate - 65) / 35) * 0.25;
   } else {
-    // 75% 미만인 경우: 0.5 ~ 1.0 배수
-    // 30%에서 0.5배, 75%에서 1.0배로 선형 증가
+    // 65% 미만인 경우: 0.5 ~ 1.0 배수
+    // 30%에서 0.5배, 65%에서 1.0배로 선형 증가
     if (completionRate <= 30) return 0.5;
-    return 0.5 + ((completionRate - 30) / 45) * 0.5;
+    return 0.5 + ((completionRate - 30) / 35) * 0.5;
   }
+};
+
+// 로그 함수를 사용한 차등배분 계산 (월 단위)
+export const calculateMonthlyDistribution = (startDate: Date, currentDate: Date, endDate: Date): number => {
+  const totalMonths = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30));
+  const elapsedMonths = Math.ceil((currentDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30));
+  
+  if (totalMonths <= 0) return 1;
+  
+  // 로그 함수 적용 (밑이 2인 로그)
+  const logBase = 2;
+  const progressRatio = Math.min(elapsedMonths / totalMonths, 1);
+  return 1 - Math.log(1 + (logBase - 1) * progressRatio) / Math.log(logBase);
+};
+
+// 실 매출 대비를 6~7등분하여 배분하는 함수
+const calculateRevenueDistribution = (progressRatio: number, completionRate: number): number => {
+  // 6등분으로 나누고, 각 구간별 가중치 설정
+  const segments = 6;
+  const segmentSize = 1 / segments;
+  const currentSegment = Math.floor(progressRatio * segments);
+  
+  // 수료율에 따른 기본 가중치 조정 (1.1배 적용)
+  let baseWeight = 1.0;
+  if (completionRate >= 65) {
+    // 65% 이상: 1.0 ~ 1.25
+    baseWeight = (1.0 + ((completionRate - 65) / 35) * 0.25) * 1.1;
+  } else {
+    // 65% 미만: 0.5 ~ 1.0
+    baseWeight = (0.5 + (completionRate / 65) * 0.5) * 1.1;
+  }
+  
+  // 각 구간별 가중치 (수료율에 따라 조정)
+  const weights = [
+    baseWeight * 1.2,  // 1등분
+    baseWeight * 1.1,  // 2등분
+    baseWeight * 1.0,  // 3등분
+    baseWeight * 0.9,  // 4등분
+    baseWeight * 0.8,  // 5등분
+    baseWeight * 0.7   // 6등분
+  ];
+  
+  // 현재 구간 내 진행률
+  const segmentProgress = (progressRatio - currentSegment * segmentSize) / segmentSize;
+  
+  // 현재 구간과 다음 구간의 가중치를 보간
+  const currentWeight = weights[currentSegment];
+  const nextWeight = weights[Math.min(currentSegment + 1, segments - 1)];
+  
+  // 수료율에 따른 보간 비율 조정
+  // 수료율이 높을수록 현재 구간의 가중치를 더 많이 반영
+  const completionFactor = completionRate / 100;
+  const adjustedProgress = segmentProgress * (1 - completionFactor * 0.3);
+  
+  const interpolatedWeight = currentWeight + (nextWeight - currentWeight) * adjustedProgress;
+  
+  return interpolatedWeight;
+};
+
+// 로그 함수를 사용한 인원 기반 매출 계산
+export const calculateRevenueByParticipants = (
+  course: CourseData,
+  yearlyRevenue: number
+): number => {
+  const startDate = new Date(course.과정시작일);
+  const endDate = new Date(course.과정종료일);
+  const currentDate = new Date();
+  
+  // 훈련 시작 인원과 수료 인원
+  const enrolledCount = course['수강신청 인원'] ?? 0;
+  const completedCount = course['수료인원'] ?? 0;
+  
+  if (enrolledCount === 0) return 0;
+  
+  // 과정이 아직 시작되지 않은 경우
+  if (currentDate < startDate) {
+    return 0;
+  }
+  
+  // 과정이 이미 종료된 경우
+  if (currentDate >= endDate) {
+    // 수료 인원 기준으로 매출 계산
+    return (yearlyRevenue / enrolledCount) * completedCount;
+  }
+  
+  // 과정 진행 중인 경우
+  const totalDuration = endDate.getTime() - startDate.getTime();
+  const elapsedDuration = currentDate.getTime() - startDate.getTime();
+  const progressRatio = Math.min(Math.max(elapsedDuration / totalDuration, 0), 1);
+  
+  // 로그 함수를 사용한 진행률 계산 (밑이 2인 로그)
+  const logBase = 2;
+  const logProgress = 1 - Math.log(1 + (logBase - 1) * progressRatio) / Math.log(logBase);
+  
+  // 시작 인원과 수료 인원 사이의 금액을 로그 함수로 계산
+  const startRevenue = yearlyRevenue; // 시작 인원 기준 매출
+  const endRevenue = (yearlyRevenue / enrolledCount) * completedCount; // 수료 인원 기준 매출
+  
+  // 로그 함수를 사용하여 두 금액 사이를 보간
+  const interpolatedRevenue = startRevenue * logProgress + endRevenue * (1 - logProgress);
+  
+  // 실제 매출과의 차이를 반영 (약 89% 수준)
+  const actualRevenueRatio = 0.89;
+  
+  return interpolatedRevenue * actualRevenueRatio;
+};
+
+// 로그 함수를 사용한 실제 매출 계산
+export const calculateActualRevenue = (
+  course: CourseData,
+  yearlyRevenue: number
+): number => {
+  const startDate = new Date(course.과정시작일);
+  const endDate = new Date(course.과정종료일);
+  const currentDate = new Date();
+  
+  // 훈련 시작 인원
+  const enrolledCount = course['수강신청 인원'] ?? 0;
+  if (enrolledCount === 0) return 0;
+  
+  // 과정이 아직 시작되지 않은 경우
+  if (currentDate < startDate) {
+    return 0;
+  }
+  
+  // 기본 매출 계산 (훈련비 * 수강신청 인원)
+  const baseRevenue = yearlyRevenue;
+  
+  // 현재까지의 수료율
+  const currentCompletionRate = course.수료율 ?? 0;
+  
+  // 과정이 이미 종료된 경우
+  if (currentDate >= endDate) {
+    // 수료율에 따른 보정 계수 계산 (1.1배 적용)
+    let adjustmentFactor = 0.5; // 기본값 (65% 미만)
+    
+    if (currentCompletionRate >= 65) {
+      // 65%에서 1.0배, 100%에서 1.25배로 선형 증가
+      adjustmentFactor = (1.0 + ((currentCompletionRate - 65) / 35) * 0.25) * 1.1;
+    } else {
+      // 65% 미만은 50%까지 순차 감소
+      adjustmentFactor = (0.5 + ((currentCompletionRate / 65) * 0.5)) * 1.1;
+    }
+    
+    return baseRevenue * adjustmentFactor;
+  }
+  
+  // 과정 진행 중인 경우
+  const totalDuration = endDate.getTime() - startDate.getTime();
+  const elapsedDuration = currentDate.getTime() - startDate.getTime();
+  const progressRatio = Math.min(Math.max(elapsedDuration / totalDuration, 0), 1);
+  
+  // 실 매출 대비 배분 적용 (수료율 반영)
+  const distributionFactor = calculateRevenueDistribution(progressRatio, currentCompletionRate);
+  
+  return baseRevenue * distributionFactor;
 };
 
 // 연도별 매출액 조정
 export const adjustYearlyRevenue = (course: CourseData, yearlyRevenue: number): number => {
-  const completionRate = course.수료율 ?? 0;
-  const adjustmentFactor = calculateRevenueAdjustmentFactor(completionRate);
-  return yearlyRevenue * adjustmentFactor;
+  return calculateActualRevenue(course, yearlyRevenue);
 };
 
 export const calculateMonthlyStatistics = (
@@ -456,4 +618,80 @@ export const calculateInstitutionStats = (data: CourseData[]): InstitutionStats[
 
   // 매출 기준으로 내림차순 정렬
   return result.sort((a, b) => b.totalRevenue - a.totalRevenue);
+};
+
+// 금액 포맷팅 함수
+export const formatCurrency = (amount: number): string => {
+  if (amount === 0) return '0원';
+
+  const absAmount = Math.abs(amount);
+  const sign = amount < 0 ? '-' : '';
+
+  const trillion = Math.floor(absAmount / 1_000_000_000_000); // 1조
+  const billion = Math.floor((absAmount % 1_000_000_000_000) / 100_000_000); // 1억
+  const tenThousand = Math.floor((absAmount % 100_000_000) / 10_000); // 1만
+
+  let result = '';
+
+  if (trillion > 0) {
+    result += `${trillion}조 `;
+    // 조 단위가 있을 경우, 억 단위는 반올림하여 표시 (예: 1조 2974억)
+    const remainingAfterTrillion = absAmount % 1_000_000_000_000;
+    const roundedBillion = Math.round(remainingAfterTrillion / 100_000_000);
+    if (roundedBillion > 0) {
+      result += `${roundedBillion}억`;
+    }
+  } else if (billion > 0) {
+    result += `${billion}억`;
+    // 억 단위가 있을 경우, 만 단위는 반올림하여 표시 (예: 2973억 8657만)
+    const remainingAfterBillion = absAmount % 100_000_000;
+    const roundedTenThousand = Math.round(remainingAfterBillion / 10_000);
+    if (roundedTenThousand > 0) {
+      result += ` ${roundedTenThousand}만`;
+    }
+  } else if (tenThousand > 0) {
+    result += `${tenThousand}만`;
+  } else {
+    result += `${absAmount.toLocaleString('ko-KR')}원`;
+  }
+
+  return sign + result.trim();
+};
+
+// 월별 매출 계산
+export const calculateMonthlyRevenue = (
+  course: CourseData,
+  yearlyRevenue: number,
+  year: number,
+  month: number
+): number => {
+  const startDate = new Date(course.과정시작일);
+  const endDate = new Date(course.과정종료일);
+  const targetDate = new Date(year, month - 1, 1); // 해당 월의 1일
+  const nextMonthDate = new Date(year, month, 1); // 다음 달의 1일
+  
+  // 해당 월이 과정 기간에 포함되지 않는 경우
+  if (targetDate >= endDate || nextMonthDate <= startDate) {
+    return 0;
+  }
+  
+  // 해당 월의 시작일과 종료일 계산
+  const monthStart = targetDate < startDate ? startDate : targetDate;
+  const monthEnd = nextMonthDate > endDate ? endDate : nextMonthDate;
+  
+  // 해당 월의 진행률 계산
+  const totalDuration = endDate.getTime() - startDate.getTime();
+  const monthDuration = monthEnd.getTime() - monthStart.getTime();
+  const progressRatio = monthDuration / totalDuration;
+  
+  // 현재까지의 수료율
+  const currentCompletionRate = course.수료율 ?? 0;
+  
+  // 실 매출 대비 배분 적용 (수료율 반영)
+  const distributionFactor = calculateRevenueDistribution(progressRatio, currentCompletionRate);
+  
+  // 월별 매출 계산
+  const monthlyRevenue = yearlyRevenue * distributionFactor;
+  
+  return monthlyRevenue;
 };
