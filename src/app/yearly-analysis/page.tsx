@@ -317,4 +317,4 @@ export default function YearlyAnalysisPage() {
       </Dialog>
     </div>
   );
-} 
+}

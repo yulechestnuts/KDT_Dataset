@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { loadDataFromGithub, preprocessData, adjustYearlyRevenue } from "@/utils/data-utils";
 import { CourseData } from "@/lib/data-utils";
 import Papa from "papaparse";
@@ -19,9 +19,10 @@ interface CourseStats {
 
 type YearColumn = '2021년' | '2022년' | '2023년' | '2024년' | '2025년' | '2026년';
 
-export default function CourseAnalysisPage() {
+function CourseAnalysisContent() {
   const searchParams = useSearchParams();
   const selectedCourse = searchParams.get('course');
+
   const [courseData, setCourseData] = useState<CourseData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -218,4 +219,12 @@ export default function CourseAnalysisPage() {
       </div>
     </div>
   );
-} 
+}
+
+export default function CourseAnalysisPage() {
+  return (
+    <Suspense fallback={<div className="p-4">Loading...</div>}>
+      <CourseAnalysisContent />
+    </Suspense>
+  );
+}
