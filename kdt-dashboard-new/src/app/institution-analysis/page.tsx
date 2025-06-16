@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { loadDataFromGithub, preprocessData, applyRevenueAdjustment, calculateCompletionRate } from "@/utils/data-utils";
-import { CourseData, RawCourseData, InstitutionStat, calculateInstitutionStats, aggregateCoursesByCourseName, AggregatedCourseData } from "@/lib/data-utils";
+import { CourseData, RawCourseData, InstitutionStat, calculateInstitutionStats, aggregateCoursesByCourseNameForInstitution, AggregatedCourseData } from "@/lib/data-utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -41,15 +41,19 @@ export default function InstitutionAnalysis() {
         const rawDataString = await loadDataFromGithub();
         const parsedData: any = parseCsv(rawDataString as string, { header: true, skipEmptyLines: true, dynamicTyping: false, trimHeaders: true });
         const processedData = preprocessData(parsedData.data as RawCourseData[]);
-        
+
+        // 전체 수료율 계산 후 매출 보정 적용
+        const overallCompletion = calculateCompletionRate(processedData);
+        const adjustedCourses = applyRevenueAdjustment(processedData, overallCompletion);
+
         // 사용 가능한 연도 목록 추출
-        const years = Array.from(new Set(processedData.map(course => course.훈련연도)))
+        const years = Array.from(new Set(adjustedCourses.map(course => course.훈련연도)))
           .filter(year => year !== 0)
           .sort((a, b) => a - b);
         setAvailableYears(years);
 
         // 초기 데이터 로드
-        const stats = calculateInstitutionStats(processedData);
+        const stats = calculateInstitutionStats(adjustedCourses);
         setInstitutionStats(stats);
       } catch (error) {
         console.error('데이터 로드 중 오류 발생:', error);
@@ -66,7 +70,9 @@ export default function InstitutionAnalysis() {
         const rawDataString = await loadDataFromGithub();
         const parsedData: any = parseCsv(rawDataString as string, { header: true, skipEmptyLines: true, dynamicTyping: false, trimHeaders: true });
         const processedData = preprocessData(parsedData.data as RawCourseData[]);
-        const stats = calculateInstitutionStats(processedData, selectedYear === 'all' ? undefined : selectedYear);
+        const overallCompletion = calculateCompletionRate(processedData);
+        const adjustedCourses = applyRevenueAdjustment(processedData, overallCompletion);
+        const stats = calculateInstitutionStats(adjustedCourses, selectedYear === 'all' ? undefined : selectedYear);
         setInstitutionStats(stats);
       } catch (error) {
         console.error('데이터 로드 중 오류 발생:', error);
@@ -87,7 +93,11 @@ export default function InstitutionAnalysis() {
           return courseYear === selectedYear;
         });
     
-    const aggregated = aggregateCoursesByCourseName(filteredCourses);
+    // 전체 수료율 계산 시 수료인원 0명 과정은 제외
+    const completionBasisCourses = filteredCourses.filter(c => (c['수료인원'] ?? 0) > 0);
+    const overallCompletion = calculateCompletionRate(completionBasisCourses);
+    const adjustedCourses = applyRevenueAdjustment(filteredCourses, overallCompletion);
+    const aggregated = aggregateCoursesByCourseNameForInstitution(adjustedCourses, institutionName, selectedYear === 'all' ? undefined : selectedYear);
     setSelectedInstitutionCourses(aggregated);
     setIsModalOpen(true);
   };
@@ -225,7 +235,7 @@ export default function InstitutionAnalysis() {
         open={isModalOpen}
         onOpenChange={setIsModalOpen}
       >
-        <DialogContent className="mx-auto max-w-[90vw] w-full bg-white rounded-xl shadow-lg p-0">
+        <DialogContent className="mx-auto max-w-[80vw] max-h-[85vh] w-full bg-white rounded-xl shadow-lg p-0 overflow-y-auto">
           <DialogHeader className="p-6 border-b">
             <DialogTitle className="text-lg font-medium leading-6 text-gray-900">
               {selectedInstitutionName} - 훈련과정 상세
@@ -266,7 +276,7 @@ export default function InstitutionAnalysis() {
                 );
               })()}
             </div>
-            <div className="overflow-x-auto max-h-[70vh]">
+            <div className="overflow-x-auto max-h-[65vh]">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50 sticky top-0">
                   <tr>
@@ -288,7 +298,9 @@ export default function InstitutionAnalysis() {
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.총훈련생수}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.총수료인원}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                        {((course.총수료인원 / course.총훈련생수) * 100).toFixed(1)}%
+                        {course.총수료인원 === 0
+                          ? '-'
+                          : `${((course.총수료인원 / course.총훈련생수) * 100).toFixed(1)}%`}
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatRevenue(course.총누적매출)}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.평균만족도.toFixed(1)}</td>
