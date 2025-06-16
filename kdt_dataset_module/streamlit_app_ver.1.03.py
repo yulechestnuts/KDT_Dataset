@@ -2807,7 +2807,7 @@ def setup_page():
     
 # 데이터 로딩 및 전처리 함수 정의
 def load_and_preprocess_data():
-    url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202504.csv?raw=true"
+    url = "https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202505.csv?raw=true"
     df = load_data_from_github(url)
     if df.empty:
         st.error("데이터를 불러올 수 없습니다.")
