@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CourseData } from "@/lib/data-utils";
-import { formatCurrency, formatNumber } from "@/lib/utils";
+import { formatCurrency, formatNumber } from "@/utils/formatters";
 import {
   Table,
   TableBody,
@@ -45,8 +45,8 @@ export function YearlyDetails({ data, year }: YearlyDetailsProps) {
                 <TableCell>{row.과정종료일.toLocaleDateString()}</TableCell>
                 <TableCell>{row.훈련기관}</TableCell>
                 <TableCell>{row.과정명}</TableCell>
-                <TableCell>{formatNumber(row.수강신청인원)}</TableCell>
-                <TableCell>{formatCurrency(row.훈련비)}</TableCell>
+                <TableCell>{formatNumber((row as any)['수강신청 인원'] || 0)}</TableCell>
+                <TableCell>{formatCurrency((row as any)['훈련비'] || 0)}</TableCell>
                 <TableCell>{row.수료율}%</TableCell>
               </TableRow>
             ))}

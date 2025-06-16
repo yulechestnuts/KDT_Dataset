@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MonthlyStats } from "@/lib/data-utils";
-import { formatCurrency, formatNumber } from "@/lib/utils";
+import { formatCurrency, formatNumber, formatEok } from "@/utils/formatters";
 import { Line } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -14,7 +14,38 @@ import {
   Tooltip,
   Legend,
   Filler,
+  ChartOptions,
+  Plugin
 } from 'chart.js';
+
+// 커스텀 플러그인: y축 제목을 가로로 그리고 상단에 배치
+const horizontalYAxisTitlePlugin: Plugin<'line'> = {
+  id: 'horizontalYAxisTitle',
+  afterDraw(chart) {
+    const { ctx, chartArea, scales } = chart;
+    const { top, left, right } = chartArea;
+    ctx.save();
+    ctx.font = '12px "Noto Sans KR", sans-serif';
+    ctx.fillStyle = '#374151';
+    ctx.textBaseline = 'bottom';
+
+    // 왼쪽 y축 제목
+    const yTitle = scales.y?.options?.title?.text as string | undefined;
+    if (yTitle) {
+      ctx.textAlign = 'left';
+      ctx.fillText(yTitle, left + 4, top - 4);
+    }
+
+    // 오른쪽 y1축 제목
+    const y1Title = scales.y1?.options?.title?.text as string | undefined;
+    if (y1Title) {
+      ctx.textAlign = 'right';
+      ctx.fillText(y1Title, right - 4, top - 4);
+    }
+
+    ctx.restore();
+  }
+};
 
 ChartJS.register(
   CategoryScale,
@@ -24,7 +55,8 @@ ChartJS.register(
   Title,
   Tooltip,
   Legend,
-  Filler
+  Filler,
+  horizontalYAxisTitlePlugin
 );
 
 interface RevenueChartProps {
@@ -69,7 +101,9 @@ export function RevenueChart({ data }: RevenueChartProps) {
   }
 
   const months = sortedData.map(stat => stat.month);
-  const revenueData = sortedData.map(stat => stat.revenue || 0);
+  const revenueDataWon = sortedData.map(stat => stat.revenue || 0);
+  const EOK = 100_000_000;
+  const revenueData = revenueDataWon.map(val => val / EOK); // 억 단위 변환
   const studentData = sortedData.map(stat => stat.totalStudents);
 
   // 차트 색상 개선 (대시보드 스타일)
@@ -145,7 +179,8 @@ export function RevenueChart({ data }: RevenueChartProps) {
               label += ': ';
             }
             if (context.dataset.yAxisID === 'y') {
-              label += formatCurrency(context.parsed.y);
+              const wonVal = context.parsed.y * EOK;
+              label += formatCurrency(wonVal);
             } else {
               label += formatNumber(context.parsed.y) + '명';
             }
@@ -161,6 +196,8 @@ export function RevenueChart({ data }: RevenueChartProps) {
         },
         ticks: {
           color: '#6b7280',
+          maxRotation: 0,
+          minRotation: 0,
         }
       },
       y: {
@@ -168,9 +205,8 @@ export function RevenueChart({ data }: RevenueChartProps) {
         display: true,
         position: 'left' as const,
         title: {
-          display: true,
-          text: '매출 (원)',
-          color: '#374151',
+          display: false,
+          text: '매출 (억원)'
         },
         grid: {
           color: 'rgba(107, 114, 128, 0.1)',
@@ -178,7 +214,7 @@ export function RevenueChart({ data }: RevenueChartProps) {
         ticks: {
           color: '#6b7280',
           callback: function(value: any) {
-            return formatCurrency(value);
+            return formatEok(value as number);
           }
         },
         beginAtZero: true,
@@ -188,9 +224,8 @@ export function RevenueChart({ data }: RevenueChartProps) {
         display: true,
         position: 'right' as const,
         title: {
-          display: true,
-          text: '수강인원 (명)',
-          color: '#374151',
+          display: false,
+          text: '수강인원 (명)'
         },
         grid: {
           drawOnChartArea: false,
@@ -224,7 +259,7 @@ export function RevenueChart({ data }: RevenueChartProps) {
           <div className="text-center">
             <p className="text-sm text-gray-600">총 매출</p>
             <p className="text-lg font-semibold text-blue-600">
-              {formatCurrency(revenueData.reduce((sum, val) => sum + val, 0))}
+              {formatCurrency(revenueDataWon.reduce((sum, val) => sum + val, 0))}
             </p>
           </div>
           <div className="text-center">

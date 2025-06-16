@@ -58,6 +58,7 @@ export interface CourseData {
   '실 매출 대비'?: number;
   '매출 최대'?: number;
   '매출 최소'?: number;
+  조정_실매출대비?: number;
   조정_누적매출?: number;
   '2021년'?: number;
   '2022년'?: number;
