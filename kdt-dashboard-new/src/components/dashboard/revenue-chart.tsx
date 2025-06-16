@@ -2,8 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MonthlyStats } from "@/lib/data-utils";
-import { formatCurrency } from "@/utils/data-utils";
-import { formatNumber } from "@/utils/format-utils";
+import { formatCurrency, formatNumber } from "@/lib/utils";
 import { Line } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -168,6 +167,11 @@ export function RevenueChart({ data }: RevenueChartProps) {
         type: 'linear' as const,
         display: true,
         position: 'left' as const,
+        title: {
+          display: true,
+          text: '매출 (원)',
+          color: '#374151',
+        },
         grid: {
           color: 'rgba(107, 114, 128, 0.1)',
         },
@@ -183,6 +187,11 @@ export function RevenueChart({ data }: RevenueChartProps) {
         type: 'linear' as const,
         display: true,
         position: 'right' as const,
+        title: {
+          display: true,
+          text: '수강인원 (명)',
+          color: '#374151',
+        },
         grid: {
           drawOnChartArea: false,
         },
@@ -206,9 +215,7 @@ export function RevenueChart({ data }: RevenueChartProps) {
         </CardTitle>
       </CardHeader>
       <CardContent className="pt-0">
-        <div className="h-80 w-full relative">
-          <p style={{ position: 'absolute', top: '5%', transform: 'translateY(-50%)', left: '10px', whiteSpace: 'nowrap' }} className="text-sm text-gray-700 font-semibold">매출액</p>
-          <p style={{ position: 'absolute', top: '5%', transform: 'translateY(-50%)', right: '10px', whiteSpace: 'nowrap' }} className="text-sm text-gray-700 font-semibold">수강인원</p>
+        <div className="h-80 w-full">
           <Line data={chartData} options={options} />
         </div>
         
