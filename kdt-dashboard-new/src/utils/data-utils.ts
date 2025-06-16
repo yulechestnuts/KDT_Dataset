@@ -59,7 +59,7 @@ export const generateYearlyStats = (data: CourseData[]): YearlyStats[] => {
     if (yearlyMap.has(startYear)) {
       const stats = yearlyMap.get(startYear)!;
       stats.totalStudents += course['수강신청 인원'] ?? 0;
-      stats.completedStudents += course['수료인원'] ?? 0;
+      stats.completedStudents += course.수료인원 ?? 0;
       stats.courses.push(course);
     }
   });
@@ -67,21 +67,24 @@ export const generateYearlyStats = (data: CourseData[]): YearlyStats[] => {
   return Array.from(yearlyMap.values()).sort((a, b) => a.year - b.year);
 };
 
-// 수료율에 따른 매출액 조정 계수 계산
+// 수료율(%)에 따른 매출액 조정 계수 계산
+// 요구 사항:
+//  • 0%  → 0.5배 이하
+//  • 50% → 0.75배
+//  • 100%→ 1.25배 (최대)
+//  • 1‒6단계의 로그형 완만한 곡선을 형성
 export const calculateRevenueAdjustmentFactor = (completionRate: number): number => {
-  if (completionRate >= 75) {
-    // 75% 이상인 경우: 1.0 ~ 1.25 배수
-    // 75%에서 1.0배, 100%에서 1.25배로 선형 증가
-    return 1.0 + ((completionRate - 75) / 25) * 0.25;
-  } else {
-    // 75% 미만인 경우: 0.5 ~ 1.0 배수
-    // 30%에서 0.5배, 75%에서 1.0배로 선형 증가
-    if (completionRate <= 30) return 0.5;
-    return 0.5 + ((completionRate - 30) / 45) * 0.5;
-  }
+  // 0~100 사이로 클램프
+  const rate = Math.max(0, Math.min(100, completionRate));
+
+  const minFactor = 0.5;   // 단계 6(최저)
+  const maxFactor = 1.25;  // 단계 1(최고)
+  const k = 1.6;           // 곡선 정도(≈50%→0.75 만족)
+
+  const factor = minFactor + (maxFactor - minFactor) * Math.pow(rate / 100, k);
+  return Math.min(Math.max(factor, minFactor), maxFactor);
 };
 
-// 연도별 매출액 조정
 export const adjustYearlyRevenue = (course: CourseData, yearlyRevenue: number): number => {
   const completionRate = course.수료율 ?? 0;
   const adjustmentFactor = calculateRevenueAdjustmentFactor(completionRate);
@@ -202,54 +205,38 @@ export const calculateMonthlyStatistics = (
   });
 };
 
-// Helper function to calculate adjusted revenue for a single course (total)
+// 원본 매출이 없거나 과정이 시작 전이면 원본 유지
+// 수강신청 인원이 없으면 원본 유지
+// 실제 수료율(0~1). 진행 중인 과정은 전체 평균*진행률 로 추정
+// 새 로그형 계수 적용 (completionRate는 % 단위)
 export const calculateAdjustedRevenueForCourse = (
   course: CourseData,
   overallCompletionRate: number,
   currentDate: Date
 ): number => {
-  // If no original revenue or course not started yet, return original
   if ((course.누적매출 ?? 0) === 0 || new Date(course.과정시작일) > currentDate) {
     return course.누적매출 ?? 0;
   }
 
-  // If no enrollment, return original revenue
   if ((course['수강신청 인원'] ?? 0) === 0) {
     return course.누적매출 ?? 0;
   }
 
-  let actualCompletionRate = (course['수료인원'] ?? 0) / (course['수강신청 인원'] ?? 1); // Python 로직과 동일하게 먼저 계산
+  let actualCompletionRate = (course['수료인원'] ?? 0) / (course['수강신청 인원'] ?? 1);
 
-  if (new Date(course.과정종료일) <= currentDate) {
-    // Course completed - actualCompletionRate는 이미 위에서 계산됨
-  } else {
-    const totalDuration = (new Date(course.과정종료일).getTime() - new Date(course.과정시작일).getTime()) / (1000 * 3600 * 24);
-    const elapsedDuration = (currentDate.getTime() - new Date(course.과정시작일).getTime()) / (1000 * 3600 * 24);
+  if (new Date(course.과정종료일) > currentDate) {
+    const totalDuration = (new Date(course.과정종료일).getTime() - new Date(course.과정시작일).getTime());
+    const elapsedDuration = (currentDate.getTime() - new Date(course.과정시작일).getTime());
     const progressRatio = totalDuration > 0 ? Math.min(Math.max(elapsedDuration / totalDuration, 0), 1) : 0;
 
-    if ((course['수료인원'] ?? 0) === 0) { // 진행 중인 과정인데 수료인원이 0인 경우에만 오버라이드
-      actualCompletionRate = overallCompletionRate * progressRatio;
+    if ((course['수료인원'] ?? 0) === 0) {
+      actualCompletionRate = (overallCompletionRate / 100) * progressRatio;
     }
   }
 
-  const baseCompletionRate = 0.8; // As per Python script
-  let adjustmentFactor = actualCompletionRate / baseCompletionRate;
+  const adjustmentFactor = calculateRevenueAdjustmentFactor(actualCompletionRate * 100);
 
-  // Apply bonus factor if actual completion rate is higher than overall average
-  if (actualCompletionRate > overallCompletionRate) {
-    const bonusFactor = 1 + Math.min(
-      (actualCompletionRate - overallCompletionRate) / (overallCompletionRate > 0 ? overallCompletionRate : 1), // Avoid division by zero
-      0.2
-    );
-    adjustmentFactor *= bonusFactor;
-  }
-
-  // User requested up to 1.25x for high completion rates.
-  // Clamped between 0.9 and 1.25.
-  adjustmentFactor = Math.min(Math.max(adjustmentFactor, 0.9), 1.25);
-
-  const adjustedRevenue = (course.누적매출 ?? 0) * adjustmentFactor;
-  return adjustedRevenue;
+  return (course.누적매출 ?? 0) * adjustmentFactor;
 };
 
 // Main function to apply revenue adjustments to a list of courses
