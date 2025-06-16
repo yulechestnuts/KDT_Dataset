@@ -7,7 +7,6 @@ import React from 'react';
 interface CourseDetailModalProps {
   course: CourseData;
   onClose: () => void;
-  onUpdate?: (updatedCourse: CourseData) => void;
 }
 
 // 날짜 포맷 함수
@@ -58,34 +57,8 @@ const formatPercent = (value: unknown): string => {
   return `${numValue.toFixed(1)}%`;
 };
 
-export default function CourseDetailModal({ course, onClose, onUpdate }: CourseDetailModalProps) {
+export default function CourseDetailModal({ course, onClose }: CourseDetailModalProps) {
   if (!course) return null;
-
-  const [isEditing, setIsEditing] = React.useState(false);
-  const [editedCourse, setEditedCourse] = React.useState<CourseData>(course);
-
-  // 입력값 변경 핸들러
-  const handleInputChange = (field: keyof CourseData, value: string) => {
-    const numericValue = getNumericValue(value);
-    setEditedCourse(prev => ({
-      ...prev,
-      [field]: numericValue
-    }));
-  };
-
-  // 저장 핸들러
-  const handleSave = () => {
-    if (onUpdate) {
-      onUpdate(editedCourse);
-    }
-    setIsEditing(false);
-  };
-
-  // 취소 핸들러
-  const handleCancel = () => {
-    setEditedCourse(course);
-    setIsEditing(false);
-  };
 
   // 백드롭 클릭 시 모달 닫기
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -181,102 +154,30 @@ export default function CourseDetailModal({ course, onClose, onUpdate }: CourseD
 
           {/* 매출 정보 */}
           <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h3 className="text-2xl font-semibold text-gray-900">매출 정보</h3>
-              <div className="space-x-2">
-                {!isEditing ? (
-                  <button
-                    onClick={() => setIsEditing(true)}
-                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-                  >
-                    수정
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      onClick={handleSave}
-                      className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700"
-                    >
-                      저장
-                    </button>
-                    <button
-                      onClick={handleCancel}
-                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
-                    >
-                      취소
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
+            <h3 className="text-2xl font-semibold text-gray-900 mb-6">매출 정보</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div>
                 <p className="text-base text-gray-500 mb-2">실 매출 대비</p>
-                {isEditing ? (
-                  <input
-                    type="text"
-                    value={editedCourse['실 매출 대비'] || ''}
-                    onChange={(e) => handleInputChange('실 매출 대비', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                ) : (
-                  <p className="text-lg font-medium">{formatCurrency(course['실 매출 대비'])}</p>
-                )}
+                <p className="text-lg font-medium">{formatCurrency(course['실 매출 대비'])}</p>
               </div>
               <div>
                 <p className="text-base text-gray-500 mb-2">훈련비</p>
-                {isEditing ? (
-                  <input
-                    type="text"
-                    value={editedCourse.훈련비 || ''}
-                    onChange={(e) => handleInputChange('훈련비', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                ) : (
-                  <p className="text-lg font-medium">{formatCurrency(course.훈련비)}</p>
-                )}
+                <p className="text-lg font-medium">{formatCurrency(course.훈련비)}</p>
               </div>
               <div>
                 <p className="text-base text-gray-500 mb-2">누적매출</p>
-                {isEditing ? (
-                  <input
-                    type="text"
-                    value={editedCourse.누적매출 || ''}
-                    onChange={(e) => handleInputChange('누적매출', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                ) : (
-                  <p className="text-lg font-medium">{formatCurrency(course.누적매출)}</p>
-                )}
+                <p className="text-lg font-medium">{formatCurrency(course.누적매출)}</p>
               </div>
               {course['매출 최소'] && (
                 <div>
                   <p className="text-base text-gray-500 mb-2">매출 최소</p>
-                  {isEditing ? (
-                    <input
-                      type="text"
-                      value={editedCourse['매출 최소'] || ''}
-                      onChange={(e) => handleInputChange('매출 최소', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  ) : (
-                    <p className="text-lg font-medium">{formatCurrency(course['매출 최소'])}</p>
-                  )}
+                  <p className="text-lg font-medium">{formatCurrency(course['매출 최소'])}</p>
                 </div>
               )}
               {course['매출 최대'] && (
                 <div>
                   <p className="text-base text-gray-500 mb-2">매출 최대</p>
-                  {isEditing ? (
-                    <input
-                      type="text"
-                      value={editedCourse['매출 최대'] || ''}
-                      onChange={(e) => handleInputChange('매출 최대', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  ) : (
-                    <p className="text-lg font-medium">{formatCurrency(course['매출 최대'])}</p>
-                  )}
+                  <p className="text-lg font-medium">{formatCurrency(course['매출 최대'])}</p>
                 </div>
               )}
             </div>
@@ -287,9 +188,8 @@ export default function CourseDetailModal({ course, onClose, onUpdate }: CourseD
             <h3 className="text-2xl font-semibold text-gray-900 mb-6">연도별 매출</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {[2021, 2022, 2023, 2024, 2025, 2026].map(year => {
-                const yearKey = `${year}년` as keyof CourseData;
-                const yearRevenue = isEditing ? editedCourse[yearKey] : course[yearKey];
-                const yearCumulative = isEditing ? editedCourse[`${year}년_누적` as keyof CourseData] : course[`${year}년_누적` as keyof CourseData];
+                const yearRevenue = course[`${year}년` as keyof CourseData];
+                const yearCumulative = course[`${year}년_누적` as keyof CourseData];
                 const hasData = getNumericValue(yearRevenue) > 0 || getNumericValue(yearCumulative) > 0;
                 
                 if (!hasData) return null;
@@ -297,32 +197,13 @@ export default function CourseDetailModal({ course, onClose, onUpdate }: CourseD
                 return (
                   <div key={year} className="bg-gray-50 p-4 rounded-lg">
                     <p className="text-base text-gray-500 mb-2">{year}년</p>
-                    {isEditing ? (
-                      <input
-                        type="text"
-                        value={yearRevenue || ''}
-                        onChange={(e) => handleInputChange(yearKey, e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-1"
-                      />
-                    ) : (
-                      <p className="text-lg font-medium mb-1">
-                        {formatCurrency(yearRevenue)}
-                      </p>
-                    )}
+                    <p className="text-lg font-medium mb-1">
+                      {formatCurrency(yearRevenue)}
+                    </p>
                     {yearCumulative && (
-                      isEditing ? (
-                        <input
-                          type="text"
-                          value={yearCumulative || ''}
-                          onChange={(e) => handleInputChange(`${year}년_누적` as keyof CourseData, e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                          placeholder="누적"
-                        />
-                      ) : (
-                        <p className="text-sm text-gray-500">
-                          누적: {formatCurrency(yearCumulative)}
-                        </p>
-                      )
+                      <p className="text-sm text-gray-500">
+                        누적: {formatCurrency(yearCumulative)}
+                      </p>
                     )}
                   </div>
                 );

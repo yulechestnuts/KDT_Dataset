@@ -103,7 +103,7 @@ export const calculateMonthlyDistribution = (startDate: Date, currentDate: Date,
 };
 
 // 실 매출 대비를 6~7등분하여 배분하는 함수
-export const calculateRevenueDistribution = (progressRatio: number, completionRate: number): number => {
+const calculateRevenueDistribution = (progressRatio: number, completionRate: number): number => {
   // 6등분으로 나누고, 각 구간별 가중치 설정
   const segments = 6;
   const segmentSize = 1 / segments;

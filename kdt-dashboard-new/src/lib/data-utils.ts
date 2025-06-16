@@ -1,8 +1,5 @@
 // 데이터 파싱 및 변환 유틸리티
 
-import Papa from 'papaparse';
-import { adjustYearlyRevenue, calculateActualRevenue, calculateMonthlyDistribution, calculateRevenueAdjustmentFactor, calculateRevenueDistribution } from "@/utils/data-utils";
-
 export interface RawCourseData {
   고유값: string;
   과정명: string;
@@ -59,8 +56,8 @@ export interface CourseData {
   isLeadingCompanyCourse?: boolean;
   leadingCompanyPartnerInstitution?: string;
   '실 매출 대비'?: number;
-  '매출 최소'?: number;
   '매출 최대'?: number;
+  '매출 최소'?: number;
   조정_누적매출?: number;
   '2021년'?: number;
   '2022년'?: number;
@@ -91,7 +88,7 @@ export interface AggregatedCourseData {
   최소과정시작일: string;
   최대과정종료일: string;
   훈련유형들: string[];
-  원천과정수: number;
+  원천과정수: number; // 집계된 과정의 개수
   총훈련생수: number;
   평균만족도: number;
 }
@@ -258,46 +255,16 @@ export const transformRawDataToCourseData = (rawData: any): CourseData => {
   const isLeadingCompany = (String(rawData.파트너기관 || '').trim() !== '' && String(rawData.파트너기관 || '').trim() !== '0') &&
                            (String(rawData.선도기업 || '').trim() !== '' && String(rawData.선도기업 || '').trim() !== '0');
 
-  // 조정된 연도별 매출 계산
+  // 조정된 연도별 매출 계산 (여기서는 원본 값을 복사, 최종 조정은 calculateInstitutionStats에서)
   const adjustedYearlyRevenues: { [key: string]: number } = {};
   yearColumns.forEach(yearCol => {
     const originalRevenue = parseNumber(rawData[yearCol]);
-    // calculateActualRevenue에 CourseData 타입으로 변환된 course와 yearlyRevenue를 전달해야 합니다.
-    // 여기서는 rawData를 기반으로 한 임시 CourseData 객체를 생성하여 전달합니다.
-    const tempCourseData: CourseData = {
-      고유값: rawData.고유값 || '',
-      훈련기관: rawData.훈련기관 || '',
-      과정명: rawData.과정명 || '',
-      과정시작일: rawData.과정시작일 || '',
-      과정종료일: rawData.과정종료일 || '',
-      '수강신청 인원': parseNumber(rawData['수강신청 인원']),
-      '수료인원': parseNumber(rawData['수료인원']),
-      누적매출: parseNumber(rawData.누적매출),
-      총훈련일수: parseNumber(rawData.총훈련일수),
-      총훈련시간: parseNumber(rawData.총훈련시간),
-      훈련비: parseNumber(rawData.훈련비),
-      정원: parseNumber(rawData.정원),
-      '수료율': parsePercentage(rawData.수료율),
-      만족도: parseNumber(rawData.만족도),
-      훈련연도: parseNumber(rawData.훈련연도),
-      훈련유형: rawData.훈련유형 || '',
-      파트너기관: rawData.파트너기관 || '',
-      선도기업: rawData.선도기업 || '',
-      isLeadingCompanyCourse: isLeadingCompany,
-      leadingCompanyPartnerInstitution: rawData.leadingCompanyPartnerInstitution || '',
-      '실 매출 대비': parseNumber(rawData['실 매출 대비']),
-      '매출 최소': parseNumber(rawData['매출 최소']),
-      '매출 최대': parseNumber(rawData['매출 최대']),
-      // 여기에 필요한 다른 필드들을 추가하세요.
-    };
-    
-    // adjustYearlyRevenue 함수 호출
-    adjustedYearlyRevenues[`조정_${yearCol}`] = adjustYearlyRevenue(tempCourseData, originalRevenue);
+    adjustedYearlyRevenues[`조정_${yearCol}`] = originalRevenue; 
   });
 
   return {
-    고유값: rawData.고유값 || '',
-    과정명: rawData.과정명 || '',
+    고유값: rawData.고유값 || rawData['고유값'] || '',
+    과정명: rawData.과정명 || rawData['과정명'] || '',
     과정상세: rawData.과정상세 || rawData['과정상세'] || '',
     회차: rawData.회차 || rawData['회차'] || '',
     훈련기관: rawData.훈련기관 || rawData['훈련기관'] || '',
@@ -620,6 +587,22 @@ export function calculateMonthlyStats(data: CourseData[], year: number, month: n
   };
 }
 
+// 수료율에 따른 매출액 보정 계수 계산 함수
+function calculateRevenueAdjustmentFactor(completionRate: number): number {
+  if (completionRate >= 100) {
+    return 1.25; // 100% 이상일 때 1.25배
+  } else if (completionRate >= 75) {
+    // 75%에서 100% 사이는 선형적으로 1.0에서 1.25로 증가
+    return 1.0 + (0.25 * (completionRate - 75) / 25);
+  } else if (completionRate >= 50) {
+    // 50%에서 75% 사이는 선형적으로 0.75에서 1.0으로 증가
+    return 0.75 + (0.25 * (completionRate - 50) / 25);
+  } else {
+    // 50% 미만은 0.75배
+    return 0.75;
+  }
+}
+
 export const calculateInstitutionStats = (data: CourseData[], year?: number): InstitutionStat[] => {
   // 연도 필터링을 먼저 적용
   const filteredData = year 
@@ -748,7 +731,9 @@ export const calculateInstitutionStats = (data: CourseData[], year?: number): In
       }
       const secondaryStats = institutionMap.get(secondaryInstitution)!;
       secondaryStats.totalRevenue += courseRevenue * secondaryRevenueShare;
-      // 2차 기관은 과정 수, 학생 수, 수료 인원은 따로 합산하지 않음 (매출만 공유)
+      secondaryStats.totalCourses += 0;
+      secondaryStats.totalStudents += 0;
+      secondaryStats.completedStudents += 0;
       if (course.만족도 > 0) {
         secondaryStats.satisfactionSum += course.만족도 * secondaryRevenueShare;
         secondaryStats.satisfactionCount += secondaryRevenueShare;
