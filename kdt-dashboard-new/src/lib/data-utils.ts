@@ -150,6 +150,27 @@ export interface NcsStat {
   courses: CourseData[];
 }
 
+export interface LeadingCompanyStat {
+  leadingCompany: string;
+  totalRevenue: number;
+  totalCourses: number;
+  totalStudents: number;
+  completedStudents: number;
+  completionRate: number;
+  avgSatisfaction: number;
+  courses: CourseData[];
+}
+
+export interface InstitutionExtraStats {
+  leadingCourseCount: number;
+  leadingRevenue: number;
+  techCourseCount: number;
+  techRevenue: number;
+  ncsTop: { ncsName: string; revenue: number; courses: number }[];
+  yearly: { year: number; revenue: number; students: number }[];
+}
+
+
 // 숫자 변환 유틸리티 함수들
 export const parseNumber = (value: any): number => {
   if (value === null || value === undefined || value === '') {
@@ -1057,6 +1078,61 @@ export const aggregateCoursesByCourseNameActualRevenue = (
   // map.forEach(agg => { delete (agg as any)._satSum; delete (agg as any)._satWeight; });
 
   return Array.from(map.values()).sort((a, b) => b.총누적매출 - a.총누적매출);
+};
+
+// === Leading Company stats ===
+export const calculateLeadingCompanyStats = (
+  data: CourseData[],
+  year?: number,
+): LeadingCompanyStat[] => {
+  // 필터: 선도기업 과정만
+  const filteredAll = data.filter((c) => c.isLeadingCompanyCourse);
+  const filtered = year
+    ? filteredAll.filter((c) => new Date(c.과정시작일).getFullYear() === year)
+    : filteredAll;
+
+  const map = new Map<string, LeadingCompanyStat>();
+
+  filtered.forEach((course) => {
+    const key = course.선도기업 || '기타';
+    if (!map.has(key)) {
+      map.set(key, {
+        leadingCompany: key,
+        totalRevenue: 0,
+        totalCourses: 0,
+        totalStudents: 0,
+        completedStudents: 0,
+        completionRate: 0,
+        avgSatisfaction: 0,
+        courses: [],
+      });
+    }
+    const stat = map.get(key)!;
+    stat.totalRevenue += course.조정_누적매출 ?? course.누적매출 ?? 0;
+    stat.totalCourses += 1;
+    stat.totalStudents += course['수강신청 인원'] ?? 0;
+    stat.completedStudents += course['수료인원'] ?? 0;
+    stat.courses.push(course);
+    const idx = stat.courses.length;
+    stat.avgSatisfaction = ((stat.avgSatisfaction * (idx - 1)) + (course.만족도 || 0)) / idx;
+  });
+
+  map.forEach((stat) => {
+    stat.completionRate = stat.totalStudents > 0 ? (stat.completedStudents / stat.totalStudents) * 100 : 0;
+  });
+
+  return Array.from(map.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
+};
+
+export const aggregateCoursesByCourseNameForLeadingCompany = (
+  courses: CourseData[],
+  leadingCompany: string,
+  year?: number,
+): AggregatedCourseData[] => {
+  const filtered = courses.filter(
+    (c) => c.isLeadingCompanyCourse && (c.선도기업 || '기타') === leadingCompany && (year ? new Date(c.과정시작일).getFullYear() === year : true),
+  );
+  return aggregateCoursesByCourseName(filtered);
 };
 
 // 테스트 함수
