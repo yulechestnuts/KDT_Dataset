@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, Suspense } from 'react';
-import { loadDataFromGithub, preprocessData, adjustYearlyRevenue } from "@/utils/data-utils";
+import { loadDataFromGithub, preprocessData, applyRevenueAdjustment, calculateCompletionRate } from "@/utils/data-utils";
 import { CourseData } from "@/lib/data-utils";
 import Papa from "papaparse";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { useSearchParams } from 'next/navigation';
 import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
+import { formatCurrency, formatNumber } from "@/utils/formatters";
 
 interface CourseStats {
   totalRevenue: number;
@@ -35,11 +36,15 @@ function CourseAnalysisContent() {
         const data = await loadDataFromGithub();
         const parsedData = Papa.parse(data, { header: true });
         const processedData = preprocessData(parsedData.data);
-        
+
+        // ===== 매출 보정 적용 =====
+        const overallCompletionRate = calculateCompletionRate(processedData);
+        const adjustedData = applyRevenueAdjustment(processedData, overallCompletionRate);
+
         // 과정별 통계 계산
         const stats: Record<string, CourseStats> = {};
 
-        processedData.forEach((course: CourseData) => {
+        adjustedData.forEach((course: CourseData) => {
           const courseName = course.과정명 || '';
           if (!stats[courseName]) {
             stats[courseName] = {
@@ -50,18 +55,8 @@ function CourseAnalysisContent() {
             };
           }
 
-          // 연도별 매출액 합산
-          const yearColumns: YearColumn[] = ['2021년', '2022년', '2023년', '2024년', '2025년', '2026년'];
-          yearColumns.forEach(yearCol => {
-            const yearlyRevenue = course[yearCol];
-            if (yearlyRevenue !== undefined) {
-              const adjustedRevenue = adjustYearlyRevenue(
-                course,
-                yearlyRevenue
-              );
-              stats[courseName].totalRevenue += adjustedRevenue;
-            }
-          });
+          // 보정된 누적매출 합산 (없으면 원본 누적매출 사용)
+          stats[courseName].totalRevenue += course.조정_누적매출 ?? course.누적매출 ?? 0;
 
           stats[courseName].courseCount += 1;
           stats[courseName].totalStudents += course['수강신청 인원'] || 0;
@@ -69,7 +64,7 @@ function CourseAnalysisContent() {
         });
 
         setCourseStats(stats);
-        setCourseData(processedData);
+        setCourseData(adjustedData);
       } catch (err) {
         setError('데이터를 불러오는 중 오류가 발생했습니다.');
         console.error('Error loading data:', err);
@@ -95,6 +90,16 @@ function CourseAnalysisContent() {
   const sortedCourseStats = Object.entries(courseStats)
     .sort(([, a], [, b]) => b.totalRevenue - a.totalRevenue)
     .filter(([courseName]) => !selectedCourse || courseName === selectedCourse);
+
+  // 안전한 링크 열기 (http/https 미포함 시 https 추가)
+  const openLinkSafe = (url?: string) => {
+    if (!url) return;
+    let link = url.trim();
+    if (link && !/^https?:\/\//i.test(link)) {
+      link = `https://${link}`;
+    }
+    window.open(link, '_blank');
+  };
 
   if (loading) {
     return (
@@ -140,7 +145,7 @@ function CourseAnalysisContent() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => window.open(allCourseDetails[0].과정페이지링크, '_blank')}
+                      onClick={() => openLinkSafe(allCourseDetails[0].과정페이지링크)}
                     >
                       <ExternalLink className="h-4 w-4 mr-1" />
                       과정 페이지
@@ -152,7 +157,7 @@ function CourseAnalysisContent() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div>
                     <h3 className="text-sm font-medium text-gray-500">총 매출</h3>
-                    <p className="text-2xl font-bold">{stats.totalRevenue.toLocaleString()}원</p>
+                    <p className="text-2xl font-bold">{formatCurrency(stats.totalRevenue)}</p>
                   </div>
                   <div>
                     <h3 className="text-sm font-medium text-gray-500">과정 수</h3>
@@ -195,12 +200,13 @@ function CourseAnalysisContent() {
                             <TableCell>{detail['수강신청 인원']}명</TableCell>
                             <TableCell>{detail.수료인원}명</TableCell>
                             <TableCell>{((detail.수료인원 || 0) / (detail['수강신청 인원'] || 1) * 100).toFixed(1)}%</TableCell>
-                            <TableCell>{detail.누적매출.toLocaleString()}원</TableCell>
+                            <TableCell>{formatCurrency(detail.조정_누적매출 ?? detail.누적매출)}</TableCell>
                             <TableCell>
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => window.open(detail.과정페이지링크 || '', '_blank')}
+                                disabled={!detail.과정페이지링크}
+                                onClick={() => openLinkSafe(detail.과정페이지링크)}
                               >
                                 <ExternalLink className="h-4 w-4 mr-1" />
                                 바로가기

@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import { useEffect, useState } from 'react';
 import { loadDataFromGithub, preprocessData, calculateMonthlyStatistics, calculateCompletionRate, applyRevenueAdjustment } from "@/utils/data-utils";
 import { CourseData } from "@/lib/data-utils";
@@ -104,10 +105,20 @@ export default function MonthlyAnalysisPage() {
     
     // Filter data for the selected month
     const [year, month] = monthStr.split('-').map(Number);
-    const filtered = data.filter(course => {
-      const startDate = new Date(course.과정시작일);
-      return startDate.getFullYear() === year && startDate.getMonth() + 1 === month;
-    }).sort((a, b) => new Date(a.과정시작일).getTime() - new Date(b.과정시작일).getTime());
+    const filtered = data
+      .filter(course => {
+        const startDate = new Date(course.과정시작일);
+        return (
+          startDate.getFullYear() === year &&
+          startDate.getMonth() + 1 === month
+        );
+      })
+      // 매출액(조정_누적매출 > 누적매출) 기준 내림차순 정렬
+      .sort(
+        (a, b) =>
+          (b.조정_누적매출 ?? b.누적매출 ?? 0) -
+          (a.조정_누적매출 ?? a.누적매출 ?? 0)
+      );
 
     setSelectedMonthDetails(filtered);
   };
@@ -239,14 +250,15 @@ export default function MonthlyAnalysisPage() {
             </TableHeader>
             <TableBody>
               {selectedMonthDetails.map((course, idx) => {
-                const courseId = `${course.과정명}-${course.회차}`;
+                // 고유 key 생성을 위해 idx 추가
+                const courseId = `${course.과정명}-${course.회차}-${idx}`;
                 const isExpanded = expandedCourses.has(courseId);
                 const allCourseDetails = data.filter(c => c.과정명 === course.과정명)
                   .sort((a, b) => new Date(a.과정시작일).getTime() - new Date(b.과정시작일).getTime());
 
                 return (
-                  <>
-                    <TableRow key={courseId}>
+                  <React.Fragment key={courseId}>
+                    <TableRow key={`${courseId}-main`}>
                       <TableCell>
                         {course.과정명}
                       </TableCell>
@@ -257,13 +269,17 @@ export default function MonthlyAnalysisPage() {
                       <TableCell>{formatNumber(course['수강신청 인원'])}</TableCell>
                       <TableCell>{formatNumber(course.수료인원)}</TableCell>
                       <TableCell>{((course.수료인원 || 0) / (course['수강신청 인원'] || 1) * 100).toFixed(1)}%</TableCell>
-                      <TableCell>{formatCurrency(course.누적매출)}</TableCell>
+                      <TableCell>{formatCurrency(course.조정_누적매출 ?? course.누적매출)}</TableCell>
                       <TableCell>
                         <div className="flex gap-2">
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => window.open(`/course-analysis?course=${encodeURIComponent(course.과정명)}`, '_blank')}
+                            onClick={() =>
+                              window.open(
+                                `/course-analysis?course=${encodeURIComponent(course.과정명)}`,
+                                '_blank'
+                              )}
                           >
                             상세분석
                           </Button>
@@ -280,32 +296,36 @@ export default function MonthlyAnalysisPage() {
                         </div>
                       </TableCell>
                     </TableRow>
-                    {isExpanded && allCourseDetails.map((detail, detailIdx) => (
-                      <TableRow key={`${courseId}-${detail.회차}-${detailIdx}`} className="bg-gray-50">
-                        <TableCell className="pl-12">{detail.과정명}</TableCell>
-                        <TableCell>{detail.훈련기관}</TableCell>
-                        <TableCell>{detail.회차}</TableCell>
-                        <TableCell>{new Date(detail.과정시작일).toLocaleDateString()}</TableCell>
-                        <TableCell>{new Date(detail.과정종료일).toLocaleDateString()}</TableCell>
-                        <TableCell>{formatNumber(detail['수강신청 인원'])}</TableCell>
-                        <TableCell>{formatNumber(detail.수료인원)}</TableCell>
-                        <TableCell>{((detail.수료인원 || 0) / (detail['수강신청 인원'] || 1) * 100).toFixed(1)}%</TableCell>
-                        <TableCell>{formatCurrency(detail.누적매출)}</TableCell>
-                        <TableCell>
-                          {detail.과정페이지링크 && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => window.open(detail.과정페이지링크, '_blank')}
-                            >
-                              <ExternalLink className="h-4 w-4 mr-1" />
-                              바로가기
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </>
+                    {isExpanded &&
+                      allCourseDetails.map((detail, detailIdx) => (
+                        <TableRow
+                          key={`${courseId}-${detail.회차}-${detailIdx}`}
+                          className="bg-gray-50"
+                        >
+                          <TableCell className="pl-12">{detail.과정명}</TableCell>
+                          <TableCell>{detail.훈련기관}</TableCell>
+                          <TableCell>{detail.회차}</TableCell>
+                          <TableCell>{new Date(detail.과정시작일).toLocaleDateString()}</TableCell>
+                          <TableCell>{new Date(detail.과정종료일).toLocaleDateString()}</TableCell>
+                          <TableCell>{formatNumber(detail['수강신청 인원'])}</TableCell>
+                          <TableCell>{formatNumber(detail.수료인원)}</TableCell>
+                          <TableCell>{((detail.수료인원 || 0) / (detail['수강신청 인원'] || 1) * 100).toFixed(1)}%</TableCell>
+                          <TableCell>{formatCurrency(detail.조정_누적매출 ?? detail.누적매출)}</TableCell>
+                          <TableCell>
+                            {detail.과정페이지링크 && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => window.open(detail.과정페이지링크, '_blank')}
+                              >
+                                <ExternalLink className="h-4 w-4 mr-1" />
+                                바로가기
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                  </React.Fragment>
                 );
               })}
             </TableBody>

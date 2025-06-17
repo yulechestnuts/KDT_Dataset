@@ -51,6 +51,8 @@ export interface CourseData {
   만족도: number;
   훈련연도: number;
   훈련유형: string;
+  NCS명: string;
+  NCS코드?: string;
   파트너기관?: string;
   선도기업?: string;
   isLeadingCompanyCourse?: boolean;
@@ -135,6 +137,17 @@ export interface CompletionRateDetails {
     currentDate: string;
     year?: number;
   };
+}
+
+export interface NcsStat {
+  ncsName: string;
+  totalRevenue: number;
+  totalCourses: number;
+  totalStudents: number;
+  completedStudents: number;
+  completionRate: number;
+  avgSatisfaction: number;
+  courses: CourseData[];
 }
 
 // 숫자 변환 유틸리티 함수들
@@ -289,6 +302,8 @@ export const transformRawDataToCourseData = (rawData: any): CourseData => {
     만족도: parsePercentage(rawData.만족도 || rawData['만족도']),
     훈련연도: parseNumber(rawData.훈련연도 || rawData['훈련연도'] || new Date(rawData.과정시작일).getFullYear()),
     훈련유형: classifyTrainingType(rawData as RawCourseData),
+    NCS명: String(rawData.NCS명 || rawData['NCS명'] || '').trim(),
+    NCS코드: String(rawData.NCS코드 || rawData['NCS코드'] || '').trim(),
     
     // 매출 관련 필드들
     누적매출: totalCumulativeRevenue,
@@ -309,7 +324,13 @@ export const transformRawDataToCourseData = (rawData: any): CourseData => {
     월별수강인원: rawData.월별수강인원 && typeof rawData.월별수강인원 === 'object' ? rawData.월별수강인원 : {},
     월별수료인원: rawData.월별수료인원 && typeof rawData.월별수료인원 === 'object' ? rawData.월별수료인원 : {},
 
-    과정페이지링크: rawData.과정페이지링크 || rawData['과정페이지링크'] || '',
+    과정페이지링크: String(
+      rawData.과정페이지링크 ||
+      rawData['과정페이지링크'] ||
+      rawData['과정페이지 링크'] ||
+      rawData['과정 페이지 링크'] ||
+      ''
+    ).trim(),
   };
 };
 
@@ -628,7 +649,7 @@ export const calculateInstitutionStats = (data: CourseData[], year?: number): In
   }>();
 
   const yearColumns = ['2021년', '2022년', '2023년', '2024년', '2025년', '2026년'] as const;
-  const adjustedYearColumns: string[] = yearColumns.map(col => `조정_${col}` as keyof CourseData);
+  const adjustedCols = yearColumns.map(col => `조정_${col}` as keyof CourseData);
 
   // 현재 날짜를 기준으로 미래 데이터 제외
   const today = new Date();
@@ -896,6 +917,58 @@ export const aggregateCoursesByCourseNameForInstitution = (
   // map.forEach(agg => { delete (agg as any)._satSum; delete (agg as any)._satWeight; });
 
   return Array.from(map.values()).sort((a, b) => b.총누적매출 - a.총누적매출);
+};
+
+// NCS별 통계 계산
+export const calculateNcsStats = (data: CourseData[], year?: number): NcsStat[] => {
+  // 연도 필터
+  const filtered = year
+    ? data.filter(c => new Date(c.과정시작일).getFullYear() === year)
+    : data;
+
+  const map = new Map<string, NcsStat>();
+
+  filtered.forEach(course => {
+    const key = course.NCS명 || '기타';
+    if (!map.has(key)) {
+      map.set(key, {
+        ncsName: key,
+        totalRevenue: 0,
+        totalCourses: 0,
+        totalStudents: 0,
+        completedStudents: 0,
+        completionRate: 0,
+        avgSatisfaction: 0,
+        courses: [],
+      });
+    }
+    const stat = map.get(key)!;
+    stat.totalRevenue += course.조정_누적매출 ?? course.누적매출 ?? 0;
+    stat.totalCourses += 1;
+    stat.totalStudents += course['수강신청 인원'] ?? 0;
+    stat.completedStudents += course['수료인원'] ?? 0;
+    stat.courses.push(course);
+    // 누적 평균 만족도
+    const idx = stat.courses.length;
+    stat.avgSatisfaction = ((stat.avgSatisfaction * (idx - 1)) + (course.만족도 || 0)) / idx;
+  });
+
+  // completion rate 계산
+  map.forEach(stat => {
+    stat.completionRate = stat.totalStudents > 0 ? (stat.completedStudents / stat.totalStudents) * 100 : 0;
+  });
+
+  return Array.from(map.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
+};
+
+// NCS별 상세 모달용 Aggregator (과정명 기준)
+export const aggregateCoursesByCourseNameForNcs = (
+  courses: CourseData[],
+  ncsName: string,
+  year?: number,
+): AggregatedCourseData[] => {
+  const filtered = courses.filter(c => (c.NCS명 || '기타') === ncsName && (year ? new Date(c.과정시작일).getFullYear() === year : true));
+  return aggregateCoursesByCourseName(filtered);
 };
 
 // === Aggregator using 실제 매출(실 매출 대비) ===
