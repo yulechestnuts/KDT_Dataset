@@ -34,65 +34,73 @@ export default function InstitutionAnalysis() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedInstitutionCourses, setSelectedInstitutionCourses] = useState<AggregatedCourseData[]>([]);
   const [selectedInstitutionName, setSelectedInstitutionName] = useState<string>('');
+  const [filterType, setFilterType] = useState<'all' | 'leading' | 'tech'>('all');
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const rawDataString = await loadDataFromGithub();
-        const parsedData: any = parseCsv(rawDataString as string, { header: true, skipEmptyLines: true, dynamicTyping: false, trimHeaders: true });
-        const processedData = preprocessData(parsedData.data as RawCourseData[]);
+  // 신기술 과정 정의: 선도기업 과정이 아닌 모든 과정
+  const isNewTechCourse = (course: CourseData) => !course.isLeadingCompanyCourse;
 
-        // 전체 수료율 계산 후 매출 보정 적용
-        const overallCompletion = calculateCompletionRate(processedData);
-        const adjustedCourses = applyRevenueAdjustment(processedData, overallCompletion);
+  const recalcStats = async () => {
+    try {
+      const rawDataString = await loadDataFromGithub();
+      const parsedData: any = parseCsv(rawDataString as string, {
+        header: true,
+        skipEmptyLines: true,
+        dynamicTyping: false,
+        trimHeaders: true,
+      });
+      const processedData = preprocessData(parsedData.data as RawCourseData[]);
+      const overallCompletion = calculateCompletionRate(processedData);
+      const adjustedCourses = applyRevenueAdjustment(processedData, overallCompletion);
 
-        // 사용 가능한 연도 목록 추출
-        const years = Array.from(new Set(adjustedCourses.map(course => course.훈련연도)))
-          .filter(year => year !== 0)
+      // 연도 목록은 전체 기준 한 번만 세팅 (if not already)
+      if (availableYears.length === 0) {
+        const years = Array.from(new Set(adjustedCourses.map((c) => c.훈련연도)))
+          .filter((y) => y !== 0)
           .sort((a, b) => a - b);
-        setAvailableYears(years);
-
-        // 초기 데이터 로드
-        const stats = calculateInstitutionStats(adjustedCourses);
-        setInstitutionStats(stats);
-      } catch (error) {
-        console.error('데이터 로드 중 오류 발생:', error);
+        setAvailableYears(years as number[]);
       }
-    };
 
-    fetchData();
-  }, []);
+      // filter by type
+      let filtered = adjustedCourses;
+      if (filterType === 'leading') {
+        filtered = adjustedCourses.filter((c) => c.isLeadingCompanyCourse);
+      } else if (filterType === 'tech') {
+        filtered = adjustedCourses.filter(isNewTechCourse);
+      }
 
-  // 연도 변경 시 통계 재계산
+      const stats = calculateInstitutionStats(
+        filtered,
+        selectedYear === 'all' ? undefined : selectedYear,
+      );
+      setInstitutionStats(stats);
+    } catch (error) {
+      console.error('데이터 로드 중 오류 발생:', error);
+    }
+  };
+
+  // initial load and when deps change
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const rawDataString = await loadDataFromGithub();
-        const parsedData: any = parseCsv(rawDataString as string, { header: true, skipEmptyLines: true, dynamicTyping: false, trimHeaders: true });
-        const processedData = preprocessData(parsedData.data as RawCourseData[]);
-        const overallCompletion = calculateCompletionRate(processedData);
-        const adjustedCourses = applyRevenueAdjustment(processedData, overallCompletion);
-        const stats = calculateInstitutionStats(adjustedCourses, selectedYear === 'all' ? undefined : selectedYear);
-        setInstitutionStats(stats);
-      } catch (error) {
-        console.error('데이터 로드 중 오류 발생:', error);
-      }
-    };
-
-    fetchData();
-  }, [selectedYear]);
+    recalcStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedYear, filterType]);
 
   const handleViewDetails = (institutionName: string, courses: CourseData[]) => {
     setSelectedInstitutionName(institutionName);
-    
-    // 선택된 연도에 따라 과정 필터링
-    const filteredCourses = selectedYear === 'all' 
-      ? courses 
-      : courses.filter(course => {
+
+    let filteredCourses = selectedYear === 'all'
+      ? courses
+      : courses.filter((course) => {
           const courseYear = new Date(course.과정시작일).getFullYear();
           return courseYear === selectedYear;
         });
-    
+
+    // apply filterType again for modal consistency
+    if (filterType === 'leading') {
+      filteredCourses = filteredCourses.filter((c) => c.isLeadingCompanyCourse);
+    } else if (filterType === 'tech') {
+      filteredCourses = filteredCourses.filter(isNewTechCourse);
+    }
+
     // 전체 수료율 계산 시 수료인원 0명 과정은 제외
     const completionBasisCourses = filteredCourses.filter(c => (c['수료인원'] ?? 0) > 0);
     const overallCompletion = calculateCompletionRate(completionBasisCourses);
@@ -123,26 +131,41 @@ export default function InstitutionAnalysis() {
       <h1 className="text-2xl font-bold mb-6">훈련기관별 분석</h1>
 
       {/* 연도 선택 */}
-      <div className="mb-10 relative z-10">
-        <label htmlFor="year-select" className="block text-sm font-medium text-gray-700 mb-2">
-          연도 선택
-        </label>
-        <Select
-          value={selectedYear.toString()}
-          onValueChange={(value) => setSelectedYear(value === 'all' ? 'all' : parseInt(value))}
-        >
-          <SelectTrigger className="w-[180px] bg-white">
-            <SelectValue placeholder="연도 선택" />
-          </SelectTrigger>
-          <SelectContent className="bg-white z-20">
-            <SelectItem value="all">전체 연도</SelectItem>
-            {availableYears.map(year => (
-              <SelectItem key={year} value={year.toString()}>{year}년</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="mb-10 relative z-10 flex gap-6">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">연도 선택</label>
+          <Select
+            value={selectedYear.toString()}
+            onValueChange={(value) => setSelectedYear(value === 'all' ? 'all' : parseInt(value))}
+          >
+            <SelectTrigger className="w-[180px] bg-white">
+              <SelectValue placeholder="연도 선택" />
+            </SelectTrigger>
+            <SelectContent className="bg-white z-20">
+              <SelectItem value="all">전체 연도</SelectItem>
+              {availableYears.map((year) => (
+                <SelectItem key={year} value={year.toString()}>{year}년</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* 유형 필터 */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">유형 필터</label>
+          <Select value={filterType} onValueChange={(v) => setFilterType(v as any)}>
+            <SelectTrigger className="w-[200px] bg-white">
+              <SelectValue placeholder="유형 선택" />
+            </SelectTrigger>
+            <SelectContent className="bg-white z-20">
+              <SelectItem value="all">전체</SelectItem>
+              <SelectItem value="leading">선도기업 과정만</SelectItem>
+              <SelectItem value="tech">신기술 과정만</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
-      
+
       {/* 매출액 차트 */}
       <div className="bg-white rounded-lg shadow p-6 mt-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">훈련기관별 매출액 (억원)</h3>
@@ -324,4 +347,4 @@ export default function InstitutionAnalysis() {
       </Dialog>
     </div>
   );
-} 
+}
