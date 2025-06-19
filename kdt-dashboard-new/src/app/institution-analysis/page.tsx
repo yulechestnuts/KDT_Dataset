@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { loadDataFromGithub, preprocessData, applyRevenueAdjustment, calculateCompletionRate } from "@/utils/data-utils";
-import { CourseData, RawCourseData, InstitutionStat, calculateInstitutionStats, aggregateCoursesByCourseNameForInstitution, AggregatedCourseData } from "@/lib/data-utils";
+import { CourseData, RawCourseData, InstitutionStat, calculateInstitutionStats, aggregateCoursesByCourseNameForInstitution, AggregatedCourseData, csvParseOptions } from "@/lib/data-utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatCurrency, formatNumber } from "@/utils/formatters";
+import { formatCurrency, formatNumber, formatRevenue } from "@/utils/formatters";
 import { parse as parseCsv } from 'papaparse';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
@@ -35,6 +35,7 @@ export default function InstitutionAnalysis() {
   const [selectedInstitutionCourses, setSelectedInstitutionCourses] = useState<AggregatedCourseData[]>([]);
   const [selectedInstitutionName, setSelectedInstitutionName] = useState<string>('');
   const [filterType, setFilterType] = useState<'all' | 'leading' | 'tech'>('all');
+  const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all'); // 월 선택 상태 추가
 
   // 신기술 과정 정의: 선도기업 과정이 아닌 모든 과정
   const isNewTechCourse = (course: CourseData) => !course.isLeadingCompanyCourse;
@@ -42,12 +43,7 @@ export default function InstitutionAnalysis() {
   const recalcStats = async () => {
     try {
       const rawDataString = await loadDataFromGithub();
-      const parsedData: any = parseCsv(rawDataString as string, {
-        header: true,
-        skipEmptyLines: true,
-        dynamicTyping: false,
-        trimHeaders: true,
-      });
+      const parsedData: any = parseCsv(rawDataString as string, csvParseOptions);
       const processedData = preprocessData(parsedData.data as RawCourseData[]);
       const overallCompletion = calculateCompletionRate(processedData);
       const adjustedCourses = applyRevenueAdjustment(processedData, overallCompletion);
@@ -68,8 +64,24 @@ export default function InstitutionAnalysis() {
         filtered = adjustedCourses.filter(isNewTechCourse);
       }
 
+      // 월별 필터링 추가
+      let finalFiltered = filtered;
+      if (selectedYear !== 'all' && selectedMonth !== 'all') {
+        finalFiltered = filtered.filter(course => {
+          const courseStartDate = new Date(course.과정시작일);
+          return courseStartDate.getFullYear() === selectedYear && (courseStartDate.getMonth() + 1) === selectedMonth;
+        });
+      } else if (selectedMonth !== 'all') {
+        // 연도 선택 없이 월만 선택된 경우, 모든 연도에서 해당 월의 과정 필터링
+        finalFiltered = filtered.filter(course => {
+          const courseStartDate = new Date(course.과정시작일);
+          return (courseStartDate.getMonth() + 1) === selectedMonth;
+        });
+      }
+
+
       const stats = calculateInstitutionStats(
-        filtered,
+        finalFiltered, // 필터링된 데이터 사용
         selectedYear === 'all' ? undefined : selectedYear,
       );
       setInstitutionStats(stats);
@@ -82,10 +94,13 @@ export default function InstitutionAnalysis() {
   useEffect(() => {
     recalcStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedYear, filterType]);
+  }, [selectedYear, filterType, selectedMonth]); // selectedMonth 추가
 
   const handleViewDetails = (institutionName: string, courses: CourseData[]) => {
     setSelectedInstitutionName(institutionName);
+
+    // 메인 페이지의 institutionStats에서 해당 기관의 통계 찾기
+    const currentInstitutionStat = institutionStats.find(stat => stat.institutionName === institutionName);
 
     let filteredCourses = selectedYear === 'all'
       ? courses
@@ -93,6 +108,14 @@ export default function InstitutionAnalysis() {
           const courseYear = new Date(course.과정시작일).getFullYear();
           return courseYear === selectedYear;
         });
+    
+    // 월별 필터링 추가
+    if (selectedMonth !== 'all') {
+      filteredCourses = filteredCourses.filter(course => {
+        const courseStartDate = new Date(course.과정시작일);
+        return (courseStartDate.getMonth() + 1) === selectedMonth;
+      });
+    }
 
     // apply filterType again for modal consistency
     if (filterType === 'leading') {
@@ -101,30 +124,13 @@ export default function InstitutionAnalysis() {
       filteredCourses = filteredCourses.filter(isNewTechCourse);
     }
 
-    // 전체 수료율 계산 시 수료인원 0명 과정은 제외
-    const completionBasisCourses = filteredCourses.filter(c => (c['수료인원'] ?? 0) > 0);
-    const overallCompletion = calculateCompletionRate(completionBasisCourses);
-    const adjustedCourses = applyRevenueAdjustment(filteredCourses, overallCompletion);
-    const aggregated = aggregateCoursesByCourseNameForInstitution(adjustedCourses, institutionName, selectedYear === 'all' ? undefined : selectedYear);
+    // aggregateCoursesByCourseNameForInstitution 함수는 이미 훈련과정ID를 기준으로 집계하도록 수정됨
+    // applyRevenueAdjustment는 이미 recalcStats에서 처리되었으므로 여기서는 다시 호출하지 않음
+    const aggregated = aggregateCoursesByCourseNameForInstitution(filteredCourses, institutionName, selectedYear === 'all' ? undefined : selectedYear);
     setSelectedInstitutionCourses(aggregated);
     setIsModalOpen(true);
   };
 
-  // 선택된 기관의 통계 계산
-  const calculateSelectedInstitutionStats = (courses: AggregatedCourseData[]) => {
-    return {
-      totalCourses: courses.length,
-      totalStudents: courses.reduce((sum, course) => sum + course.총훈련생수, 0),
-      totalCompleted: courses.reduce((sum, course) => sum + course.총수료인원, 0),
-      totalRevenue: courses.reduce((sum, course) => sum + course.총누적매출, 0),
-      avgSatisfaction: courses.reduce((sum, course) => sum + course.평균만족도, 0) / courses.length
-    };
-  };
-
-  // 매출액을 억 단위로 변환하는 함수
-  const formatRevenue = (value: number) => {
-    return `${(value / 100000000).toFixed(1)}억`;
-  };
 
   return (
     <div className="p-6">
@@ -145,6 +151,25 @@ export default function InstitutionAnalysis() {
               <SelectItem value="all">전체 연도</SelectItem>
               {availableYears.map((year) => (
                 <SelectItem key={year} value={year.toString()}>{year}년</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* 월 선택 */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">월 선택</label>
+          <Select
+            value={selectedMonth.toString()}
+            onValueChange={(value) => setSelectedMonth(value === 'all' ? 'all' : parseInt(value))}
+          >
+            <SelectTrigger className="w-[180px] bg-white">
+              <SelectValue placeholder="월 선택" />
+            </SelectTrigger>
+            <SelectContent className="bg-white z-20">
+              <SelectItem value="all">전체 월</SelectItem>
+              {[...Array(12)].map((_, i) => (
+                <SelectItem key={i + 1} value={(i + 1).toString()}>{i + 1}월</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -270,30 +295,37 @@ export default function InstitutionAnalysis() {
           </DialogHeader>
           <div className="p-6">
             {/* 통계 요약 */}
-            <div className="grid grid-cols-5 gap-4 mb-6">
+            <div className="grid grid-cols-5 gap-4 mb-6"> {/* 컬럼 수 원복 */}
               {(() => {
-                const stats = calculateSelectedInstitutionStats(selectedInstitutionCourses);
+                // 메인 페이지의 institutionStats에서 해당 기관의 통계 가져오기
+                const currentInstitutionStat = institutionStats.find(stat => stat.institutionName === selectedInstitutionName);
+                if (!currentInstitutionStat) return null; // 통계를 찾지 못하면 렌더링하지 않음
+
                 return (
                   <>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <div className="text-sm text-gray-500">훈련과정 수</div>
-                      <div className="text-lg font-semibold">{stats.totalCourses}</div>
+                      <div className="text-lg font-semibold">{currentInstitutionStat.totalCourses}</div>
                     </div>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <div className="text-sm text-gray-500">훈련생 수</div>
-                      <div className="text-lg font-semibold">{stats.totalStudents}</div>
+                      <div className="text-lg font-semibold">{currentInstitutionStat.totalStudents}</div>
                     </div>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <div className="text-sm text-gray-500">수료인원</div>
-                      <div className="text-lg font-semibold">{stats.totalCompleted}</div>
+                      <div className="text-lg font-semibold">{currentInstitutionStat.completedStudents}</div>
                     </div>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <div className="text-sm text-gray-500">매출액</div>
-                      <div className="text-lg font-semibold">{formatRevenue(stats.totalRevenue)}</div>
+                      <div className="text-lg font-semibold">{formatRevenue(currentInstitutionStat.totalRevenue)}</div>
                     </div>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <div className="text-sm text-gray-500">평균 만족도</div>
-                      <div className="text-lg font-semibold">{stats.avgSatisfaction.toFixed(1)}</div>
+                      <div className="text-lg font-semibold">{currentInstitutionStat.avgSatisfaction.toFixed(1)}</div>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-lg"> {/* 평균 수료율 추가 */}
+                      <div className="text-sm text-gray-500">평균 수료율</div>
+                      <div className="text-lg font-semibold">{currentInstitutionStat.completionRate.toFixed(1)}%</div>
                     </div>
                   </>
                 );
@@ -304,7 +336,7 @@ export default function InstitutionAnalysis() {
                 <thead className="bg-gray-50 sticky top-0">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[25%]">과정명</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[15%]">훈련유형</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">훈련유형</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">훈련생 수</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">수료인원</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">수료율</th>
@@ -315,15 +347,17 @@ export default function InstitutionAnalysis() {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {selectedInstitutionCourses.map((course) => (
-                    <tr key={course.과정명} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{course.과정명}</td>
+                    <tr key={course.훈련과정ID || course.과정명} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                        {course.과정명}
+                      </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.훈련유형들?.join(', ') || '-'}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.총훈련생수}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.총수료인원}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                        {course.총수료인원 === 0
+                        {course.평균수료율 === 0
                           ? '-'
-                          : `${((course.총수료인원 / course.총훈련생수) * 100).toFixed(1)}%`}
+                          : `${course.평균수료율.toFixed(1)}%`}
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatRevenue(course.총누적매출)}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.평균만족도.toFixed(1)}</td>

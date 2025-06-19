@@ -120,8 +120,8 @@ export const calculateMonthlyStatistics = (
   // 훈련과정 ID별 수료율 평균 계산
   const courseCompletionRates = new Map<string, number>();
   data.forEach((course) => {
-    if ((course.수료인원 ?? 0) > 0) {
-      const courseId = course.과정ID || course.과정명;
+    if ((course.수료인원 ?? 0) > 0 && course.훈련과정ID) {
+      const courseId = course.훈련과정ID;
       const completionRate = (course.수료인원 ?? 0) / (course['수강신청 인원'] ?? 1) * 100;
       if (!courseCompletionRates.has(courseId)) {
         courseCompletionRates.set(courseId, completionRate);
@@ -212,7 +212,10 @@ export const calculateMonthlyStatistics = (
 export const calculateAdjustedRevenueForCourse = (
   course: CourseData,
   overallCompletionRate: number,
-  currentDate: Date
+  currentDate: Date,
+  courseCompletionRate?: number, // 동일 훈련과정의 평균 수료율
+  institutionCompletionRate?: number, // 동일 훈련기관의 평균 수료율
+  isFirstTimeCourse?: boolean // 초회차 여부
 ): number => {
   // 1) 원본 매출값 결정: '실 매출 대비'를 우선 사용, 없으면 누적매출 사용
   const originalRevenue = course['실 매출 대비'] ?? course.누적매출 ?? 0;
@@ -230,14 +233,26 @@ export const calculateAdjustedRevenueForCourse = (
   // 4) 실제 수료율 계산 (진행 중 과정은 전체 평균*진행률로 추정)
   let actualCompletionRate = (course['수료인원'] ?? 0) / (course['수강신청 인원'] ?? 1);
 
+  // 수료인원이 0인 경우, 또는 초회차인 경우 예상 수료율 결정
+  if ((course['수료인원'] ?? 0) === 0 || isFirstTimeCourse) {
+    let estimatedCompletionRate = 0;
+    if (courseCompletionRate !== undefined && courseCompletionRate > 0) {
+      estimatedCompletionRate = courseCompletionRate;
+    } else if (institutionCompletionRate !== undefined && institutionCompletionRate > 0) {
+      estimatedCompletionRate = institutionCompletionRate;
+    } else {
+      estimatedCompletionRate = overallCompletionRate;
+    }
+    actualCompletionRate = estimatedCompletionRate / 100; // %를 비율로 변환
+  }
+
+  // 과정이 진행 중인 경우, 경과 비율에 따라 예상 수료율 조정
   if (new Date(course.과정종료일) > currentDate) {
     const totalDuration = new Date(course.과정종료일).getTime() - new Date(course.과정시작일).getTime();
     const elapsedDuration = currentDate.getTime() - new Date(course.과정시작일).getTime();
     const progressRatio = totalDuration > 0 ? Math.min(Math.max(elapsedDuration / totalDuration, 0), 1) : 0;
 
-    if ((course['수료인원'] ?? 0) === 0) {
-      actualCompletionRate = (overallCompletionRate / 100) * progressRatio;
-    }
+    actualCompletionRate *= progressRatio; // 진행률 반영
   }
 
   const adjustmentFactor = calculateRevenueAdjustmentFactor(actualCompletionRate * 100);
@@ -252,22 +267,111 @@ export const applyRevenueAdjustment = (
 ): CourseData[] => {
   const currentDate = new Date();
 
+  // 1. 동일 훈련과정 ID별 평균 수료율 계산 (수료인원 0인 과정 제외)
+  const courseCompletionRates = new Map<string, number>();
+  if (courses.length > 0 && '훈련과정ID' in courses[0]) {
+    const validCoursesById = courses.filter(c => (c.수료인원 ?? 0) > 0 && (c['수강신청 인원'] ?? 0) > 0);
+    validCoursesById.forEach(course => {
+      const courseId = course.훈련과정ID;
+      if (courseId) { // 훈련과정ID가 유효한 경우에만 처리
+        const currentSum = courseCompletionRates.get(courseId + '_sum') || 0;
+        const currentCount = courseCompletionRates.get(courseId + '_count') || 0;
+        courseCompletionRates.set(courseId + '_sum', currentSum + ((course.수료인원 ?? 0) / (course['수강신청 인원'] ?? 1) * 100));
+        courseCompletionRates.set(courseId + '_count', currentCount + 1);
+      }
+    });
+    courseCompletionRates.forEach((value, key) => {
+      if (key.endsWith('_sum')) {
+        const courseId = key.replace('_sum', '');
+        if (courseId) { // courseId가 유효한 경우에만 처리
+          const sum = value;
+          const count = courseCompletionRates.get(courseId + '_count') || 1;
+          courseCompletionRates.set(courseId, sum / count);
+        }
+      }
+    });
+  } else {
+    console.warn("경고: '훈련과정ID' 컬럼이 없어 과정별 평균 수료율을 계산할 수 없습니다.");
+  }
+
+  // 2. 동일 훈련기관별 평균 수료율 계산 (수료인원 0인 과정 제외)
+  const institutionCompletionRates = new Map<string, number>();
+  if (courses.length > 0 && '훈련기관' in courses[0]) {
+    const validCoursesByInstitution = courses.filter(c => (c.수료인원 ?? 0) > 0 && (c['수강신청 인원'] ?? 0) > 0);
+    validCoursesByInstitution.forEach(course => {
+      const institutionName = course.훈련기관;
+      if (institutionName) {
+        const currentSum = institutionCompletionRates.get(institutionName + '_sum') || 0;
+        const currentCount = institutionCompletionRates.get(institutionName + '_count') || 0;
+        institutionCompletionRates.set(institutionName + '_sum', currentSum + ((course.수료인원 ?? 0) / (course['수강신청 인원'] ?? 1) * 100));
+        institutionCompletionRates.set(institutionName + '_count', currentCount + 1);
+      }
+    });
+    institutionCompletionRates.forEach((value, key) => {
+      if (key.endsWith('_sum')) {
+        const institutionName = key.replace('_sum', '');
+        const sum = value;
+        const count = institutionCompletionRates.get(institutionName + '_count') || 1;
+        institutionCompletionRates.set(institutionName, sum / count);
+      }
+    });
+  } else {
+    console.warn("경고: '훈련기관' 컬럼이 없어 기관별 평균 수료율을 계산할 수 없습니다.");
+  }
+
+  // 3. 초회차 여부 판단 (훈련과정ID와 과정시작일 기준)
+  const firstTimeCourses = new Set<string>(); // 고유값 (unique ID)
+  const courseIdStartDateMap = new Map<string, Date>(); // 훈련과정ID -> 가장 빠른 시작일
+
+  courses.forEach(course => {
+    if (course.훈련과정ID) { // 훈련과정ID가 유효한 경우에만 처리
+      const currentStartDate = new Date(course.과정시작일);
+      if (!courseIdStartDateMap.has(course.훈련과정ID) || currentStartDate < (courseIdStartDateMap.get(course.훈련과정ID) || new Date())) {
+        courseIdStartDateMap.set(course.훈련과정ID, currentStartDate);
+      }
+    }
+  });
+
+  courses.forEach(course => {
+    if (course.훈련과정ID && courseIdStartDateMap.has(course.훈련과정ID)) { // 훈련과정ID가 유효하고 맵에 존재하는 경우에만 처리
+      if (new Date(course.과정시작일).getTime() === courseIdStartDateMap.get(course.훈련과정ID)!.getTime()) {
+        firstTimeCourses.add(course.고유값); // 고유값으로 초회차 과정 식별
+      }
+    }
+  });
+
   // 1차: 기존 보정 로직으로 코스별 조정 매출 산출
   const yearColumns = ['2021년', '2022년', '2023년', '2024년', '2025년', '2026년'] as const;
 
   // 1차 결과를 저장하고, 2차 스케일링 단계에서 재사용
   const intermediate = courses.map(course => {
+    const isFirstTime = firstTimeCourses.has(course.고유값);
+    const currentCourseCompletionRate = course.훈련과정ID ? courseCompletionRates.get(course.훈련과정ID) : undefined;
+    const currentInstitutionCompletionRate = course.훈련기관 ? institutionCompletionRates.get(course.훈련기관) : undefined;
+
     // Calculate adjusted 누적매출
-    const adjustedTotalRevenue = calculateAdjustedRevenueForCourse(course, overallCompletionRate, currentDate);
+    const adjustedTotalRevenue = calculateAdjustedRevenueForCourse(
+      course,
+      overallCompletionRate,
+      currentDate,
+      currentCourseCompletionRate,
+      currentInstitutionCompletionRate,
+      isFirstTime
+    );
 
     // Calculate adjusted yearly revenues
     const adjustedYearlyRevenues: { [key: string]: number | undefined } = {};
     yearColumns.forEach(yearCol => {
-      const originalYearlyRevenue = course[yearCol] as number | undefined; // Access directly as number or undefined
+      const originalYearlyRevenue = course[yearCol] as number | undefined;
       if (originalYearlyRevenue !== undefined) {
-        adjustedYearlyRevenues[`조정_${yearCol}`] = adjustYearlyRevenue(
-          course,
-          originalYearlyRevenue
+        // 연도별 매출도 동일한 로직으로 조정
+        adjustedYearlyRevenues[`조정_${yearCol}`] = calculateAdjustedRevenueForCourse(
+          { ...course, 누적매출: originalYearlyRevenue, '실 매출 대비': originalYearlyRevenue }, // 임시로 누적매출과 실매출대비에 연도별 매출 할당
+          overallCompletionRate,
+          currentDate,
+          currentCourseCompletionRate,
+          currentInstitutionCompletionRate,
+          isFirstTime
         );
       }
     });
