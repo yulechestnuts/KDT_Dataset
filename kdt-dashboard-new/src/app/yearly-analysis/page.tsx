@@ -38,10 +38,22 @@ export default function YearlyAnalysisPage() {
     const aggregated: { [key: string]: { courseName: string, totalRevenue: number, count: number, institution: string, startDate: Date, endDate: Date, totalStudents: number, totalCompletedStudents: number } } = {};
 
     courses.forEach(course => {
-      const courseName = course.과정명 || '알 수 없는 과정명';
-      if (!aggregated[courseName]) {
-        aggregated[courseName] = {
-          courseName: courseName,
+      const courseKey = course['훈련과정 ID'] || course.과정명 || '알 수 없는 과정명';
+      if (!aggregated[courseKey]) {
+        // 훈련과정 ID가 있는 경우, 해당 ID의 모든 과정 중 훈련시작일이 가장 늦은 과정의 과정명 사용
+        let displayCourseName = course.과정명;
+        if (course['훈련과정 ID']) {
+          const coursesWithSameId = courses.filter(c => c['훈련과정 ID'] === course['훈련과정 ID']);
+          if (coursesWithSameId.length > 0) {
+            const latestCourse = coursesWithSameId.reduce((latest, current) => {
+              return new Date(current.과정시작일) > new Date(latest.과정시작일) ? current : latest;
+            });
+            displayCourseName = latestCourse.과정명;
+          }
+        }
+
+        aggregated[courseKey] = {
+          courseName: displayCourseName,
           totalRevenue: 0,
           count: 0,
           institution: course.훈련기관,
@@ -57,13 +69,13 @@ export default function YearlyAnalysisPage() {
       yearColumns.forEach(yearCol => {
         const adjustedYearlyRevenue = course[`조정_${yearCol}` as keyof CourseData] as number | undefined;
         if (adjustedYearlyRevenue !== undefined) {
-          aggregated[courseName].totalRevenue += adjustedYearlyRevenue;
+          aggregated[courseKey].totalRevenue += adjustedYearlyRevenue;
         }
       });
 
-      aggregated[courseName].count += 1;
-      aggregated[courseName].totalStudents += course['수강신청 인원'] ?? 0;
-      aggregated[courseName].totalCompletedStudents += course['수료인원'] ?? 0;
+      aggregated[courseKey].count += 1;
+      aggregated[courseKey].totalStudents += course['수강신청 인원'] ?? 0;
+      aggregated[courseKey].totalCompletedStudents += course['수료인원'] ?? 0;
     });
     return Object.values(aggregated).sort((a, b) => b.totalRevenue - a.totalRevenue);
   };
@@ -166,27 +178,22 @@ export default function YearlyAnalysisPage() {
             <TableBody>
               {yearlyStats.map((stat) => {
                 // 해당 연도의 과정들 중에서 수료율 계산 대상 필터링
-                const currentDate = new Date();
-                const twentyOneDaysAgo = new Date(currentDate.getTime() - 21 * 24 * 60 * 60 * 1000);
-                
-                // Python 코드와 동일한 로직 적용
                 let filteredCourses;
                 if (stat.year) {
                   // 해당 연도에 종료된 과정만 필터링
                   filteredCourses = stat.courses.filter(course => {
                     const endDate = new Date(course.과정종료일);
-                    return endDate.getFullYear() === stat.year && endDate < twentyOneDaysAgo;
+                    return endDate.getFullYear() === stat.year;
                   });
                 } else {
-                  // 전체 기간 중 종료된 과정만 필터링 (현재 날짜 이전)
-                  filteredCourses = stat.courses.filter(course => {
-                    const endDate = new Date(course.과정종료일);
-                    return endDate <= currentDate && endDate < twentyOneDaysAgo;
-                  });
+                  // 전체 기간의 모든 과정 포함
+                  filteredCourses = stat.courses;
                 }
 
-                // 수료인원이 0인 과정 제외
-                const validCourses = filteredCourses.filter(course => (course['수료인원'] ?? 0) > 0);
+                // 수료인원이 0인 과정과 수강신청 인원이 0인 과정 제외
+                const validCourses = filteredCourses.filter(course => 
+                  (course['수료인원'] ?? 0) > 0 && (course['수강신청 인원'] ?? 0) > 0
+                );
 
                 if (validCourses.length === 0) {
                   return (
@@ -210,7 +217,7 @@ export default function YearlyAnalysisPage() {
                   );
                 }
 
-                // Python 코드와 동일하게 수료율 계산
+                // 수료율 계산
                 const totalCompletion = validCourses.reduce((sum, course) => sum + (course['수료인원'] ?? 0), 0);
                 const totalEnrollment = validCourses.reduce((sum, course) => sum + (course['수강신청 인원'] ?? 0), 0);
                 const completionRate = (totalCompletion / totalEnrollment * 100).toFixed(1);

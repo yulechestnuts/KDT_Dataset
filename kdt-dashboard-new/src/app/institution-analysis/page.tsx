@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { loadDataFromGithub, preprocessData, applyRevenueAdjustment, calculateCompletionRate } from "@/utils/data-utils";
-import { CourseData, RawCourseData, InstitutionStat, calculateInstitutionStats, aggregateCoursesByCourseNameForInstitution, AggregatedCourseData, csvParseOptions } from "@/lib/data-utils";
+import { CourseData, RawCourseData, InstitutionStat, calculateInstitutionStats, aggregateCoursesByCourseNameForInstitution, AggregatedCourseData, csvParseOptions, aggregateCoursesByCourseIdWithLatestInfo } from "@/lib/data-utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -124,9 +124,9 @@ export default function InstitutionAnalysis() {
       filteredCourses = filteredCourses.filter(isNewTechCourse);
     }
 
-    // aggregateCoursesByCourseNameForInstitution 함수는 이미 훈련과정ID를 기준으로 집계하도록 수정됨
+    // aggregateCoursesByCourseIdWithLatestInfo 함수는 이미 훈련과정ID를 기준으로 집계하도록 수정됨
     // applyRevenueAdjustment는 이미 recalcStats에서 처리되었으므로 여기서는 다시 호출하지 않음
-    const aggregated = aggregateCoursesByCourseNameForInstitution(filteredCourses, institutionName, selectedYear === 'all' ? undefined : selectedYear);
+    const aggregated = aggregateCoursesByCourseIdWithLatestInfo(filteredCourses);
     setSelectedInstitutionCourses(aggregated);
     setIsModalOpen(true);
   };
@@ -347,7 +347,7 @@ export default function InstitutionAnalysis() {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {selectedInstitutionCourses.map((course) => (
-                    <tr key={course.훈련과정ID || course.과정명} className="hover:bg-gray-50">
+                    <tr key={course['훈련과정 ID'] || course.과정명} className="hover:bg-gray-50">
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
                         {course.과정명}
                       </td>
