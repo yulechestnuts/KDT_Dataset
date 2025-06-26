@@ -3,15 +3,13 @@
 import React, { useState, useEffect } from 'react';
 import Papa from 'papaparse';
 import { CourseData } from '@/lib/data-utils';
-import { loadDataFromGithub, preprocessData, adjustYearlyRevenueForCourse } from '@/utils/data-utils';
+import { loadDataFromGithub, preprocessData } from '@/utils/data-utils';
 
 const CourseDetail = () => {
   const [courseData, setCourseData] = useState<CourseData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [overallCompletionRate, setOverallCompletionRate] = useState<number>(0);
-  const [adjustedYearlyRevenues, setAdjustedYearlyRevenues] = useState<{ [key: string]: number }>({});
-  const [totalAdjustedRevenue, setTotalAdjustedRevenue] = useState<number>(0);
+  const [allCourses, setAllCourses] = useState<CourseData[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -19,39 +17,14 @@ const CourseDetail = () => {
         const data = await loadDataFromGithub();
         const parsedData = Papa.parse(data, { header: true });
         const processedData = preprocessData(parsedData.data);
-        
-        // 전체 수료율 계산
-        const totalCompletionRate = processedData.reduce((acc: number, course: CourseData) => acc + (course.수료율 || 0), 0) / processedData.length;
-        setOverallCompletionRate(totalCompletionRate);
+        setAllCourses(processedData);
 
         // URL에서 과정 ID 가져오기
         const courseId = window.location.pathname.split('/').pop();
-        const course = processedData.find((c: CourseData) => c.과정ID === courseId);
+        const course = processedData.find((c: CourseData) => c.고유값 === courseId);
 
         if (course) {
           setCourseData(course);
-          
-          // 조정된 연간 매출액 계산
-          const yearColumns = ['2021년', '2022년', '2023년', '2024년', '2025년', '2026년'];
-          const adjustedYearly: { [key: string]: number } = {};
-          let totalRevenue = 0;
-
-          yearColumns.forEach(yearCol => {
-            const originalYearlyRevenue = course[yearCol] as number | undefined;
-            if (originalYearlyRevenue !== undefined) {
-              const adjustedRevenue = adjustYearlyRevenueForCourse(
-                course,
-                originalYearlyRevenue,
-                new Date(),
-                totalCompletionRate
-              );
-              adjustedYearly[yearCol] = adjustedRevenue;
-              totalRevenue += adjustedRevenue;
-            }
-          });
-
-          setAdjustedYearlyRevenues(adjustedYearly);
-          setTotalAdjustedRevenue(totalRevenue);
         } else {
           setError('과정을 찾을 수 없습니다.');
         }
@@ -66,6 +39,30 @@ const CourseDetail = () => {
     fetchData();
   }, []);
 
+  // 취업률 통계 계산
+  const calculateEmploymentStats = () => {
+    if (!allCourses.length) return null;
+
+    const validCourses = allCourses.filter(course => 
+      course.취업인원 > 0 && course.수료인원 > 0
+    );
+
+    if (validCourses.length === 0) return null;
+
+    const totalEmployment = validCourses.reduce((sum, course) => sum + course.취업인원, 0);
+    const totalCompletion = validCourses.reduce((sum, course) => sum + course.수료인원, 0);
+    const avgEmploymentRate = totalCompletion > 0 ? (totalEmployment / totalCompletion) * 100 : 0;
+
+    return {
+      totalEmployment,
+      totalCompletion,
+      avgEmploymentRate,
+      validCoursesCount: validCourses.length
+    };
+  };
+
+  const employmentStats = calculateEmploymentStats();
+
   return (
     <div className="container mx-auto px-4 py-8">
       {loading ? (
@@ -75,77 +72,160 @@ const CourseDetail = () => {
       ) : error ? (
         <div className="text-red-500 text-center">{error}</div>
       ) : courseData ? (
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <h1 className="text-3xl font-bold mb-6">{courseData.과정명}</h1>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-4">
+        <div className="space-y-6">
+          {/* 헤더 섹션 */}
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <h1 className="text-3xl font-bold mb-4">{courseData.과정명}</h1>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <h2 className="text-xl font-semibold mb-2">기본 정보</h2>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-gray-600">과정 ID</p>
-                    <p className="font-medium">{courseData.과정ID}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-600">과정 유형</p>
-                    <p className="font-medium">{courseData.과정유형}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-600">수료율</p>
-                    <p className="font-medium">{courseData.수료율}%</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-600">총 누적매출</p>
-                    <p className="font-medium">
-                      {totalAdjustedRevenue.toLocaleString()}원
-                      <span className="text-sm text-gray-500 ml-2">
-                        (실 매출 대비 조정)
-                      </span>
-                    </p>
-                  </div>
-                </div>
+                <p className="text-gray-600">훈련기관</p>
+                <p className="font-medium">{courseData.훈련기관}</p>
               </div>
-
               <div>
-                <h2 className="text-xl font-semibold mb-2">연간 매출</h2>
-                <div className="space-y-2">
-                  {Object.entries(adjustedYearlyRevenues).map(([year, revenue]) => (
-                    <div key={year} className="flex justify-between items-center">
-                      <span className="text-gray-600">{year}</span>
-                      <span className="font-medium">
-                        {revenue.toLocaleString()}원
-                        <span className="text-sm text-gray-500 ml-2">
-                          (실 매출 대비 조정)
-                        </span>
-                      </span>
-                    </div>
-                  ))}
+                <p className="text-gray-600">훈련과정 ID</p>
+                <p className="font-medium">{courseData['훈련과정 ID']}</p>
+              </div>
+              <div>
+                <p className="text-gray-600">훈련유형</p>
+                <p className="font-medium">{courseData.훈련유형}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* 취업률 대시보드 */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* 현재 과정 취업 정보 */}
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-xl font-semibold mb-4">현재 과정 취업 현황</h2>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                  <p className="text-2xl font-bold text-blue-600">{courseData.취업인원}명</p>
+                  <p className="text-sm text-gray-600">취업인원</p>
+                </div>
+                <div className="text-center p-4 bg-green-50 rounded-lg">
+                  <p className="text-2xl font-bold text-green-600">{courseData.취업률.toFixed(1)}%</p>
+                  <p className="text-sm text-gray-600">취업률</p>
+                </div>
+                <div className="text-center p-4 bg-purple-50 rounded-lg">
+                  <p className="text-2xl font-bold text-purple-600">{courseData.수료인원}명</p>
+                  <p className="text-sm text-gray-600">수료인원</p>
+                </div>
+                <div className="text-center p-4 bg-orange-50 rounded-lg">
+                  <p className="text-2xl font-bold text-orange-600">{courseData.수료율.toFixed(1)}%</p>
+                  <p className="text-sm text-gray-600">수료율</p>
                 </div>
               </div>
             </div>
 
-            <div className="space-y-4">
-              <div>
-                <h2 className="text-xl font-semibold mb-2">과정 상세</h2>
+            {/* 전체 평균 취업률 */}
+            {employmentStats && (
+              <div className="bg-white rounded-lg shadow-lg p-6">
+                <h2 className="text-xl font-semibold mb-4">전체 평균 취업 현황</h2>
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-gray-600">시작일</p>
-                    <p className="font-medium">{courseData.시작일}</p>
+                  <div className="text-center p-4 bg-indigo-50 rounded-lg">
+                    <p className="text-2xl font-bold text-indigo-600">{employmentStats.totalEmployment.toLocaleString()}명</p>
+                    <p className="text-sm text-gray-600">총 취업인원</p>
                   </div>
-                  <div>
-                    <p className="text-gray-600">종료일</p>
-                    <p className="font-medium">{courseData.종료일}</p>
+                  <div className="text-center p-4 bg-teal-50 rounded-lg">
+                    <p className="text-2xl font-bold text-teal-600">{employmentStats.avgEmploymentRate.toFixed(1)}%</p>
+                    <p className="text-sm text-gray-600">평균 취업률</p>
                   </div>
-                  <div>
-                    <p className="text-gray-600">교육기관</p>
-                    <p className="font-medium">{courseData.교육기관}</p>
+                  <div className="text-center p-4 bg-pink-50 rounded-lg">
+                    <p className="text-2xl font-bold text-pink-600">{employmentStats.totalCompletion.toLocaleString()}명</p>
+                    <p className="text-sm text-gray-600">총 수료인원</p>
                   </div>
-                  <div>
-                    <p className="text-gray-600">교육장소</p>
-                    <p className="font-medium">{courseData.교육장소}</p>
+                  <div className="text-center p-4 bg-yellow-50 rounded-lg">
+                    <p className="text-2xl font-bold text-yellow-600">{employmentStats.validCoursesCount}개</p>
+                    <p className="text-sm text-gray-600">유효 과정 수</p>
                   </div>
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* 과정 상세 정보 */}
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <h2 className="text-xl font-semibold mb-4">과정 상세 정보</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div>
+                <h3 className="font-medium text-gray-700 mb-2">기본 정보</h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">과정 시작일:</span>
+                    <span>{courseData.과정시작일}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">과정 종료일:</span>
+                    <span>{courseData.과정종료일}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">총 훈련일수:</span>
+                    <span>{courseData.총훈련일수}일</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">총 훈련시간:</span>
+                    <span>{courseData.총훈련시간}시간</span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="font-medium text-gray-700 mb-2">수강 정보</h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">정원:</span>
+                    <span>{courseData.정원}명</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">수강신청 인원:</span>
+                    <span>{courseData['수강신청 인원']}명</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">수료인원:</span>
+                    <span>{courseData.수료인원}명</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">수료율:</span>
+                    <span>{courseData.수료율.toFixed(1)}%</span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="font-medium text-gray-700 mb-2">취업 정보</h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">취업인원:</span>
+                    <span>{courseData.취업인원}명</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">취업률:</span>
+                    <span>{courseData.취업률.toFixed(1)}%</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">만족도:</span>
+                    <span>{courseData.만족도.toFixed(1)}%</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">훈련비:</span>
+                    <span>{courseData.훈련비.toLocaleString()}원</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* NCS 정보 */}
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <h2 className="text-xl font-semibold mb-4">NCS 정보</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <p className="text-gray-600">NCS명</p>
+                <p className="font-medium">{courseData.NCS명}</p>
+              </div>
+              <div>
+                <p className="text-gray-600">NCS코드</p>
+                <p className="font-medium">{courseData.NCS코드}</p>
               </div>
             </div>
           </div>

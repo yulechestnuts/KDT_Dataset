@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 
 export default function InstitutionAnalysis() {
   const [institutionStats, setInstitutionStats] = useState<InstitutionStat[]>([]);
+  const [filteredInstitutionStats, setFilteredInstitutionStats] = useState<InstitutionStat[]>([]);
   const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
   const [availableYears, setAvailableYears] = useState<number[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -36,6 +37,7 @@ export default function InstitutionAnalysis() {
   const [selectedInstitutionName, setSelectedInstitutionName] = useState<string>('');
   const [filterType, setFilterType] = useState<'all' | 'leading' | 'tech'>('all');
   const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all'); // 월 선택 상태 추가
+  const [searchTerm, setSearchTerm] = useState('');
 
   // 신기술 과정 정의: 선도기업 과정이 아닌 모든 과정
   const isNewTechCourse = (course: CourseData) => !course.isLeadingCompanyCourse;
@@ -79,12 +81,12 @@ export default function InstitutionAnalysis() {
         });
       }
 
-
       const stats = calculateInstitutionStats(
         finalFiltered, // 필터링된 데이터 사용
         selectedYear === 'all' ? undefined : selectedYear,
       );
       setInstitutionStats(stats);
+      setFilteredInstitutionStats(stats); // 초기에 필터링된 목록도 전체 목록으로 설정
     } catch (error) {
       console.error('데이터 로드 중 오류 발생:', error);
     }
@@ -96,18 +98,27 @@ export default function InstitutionAnalysis() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedYear, filterType, selectedMonth]); // selectedMonth 추가
 
+  useEffect(() => {
+    const filtered = institutionStats.filter(stat => 
+      stat.institutionName.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    setFilteredInstitutionStats(filtered);
+  }, [searchTerm, institutionStats]);
+
   const handleViewDetails = (institutionName: string, courses: CourseData[]) => {
     setSelectedInstitutionName(institutionName);
 
-    // 메인 페이지의 institutionStats에서 해당 기관의 통계 찾기
-    const currentInstitutionStat = institutionStats.find(stat => stat.institutionName === institutionName);
-
-    let filteredCourses = selectedYear === 'all'
-      ? courses
-      : courses.filter((course) => {
-          const courseYear = new Date(course.과정시작일).getFullYear();
-          return courseYear === selectedYear;
-        });
+    let filteredCourses;
+    if (selectedYear === 'all') {
+      filteredCourses = courses;
+    } else {
+      // 선택된 연도에 매출이 발생한 과정만 필터링 (수정된 로직)
+      filteredCourses = courses.filter(course => {
+        const yearlyRevenueKey = `조정_${selectedYear}년` as keyof CourseData;
+        const revenue = course[yearlyRevenueKey] as number | undefined;
+        return revenue !== undefined && revenue > 0;
+      });
+    }
     
     // 월별 필터링 추가
     if (selectedMonth !== 'all') {
@@ -131,13 +142,12 @@ export default function InstitutionAnalysis() {
     setIsModalOpen(true);
   };
 
-
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold mb-6">훈련기관별 분석</h1>
 
       {/* 연도 선택 */}
-      <div className="mb-10 relative z-10 flex gap-6">
+      <div className="mb-10 relative z-10 flex gap-6 items-end">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">연도 선택</label>
           <Select
@@ -189,6 +199,19 @@ export default function InstitutionAnalysis() {
             </SelectContent>
           </Select>
         </div>
+
+        {/* 검색창 추가 */}
+        <div>
+          <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-2">훈련기관 검색</label>
+          <input
+            id="search"
+            type="text"
+            placeholder="기관명 검색..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-[200px] bg-white p-2 border border-gray-300 rounded-md"
+          />
+        </div>
       </div>
 
       {/* 매출액 차트 */}
@@ -196,7 +219,7 @@ export default function InstitutionAnalysis() {
         <h3 className="text-lg font-semibold text-gray-900 mb-4">훈련기관별 매출액 (억원)</h3>
         <div className="h-[400px]">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={institutionStats.slice(0, 10)}>
+            <BarChart data={filteredInstitutionStats.slice(0, 10)}>
               <XAxis 
                 dataKey="institutionName" 
                 angle={-45} 
@@ -249,27 +272,43 @@ export default function InstitutionAnalysis() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {institutionStats.map((stat, index) => (
-                <tr key={stat.institutionName} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {index + 1}. {stat.institutionName}
-                    {stat.institutionName === '주식회사 코드스테이츠' && (
-                      <span className="ml-2 text-red-500 text-xs">(2023년 감사를 통해 훈련비 전액 반환)</span>
-                    )}
+              {filteredInstitutionStats.map((stat, index) => (
+                <tr key={stat.institutionName}>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center">
+                      <div className="ml-4">
+                        <div className="text-sm font-medium text-gray-900">
+                          {index + 1}. {stat.institutionName}
+                          {stat.institutionName === '주식회사 코드스테이츠' && (
+                            <span className="ml-2 text-xs text-red-600">(2023년 감사를 통해 훈련비 전액 반환)</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatRevenue(stat.totalRevenue)}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{stat.totalCourses}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{stat.totalStudents}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{stat.completedStudents}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{stat.completionRate.toFixed(1)}%</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{stat.avgSatisfaction.toFixed(1)}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <button
-                      onClick={() => handleViewDetails(stat.institutionName, stat.courses)}
-                      className="text-indigo-600 hover:text-indigo-900"
-                    >
-                      상세보기
-                    </button>
+                  <td className="px-6 py-4 whitespace-nowrap">{formatRevenue(stat.totalRevenue)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">{formatNumber(stat.totalCourses)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">{formatNumber(stat.totalStudents)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">{formatNumber(stat.completedStudents)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">{stat.completionRate.toFixed(1)}%</td>
+                  <td className="px-6 py-4 whitespace-nowrap">{stat.avgSatisfaction.toFixed(1)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => handleViewDetails(stat.institutionName, stat.courses)}
+                          className="text-indigo-600 hover:text-indigo-900"
+                          style={{
+                            backgroundColor: '#E0E7FF', // indigo-100
+                            color: '#4338CA', // indigo-800
+                            fontWeight: '500',
+                            padding: '0.25rem 0.5rem',
+                            borderRadius: '0.375rem',
+                            border: '1px solid #C7D2FE' // indigo-200
+                          }}
+                        >
+                          상세 보기
+                        </button>
+                      </div>
                   </td>
                 </tr>
               ))}
