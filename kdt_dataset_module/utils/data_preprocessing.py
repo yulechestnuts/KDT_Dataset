@@ -7,8 +7,8 @@ from utils.institution_grouping import group_institutions_advanced
 def preprocess_data(df):
     """데이터 전처리 함수"""
     try:
-        # 1. 숫자형 열 변환
-        numeric_columns = ['총 훈련일수', '총 훈련시간', '훈련비', '정원', '수강신청 인원', '수료인원', '수료율', '만족도']
+        # 1. 숫자형 열 변환 (취업 관련 컬럼 추가)
+        numeric_columns = ['총 훈련일수', '총 훈련시간', '훈련비', '정원', '수강신청 인원', '수료인원', '수료율', '만족도', '취업인원', '취업률']
         for col in numeric_columns:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col].astype(str), errors='coerce').fillna(0)
@@ -32,8 +32,13 @@ def preprocess_data(df):
         if '과정시작일' in df.columns:
             df['훈련연도'] = df['과정시작일'].dt.year.fillna(0).astype(int)
 
+        # 4. 취업 관련 컬럼 처리 (새로 추가된 부분)
+        if '취업인원' not in df.columns:
+            df['취업인원'] = 0
+        if '취업률' not in df.columns:
+            df['취업률'] = 0.0
 
-        # 4. 파트너기관 처리
+        # 5. 파트너기관 처리
         if '파트너기관' in df.columns:
             partner_mask = df['파트너기관'].notna()
             
@@ -105,23 +110,23 @@ def preprocess_data(df):
                 
                 # 최종 데이터프레임 구성
                 df = pd.concat([non_partner_rows, new_training_rows, commission_rows], ignore_index=True)
-        # 5. 회차 처리
+        # 6. 회차 처리
         if '회차' in df.columns:
             # 수정된 부분: '\d'를 '\\d'로 변경
             df['회차'] = pd.to_numeric(df['회차'].astype(str).str.extract('(\\d+)', expand=False), errors='coerce').fillna(0).astype('Int64')
 
-        # 6. 누적매출 계산 (수정: "실 매출 대비" 컬럼 사용)
+        # 7. 누적매출 계산 (수정: "실 매출 대비" 컬럼 사용)
         if '실 매출 대비' in df.columns:
             # 쉼표 제거, 공백 제거 후 숫자 변환
             df['누적매출'] = pd.to_numeric(df['실 매출 대비'].astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0)
         else:
             df['누적매출'] = 0  # 컬럼이 없으면 0으로 설정
             
-        # 7. 수강신청인원 컬럼 강제 생성 및 결측치 처리
+        # 8. 수강신청인원 컬럼 강제 생성 및 결측치 처리
         if '수강신청 인원' not in df.columns:
             df['수강신청 인원'] = 0
 
-        # 8. 훈련기관 그룹화 (훈련 유형 분류 전에 수행)
+        # 9. 훈련기관 그룹화 (훈련 유형 분류 전에 수행)
         if '훈련기관' in df.columns:
             print("group_institutions_advanced 함수 시작")
             df = group_institutions_advanced(df)
@@ -133,7 +138,7 @@ def preprocess_data(df):
             print("Error: '훈련기관' 컬럼이 DataFrame에 없습니다.")
             return pd.DataFrame() # '훈련기관' 컬럼이 없으면 빈 DataFrame 반환
     
-        # 9. 훈련유형 처리
+        # 10. 훈련유형 처리
         print("preprocess_data - before classify_training_type, 파트너기관 (head):")
         if '파트너기관' in df.columns:
             print(df['파트너기관'].head())
