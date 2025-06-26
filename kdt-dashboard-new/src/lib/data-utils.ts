@@ -54,6 +54,10 @@ export interface CourseData {
   만족도: number;
   취업인원: number;
   취업률: number;
+  '취업인원 (3개월)': number;
+  '취업률 (3개월)': number;
+  '취업인원 (6개월)': number;
+  '취업률 (6개월)': number;
   훈련연도: number;
   훈련유형: string;
   NCS명: string;
@@ -330,6 +334,10 @@ export const transformRawDataToCourseData = (rawData: any): CourseData => {
     만족도: parsePercentage(rawData.만족도 || rawData['만족도']),
     취업인원: parseNumber(rawData.취업인원 || rawData['취업인원']),
     취업률: parsePercentage(rawData.취업률 || rawData['취업률']),
+    '취업인원 (3개월)': parseNumber(rawData['취업인원 (3개월)'] || rawData['취업인원(3개월)'] || 0),
+    '취업률 (3개월)': parsePercentage(rawData['취업률 (3개월)'] || rawData['취업률(3개월)'] || 0),
+    '취업인원 (6개월)': parseNumber(rawData['취업인원 (6개월)'] || rawData['취업인원(6개월)'] || 0),
+    '취업률 (6개월)': parsePercentage(rawData['취업률 (6개월)'] || rawData['취업률(6개월)'] || 0),
     훈련연도: parseNumber(rawData.훈련연도 || rawData['훈련연도'] || new Date(rawData.과정시작일).getFullYear()),
     훈련유형: classifyTrainingType(rawData as RawCourseData),
     NCS명: String(rawData.NCS명 || rawData['NCS명'] || '').trim(),
@@ -575,18 +583,26 @@ export function calculateMonthlyStats(data: CourseData[], year: number, month: n
 
 // 수료율에 따른 매출액 보정 계수 계산 함수
 function calculateRevenueAdjustmentFactor(completionRate: number): number {
+  let factor = 0;
   if (completionRate >= 100) {
-    return 1.25; // 100% 이상일 때 1.25배
+    factor = 1.25; // 100% 이상일 때 1.25배
   } else if (completionRate >= 75) {
     // 75%에서 100% 사이는 선형적으로 1.0에서 1.25로 증가
-    return 1.0 + (0.25 * (completionRate - 75) / 25);
+    factor = 1.0 + (0.25 * (completionRate - 75) / 25);
   } else if (completionRate >= 50) {
     // 50%에서 75% 사이는 선형적으로 0.75에서 1.0으로 증가
-    return 0.75 + (0.25 * (completionRate - 50) / 25);
+    factor = 0.75 + (0.25 * (completionRate - 50) / 25);
   } else {
     // 50% 미만은 0.75배
-    return 0.75;
+    factor = 0.75;
   }
+  
+  console.log('[선형보정 DEBUG]', {
+    수료율: completionRate,
+    보정계수: factor
+  });
+  
+  return factor;
 }
 
 export const calculateInstitutionStats = (data: CourseData[], year?: number): InstitutionStat[] => {
@@ -1102,6 +1118,12 @@ export function testCompletionRateCalculation() {
       정원: 25,
       '수료율': 90,
       만족도: 85,
+      취업인원: 15,
+      취업률: 75,
+      '취업인원 (3개월)': 12,
+      '취업률 (3개월)': 60,
+      '취업인원 (6개월)': 15,
+      '취업률 (6개월)': 75,
       훈련연도: 2024,
       훈련유형: "일반",
       NCS명: "테스트",
@@ -1121,6 +1143,12 @@ export function testCompletionRateCalculation() {
       정원: 20,
       '수료율': 80,
       만족도: 80,
+      취업인원: 10,
+      취업률: 67,
+      '취업인원 (3개월)': 8,
+      '취업률 (3개월)': 53,
+      '취업인원 (6개월)': 10,
+      '취업률 (6개월)': 67,
       훈련연도: 2024,
       훈련유형: "일반",
       NCS명: "테스트",
@@ -1140,6 +1168,12 @@ export function testCompletionRateCalculation() {
       정원: 15,
       '수료율': 0,
       만족도: 0,
+      취업인원: 0,
+      취업률: 0,
+      '취업인원 (3개월)': 0,
+      '취업률 (3개월)': 0,
+      '취업인원 (6개월)': 0,
+      '취업률 (6개월)': 0,
       훈련연도: 2024,
       훈련유형: "일반",
       NCS명: "테스트",
@@ -1383,4 +1417,171 @@ export function preprocessData(data: any[]) {
     });
     return newRow;
   });
+}
+
+export const calculateAdjustedRevenueForCourse = (
+  course: CourseData,
+  overallCompletionRate: number,
+  courseCompletionRate?: number, // 동일 훈련과정의 평균 수료율
+  institutionCompletionRate?: number, // 동일 훈련기관의 평균 수료율
+  isFirstTimeCourse?: boolean, // 초회차 여부
+  courseIdAvgCompletionRateMap?: Map<string, number> // <== 추가: 훈련과정ID별 평균 수료율 맵
+): number => {
+  // 1) 실 매출 대비, 매출 최대
+  const minRevenue = course['실 매출 대비'] ?? course.누적매출 ?? 0;
+  const maxRevenue = (typeof course['매출 최대'] === 'number' && !isNaN(course['매출 최대']) && course['매출 최대'] > 0)
+    ? course['매출 최대']
+    : minRevenue;
+
+  // 2) 매출이 없으면 보정 없이 반환
+  if (minRevenue === 0) {
+    return minRevenue;
+  }
+
+  // 3) 수강신청 인원이 0이면 보정 계산이 불가능하므로 그대로 반환
+  if ((course['수강신청 인원'] ?? 0) === 0) {
+    return minRevenue;
+  }
+
+  // 4) 실제 수료율 계산
+  let actualCompletionRate = (course['수료인원'] ?? 0) / (course['수강신청 인원'] ?? 1);
+  let usedCompletionRate = actualCompletionRate * 100;
+  let usedType = '실제';
+
+  // 수료인원이 0인 경우, 또는 초회차인 경우 예상 수료율 결정
+  if ((course['수료인원'] ?? 0) === 0 || isFirstTimeCourse) {
+    let estimatedCompletionRate = 0;
+    // 1순위: 훈련과정ID별 평균 수료율
+    if (courseIdAvgCompletionRateMap && course['훈련과정 ID'] && courseIdAvgCompletionRateMap.has(course['훈련과정 ID'])) {
+      estimatedCompletionRate = courseIdAvgCompletionRateMap.get(course['훈련과정 ID'])!;
+    } else if (courseCompletionRate !== undefined && courseCompletionRate > 0) {
+      estimatedCompletionRate = courseCompletionRate;
+    } else if (institutionCompletionRate !== undefined && institutionCompletionRate > 0) {
+      estimatedCompletionRate = institutionCompletionRate;
+    } else {
+      estimatedCompletionRate = overallCompletionRate;
+    }
+    actualCompletionRate = estimatedCompletionRate / 100; // %를 비율로 변환
+    usedCompletionRate = estimatedCompletionRate;
+    usedType = '예상';
+  }
+
+  // 5) 지수함수형 보정 적용 (y = min + (max-min)*(1 - a^(-b*rate)))
+  const a = 2;
+  const b = 2; // p값을 2로 고정
+  const rate = actualCompletionRate;
+  const expFactor = 1 - Math.pow(a, -b * rate);
+  const adjustedRevenue = minRevenue + (maxRevenue - minRevenue) * expFactor;
+
+  // 디버깅 로그 추가 - 모든 과정에 대해 출력
+  console.log('[지수보정 DEBUG]', {
+    과정명: course.과정명,
+    고유값: course.고유값,
+    수료인원: course['수료인원'],
+    수강신청인원: course['수강신청 인원'],
+    실매출대비: minRevenue,
+    매출최대: maxRevenue,
+    적용수료율: usedCompletionRate,
+    수료율타입: usedType,
+    a값: a,
+    b값: b, // p값 확인
+    expFactor,
+    최종조정매출: adjustedRevenue,
+    원본매출: minRevenue
+  });
+
+  return adjustedRevenue;
+};
+
+export const applyRevenueAdjustment = (
+  courses: CourseData[],
+  _overallCompletionRate: number // 기존 전체 평균은 무시
+): CourseData[] => {
+  console.log('[applyRevenueAdjustment] 함수 호출됨', {
+    과정수: courses.length,
+    전체평균수료율: _overallCompletionRate
+  });
+  
+  // 1. 전체 평균 수료율(0% 제외) 재계산
+  const validForOverall = courses.filter(c => (c['수료인원'] ?? 0) > 0 && (c['수강신청 인원'] ?? 0) > 0);
+  let overallCompletionRate = 0;
+  if (validForOverall.length > 0) {
+    const total = validForOverall.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+    const enroll = validForOverall.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
+    overallCompletionRate = enroll > 0 ? (total / enroll) * 100 : 0;
+  }
+
+  // 2. 훈련과정ID별 평균 수료율 맵 생성 (0% 제외)
+  const courseIdAvgCompletionRateMap = new Map<string, number>();
+  const courseIdGroups = new Map<string, CourseData[]>();
+  courses.forEach(course => {
+    const courseId = course['훈련과정 ID'];
+    if (!courseId) return;
+    if (!courseIdGroups.has(courseId)) courseIdGroups.set(courseId, []);
+    courseIdGroups.get(courseId)!.push(course);
+  });
+  courseIdGroups.forEach((group, courseId) => {
+    const valid = group.filter(c => (c['수료인원'] ?? 0) > 0 && (c['수강신청 인원'] ?? 0) > 0);
+    if (valid.length > 0) {
+      const total = valid.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+      const enroll = valid.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
+      const avg = enroll > 0 ? (total / enroll) * 100 : 0;
+      courseIdAvgCompletionRateMap.set(courseId, avg);
+    }
+  });
+
+  // 3. 기존 보정 로직 (2차 스케일링 포함, overallCompletionRate만 교체)
+  const yearColumns = ['2021년', '2022년', '2023년', '2024년', '2025년', '2026년'] as const;
+  const firstTimeCourses = new Set<string>();
+  const courseIdStartDateMap = new Map<string, Date>();
+  courses.forEach(course => {
+    if (course['훈련과정 ID']) {
+      const startDate = new Date(course.과정시작일);
+      if (!courseIdStartDateMap.has(course['훈련과정 ID']) || startDate < courseIdStartDateMap.get(course['훈련과정 ID'])!) {
+        courseIdStartDateMap.set(course['훈련과정 ID'], startDate);
+      }
+    }
+  });
+  courses.forEach(course => {
+    if (course['훈련과정 ID'] && courseIdStartDateMap.has(course['훈련과정 ID'])) {
+      if (new Date(course.과정시작일).getTime() === courseIdStartDateMap.get(course['훈련과정 ID'])!.getTime()) {
+        firstTimeCourses.add(course.고유값);
+      }
+    }
+  });
+  const intermediate = courses.map(course => {
+    const isFirstTime = firstTimeCourses.has(course.고유값);
+    const currentCourseCompletionRate = course['훈련과정 ID'] ? courseIdAvgCompletionRateMap.get(course['훈련과정 ID']) : undefined;
+    // 기존 institutionCompletionRates 등은 그대로 유지
+    // calculateAdjustedRevenueForCourse에 courseIdAvgCompletionRateMap 전달
+    const adjustedTotalRevenue = calculateAdjustedRevenueForCourse(
+      course,
+      overallCompletionRate,
+      currentCourseCompletionRate,
+      undefined,
+      isFirstTime,
+      courseIdAvgCompletionRateMap
+    );
+    const adjustedYearlyRevenues: { [key: string]: number | undefined } = {};
+    yearColumns.forEach(yearCol => {
+      const originalYearlyRevenue = course[yearCol] as number | undefined;
+      if (originalYearlyRevenue !== undefined) {
+        adjustedYearlyRevenues[`조정_${yearCol}`] = calculateAdjustedRevenueForCourse(
+          { ...course, 누적매출: originalYearlyRevenue, '실 매출 대비': originalYearlyRevenue },
+          overallCompletionRate,
+          currentCourseCompletionRate,
+          undefined,
+          isFirstTime,
+          courseIdAvgCompletionRateMap
+        );
+      }
+    });
+    return {
+      ...course,
+      조정_실매출대비: adjustedTotalRevenue,
+      조정_누적매출: adjustedTotalRevenue,
+      ...adjustedYearlyRevenues,
+    };
+  });
+  return intermediate;
 }

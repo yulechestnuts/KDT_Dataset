@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
-import { Rocket, Calendar, TrendingUp, Building2, BookText, Factory } from "lucide-react";
+import { Rocket, Calendar, TrendingUp, Building2, BookText, Factory, Users } from "lucide-react";
 
 export default function Home() {
   return (
@@ -57,6 +57,14 @@ export default function Home() {
               <Factory className="h-12 w-12 text-cyan-500 mb-4" />
               <h2 className="text-xl font-semibold mb-2">선도기업형 과정 분석</h2>
               <p className="text-sm text-gray-500">선도기업의 과정을 분석합니다.</p>
+            </Card>
+          </Link>
+
+          <Link href="/employment-analysis">
+            <Card className="flex flex-col items-center justify-center p-8 text-center hover:shadow-lg transition-shadow duration-200">
+              <Users className="h-12 w-12 text-indigo-500 mb-4" />
+              <h2 className="text-xl font-semibold mb-2">취업률 분석</h2>
+              <p className="text-sm text-gray-500">3개월, 6개월, 전체 기준 취업률을 분석합니다.</p>
             </Card>
           </Link>
         </div>

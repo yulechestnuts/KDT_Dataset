@@ -72,16 +72,21 @@ export const generateYearlyStats = (data: CourseData[]): YearlyStats[] => {
 //  • 0%  → 0.5배 이하
 //  • 50% → 0.75배
 //  • 100%→ 1.25배 (최대)
-//  • 1‒6단계의 로그형 완만한 곡선을 형성
+//  • p=2 기반 지수함수형 곡선
 export const calculateRevenueAdjustmentFactor = (completionRate: number): number => {
   // 0~100 사이로 클램프
   const rate = Math.max(0, Math.min(100, completionRate));
-
-  const minFactor = 0.5;   // 단계 6(최저)
-  const maxFactor = 1.25;  // 단계 1(최고)
-  const k = 1.6;           // 곡선 정도(≈50%→0.75 만족)
-
-  const factor = minFactor + (maxFactor - minFactor) * Math.pow(rate / 100, k);
+  
+  // p=2 기반 지수함수형 보정 (y = min + (max-min)*(1 - a^(-b*rate)))
+  const minFactor = 0.5;   // 최소값
+  const maxFactor = 1.25;  // 최대값
+  const a = 2;             // 지수함수 기수
+  const b = 2;             // p값 (곡선 강도)
+  
+  const normalizedRate = rate / 100; // 0~1 범위로 정규화
+  const expFactor = 1 - Math.pow(a, -b * normalizedRate);
+  const factor = minFactor + (maxFactor - minFactor) * expFactor;
+  
   return Math.min(Math.max(factor, minFactor), maxFactor);
 };
 
@@ -213,8 +218,8 @@ export const calculateAdjustedRevenueForCourse = (
   institutionCompletionRate?: number, // 동일 훈련기관의 평균 수료율
   isFirstTimeCourse?: boolean // 초회차 여부
 ): number => {
-  // 1) 원본 매출값 결정: '실 매출 대비'를 우선 사용, 없으면 누적매출 사용
-  const originalRevenue = course['실 매출 대비'] ?? course.누적매출 ?? 0;
+  // 1) 원본 매출값 결정: 누적매출을 우선 사용, 없으면 '실 매출 대비' 사용
+  const originalRevenue = course.누적매출 ?? course['실 매출 대비'] ?? 0;
 
   // 2) 매출이 없으면 보정 없이 반환
   if (originalRevenue === 0) {
@@ -228,23 +233,33 @@ export const calculateAdjustedRevenueForCourse = (
 
   // 4) 실제 수료율 계산
   let actualCompletionRate = (course['수료인원'] ?? 0) / (course['수강신청 인원'] ?? 1);
+  let usedCompletionRate = actualCompletionRate * 100;
 
   // 수료인원이 0인 경우, 또는 초회차인 경우 예상 수료율 결정
   if ((course['수료인원'] ?? 0) === 0 || isFirstTimeCourse) {
     let estimatedCompletionRate = 0;
+    
+    // 1순위: 동일 훈련과정ID의 평균 수료율
     if (courseCompletionRate !== undefined && courseCompletionRate > 0) {
       estimatedCompletionRate = courseCompletionRate;
-    } else if (institutionCompletionRate !== undefined && institutionCompletionRate > 0) {
+    } 
+    // 2순위: 동일 훈련기관의 평균 수료율
+    else if (institutionCompletionRate !== undefined && institutionCompletionRate > 0) {
       estimatedCompletionRate = institutionCompletionRate;
-    } else {
+    } 
+    // 3순위: 전체 평균 수료율
+    else {
       estimatedCompletionRate = overallCompletionRate;
     }
+    
     actualCompletionRate = estimatedCompletionRate / 100; // %를 비율로 변환
+    usedCompletionRate = estimatedCompletionRate;
   }
 
-  const adjustmentFactor = calculateRevenueAdjustmentFactor(actualCompletionRate * 100);
+  const adjustmentFactor = calculateRevenueAdjustmentFactor(usedCompletionRate);
+  const adjustedRevenue = originalRevenue * adjustmentFactor;
 
-  return originalRevenue * adjustmentFactor;
+  return adjustedRevenue;
 };
 
 // Main function to apply revenue adjustments to a list of courses
@@ -368,59 +383,12 @@ export const applyRevenueAdjustment = (
   }); // ← intermediate
 
   /**
-   * ===== 2차: 연도별 목표 매출에 근사하도록 스케일링 =====
-   *   목표 : 2021‒2024년 합계가 아래 값에 맞도록
-   *   단위 : 원 (억 → 1e8)
+   * ===== 2차 스케일링 제거 =====
+   *   p=2 기반 보정 효과만 유지
    */
-  const YEARLY_TARGETS: Record<number, number> = {
-    2021: 814.54 * 1e8,
-    2022: 2339.52 * 1e8,
-    2023: 3691.14 * 1e8,
-    2024: 4754.99 * 1e8,
-  };
-
-  // 연도별 현재 합계 계산
-  const yearTotals: Record<number, number> = {};
-
-  intermediate.forEach(course => {
-    yearColumns.forEach(col => {
-      const val = course[`조정_${col}`] as number | undefined;
-      if (val !== undefined) {
-        const yr = parseInt(col.replace('년', ''));
-        yearTotals[yr] = (yearTotals[yr] || 0) + val;
-      }
-    });
-  });
-
-  // 스케일 팩터 계산 (0.5~1.5 범위 클램프)
-  const scaleFactors: Record<number, number> = {};
-  Object.keys(YEARLY_TARGETS).forEach(yearStr => {
-    const year = parseInt(yearStr);
-    const target = YEARLY_TARGETS[year];
-    const current = yearTotals[year] || 0;
-    const scaleFactor = current > 0 ? target / current : 1;
-    scaleFactors[year] = Math.max(0.5, Math.min(1.5, scaleFactor));
-  });
-
-  // 최종 조정된 데이터 반환
-  return intermediate.map(course => {
-    const adjustedCourse = { ...course };
-    yearColumns.forEach(col => {
-      const val = course[`조정_${col}`] as number | undefined;
-      if (val !== undefined) {
-        const yr = parseInt(col.replace('년', ''));
-        const scaleFactor = scaleFactors[yr] || 1;
-        adjustedCourse[`조정_${col}`] = val * scaleFactor;
-      }
-    });
-    // 누적매출도 스케일링 적용
-    const totalAdjustedRevenue = yearColumns.reduce((sum, col) => {
-      return sum + (adjustedCourse[`조정_${col}`] as number || 0);
-    }, 0);
-    adjustedCourse.조정_실매출대비 = totalAdjustedRevenue;
-    adjustedCourse.조정_누적매출 = totalAdjustedRevenue;
-    return adjustedCourse;
-  });
+  
+  // 최종 조정된 데이터 반환 (1차 보정만 적용)
+  return intermediate;
 };
 
 // `yearly-analysis/page.tsx`에서 이 인터페이스를 사용할 수 있도록 명시적으로 내보냅니다.

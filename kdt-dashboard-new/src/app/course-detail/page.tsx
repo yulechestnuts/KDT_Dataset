@@ -143,6 +143,57 @@ const CourseDetail = () => {
             )}
           </div>
 
+          {/* 기간별 취업 현황 */}
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <h2 className="text-xl font-semibold mb-4">기간별 취업 현황</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* 전체 취업 현황 */}
+              <div className="text-center p-6 bg-blue-50 rounded-lg">
+                <h3 className="text-lg font-semibold text-blue-800 mb-4">전체 취업 현황</h3>
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-3xl font-bold text-blue-600">{courseData.취업인원}명</p>
+                    <p className="text-sm text-gray-600">취업인원</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-blue-700">{courseData.취업률.toFixed(1)}%</p>
+                    <p className="text-sm text-gray-600">취업률</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3개월 취업 현황 */}
+              <div className="text-center p-6 bg-green-50 rounded-lg">
+                <h3 className="text-lg font-semibold text-green-800 mb-4">3개월 취업 현황</h3>
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-3xl font-bold text-green-600">{courseData['취업인원 (3개월)']}명</p>
+                    <p className="text-sm text-gray-600">취업인원</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-green-700">{courseData['취업률 (3개월)'].toFixed(1)}%</p>
+                    <p className="text-sm text-gray-600">취업률</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 6개월 취업 현황 */}
+              <div className="text-center p-6 bg-purple-50 rounded-lg">
+                <h3 className="text-lg font-semibold text-purple-800 mb-4">6개월 취업 현황</h3>
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-3xl font-bold text-purple-600">{courseData['취업인원 (6개월)']}명</p>
+                    <p className="text-sm text-gray-600">취업인원</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-purple-700">{courseData['취업률 (6개월)'].toFixed(1)}%</p>
+                    <p className="text-sm text-gray-600">취업률</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* 과정 상세 정보 */}
           <div className="bg-white rounded-lg shadow-lg p-6">
             <h2 className="text-xl font-semibold mb-4">과정 상세 정보</h2>
@@ -201,6 +252,22 @@ const CourseDetail = () => {
                   <div className="flex justify-between">
                     <span className="text-gray-600">취업률:</span>
                     <span>{courseData.취업률.toFixed(1)}%</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">3개월 취업인원:</span>
+                    <span>{courseData['취업인원 (3개월)']}명</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">3개월 취업률:</span>
+                    <span>{courseData['취업률 (3개월)'].toFixed(1)}%</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">6개월 취업인원:</span>
+                    <span>{courseData['취업인원 (6개월)']}명</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">6개월 취업률:</span>
+                    <span>{courseData['취업률 (6개월)'].toFixed(1)}%</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">만족도:</span>
