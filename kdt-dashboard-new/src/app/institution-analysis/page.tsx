@@ -135,9 +135,9 @@ export default function InstitutionAnalysis() {
       filteredCourses = filteredCourses.filter(isNewTechCourse);
     }
 
-    // aggregateCoursesByCourseIdWithLatestInfo 함수는 이미 훈련과정ID를 기준으로 집계하도록 수정됨
-    // applyRevenueAdjustment는 이미 recalcStats에서 처리되었으므로 여기서는 다시 호출하지 않음
-    const aggregated = aggregateCoursesByCourseIdWithLatestInfo(filteredCourses);
+    // aggregateCoursesByCourseIdWithLatestInfo 함수에 연도 정보와 기관명 전달
+    const yearForAggregation = selectedYear === 'all' ? undefined : selectedYear;
+    const aggregated = aggregateCoursesByCourseIdWithLatestInfo(filteredCourses, yearForAggregation, institutionName);
     setSelectedInstitutionCourses(aggregated);
     setIsModalOpen(true);
   };
@@ -381,7 +381,7 @@ export default function InstitutionAnalysis() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">수료율</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">매출액</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">만족도</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">원천과정수</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">개강 과정수</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
