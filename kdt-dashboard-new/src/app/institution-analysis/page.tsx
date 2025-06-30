@@ -112,14 +112,12 @@ export default function InstitutionAnalysis() {
     if (selectedYear === 'all') {
       filteredCourses = courses;
     } else {
-      // 선택된 연도에 매출이 발생한 과정만 필터링 (수정된 로직)
+      // 선택된 연도에 과정시작일이 해당 연도인 과정만 필터링 (정확한 개강 과정수 집계)
       filteredCourses = courses.filter(course => {
-        const yearlyRevenueKey = `조정_${selectedYear}년` as keyof CourseData;
-        const revenue = course[yearlyRevenueKey] as number | undefined;
-        return revenue !== undefined && revenue > 0;
+        const startYear = new Date(course.과정시작일).getFullYear();
+        return startYear === selectedYear;
       });
     }
-    
     // 월별 필터링 추가
     if (selectedMonth !== 'all') {
       filteredCourses = filteredCourses.filter(course => {
