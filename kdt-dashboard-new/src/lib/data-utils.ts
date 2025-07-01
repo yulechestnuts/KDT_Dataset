@@ -693,13 +693,23 @@ export const calculateInstitutionStats = (data: CourseData[], year?: number): In
     
     // 매출 또는 학생 수가 있는 경우에만 통계에 포함
     if (totalRevenue > 0 || totalStudents > 0) {
+      // 수료율 계산: 수료인원이 0이거나 수강신청 인원이 0인 과정은 제외
+      let validCompletedStudents = 0;
+      let validTotalStudents = 0;
+      courses.forEach(course => {
+        if ((course.수료인원 ?? 0) > 0 && (course['수강신청 인원'] ?? 0) > 0) {
+          validCompletedStudents += course.수료인원;
+          validTotalStudents += course['수강신청 인원'];
+        }
+      });
+      const completionRate = validTotalStudents > 0 ? (validCompletedStudents / validTotalStudents) * 100 : 0;
       return {
         institutionName: name,
         totalRevenue,
         totalCourses,
         totalStudents,
         completedStudents,
-        completionRate: totalStudents > 0 ? (completedStudents / totalStudents) * 100 : 0,
+        completionRate,
         avgSatisfaction: satisfactionCoursesCount > 0 ? satisfactionSum / satisfactionCoursesCount : 0,
         courses,
       };
