@@ -13,7 +13,11 @@ export function Toolbar() {
         </Button>
       </Link>
       <span className="text-xl font-semibold text-gray-800">KDT 대시보드</span>
-      <div>{/* Add more toolbar items here if needed */}</div>
+      <div className="flex gap-2">
+        <Link href="/board">
+          <Button variant="outline">게시판</Button>
+        </Link>
+      </div>
     </nav>
   );
 } 
