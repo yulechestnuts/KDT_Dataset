@@ -53,6 +53,31 @@ app.post('/posts', upload.single('file'), (req, res) => {
   res.json({ success: true });
 });
 
+// 게시글 수정
+app.put('/posts/:id', (req, res) => {
+  const { id } = req.params;
+  const { password, writer, content, notion } = req.body;
+  let posts = [];
+  if (fs.existsSync(DATA_FILE)) {
+    posts = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
+  }
+  const postIndex = posts.findIndex(p => p.id === id);
+  if (postIndex === -1) return res.status(404).json({ error: 'not found' });
+  if (posts[postIndex].password !== password) return res.status(403).json({ error: '비밀번호 불일치' });
+  
+  // 게시글 업데이트
+  posts[postIndex] = {
+    ...posts[postIndex],
+    writer,
+    content,
+    notion,
+    date: new Date().toLocaleString() // 수정 시간 업데이트
+  };
+  
+  fs.writeFileSync(DATA_FILE, JSON.stringify(posts, null, 2));
+  res.json({ success: true });
+});
+
 // 게시글 삭제
 app.delete('/posts/:id', (req, res) => {
   const { id } = req.params;

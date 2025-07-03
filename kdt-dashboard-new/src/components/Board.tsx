@@ -36,6 +36,8 @@ const Board: React.FC = () => {
   const [form, setForm] = useState({ writer: '', password: '', content: '', notion: '', file: null as File | null });
   const [pdfViewId, setPdfViewId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ writer: '', content: '', notion: '' });
 
   useEffect(() => {
     fetchPosts();
@@ -82,6 +84,59 @@ const Board: React.FC = () => {
       console.error('게시글 삭제에 실패했습니다:', error);
       alert('비밀번호가 일치하지 않거나 삭제에 실패했습니다.');
     }
+  };
+
+  const handleEdit = async (id: string) => {
+    const pw = prompt('비밀번호를 입력하세요');
+    if (!pw) return;
+    
+    try {
+      // 비밀번호 확인
+      const post = posts.find(p => p.id === id);
+      if (!post) return;
+      
+      if (post.password !== pw) {
+        alert('비밀번호가 일치하지 않습니다.');
+        return;
+      }
+
+      // 수정 모드 활성화
+      setEditingId(id);
+      setEditForm({
+        writer: post.writer,
+        content: post.content,
+        notion: post.notion || ''
+      });
+    } catch (error) {
+      console.error('수정 모드 활성화에 실패했습니다:', error);
+    }
+  };
+
+  const handleEditSubmit = async (id: string) => {
+    try {
+      const post = posts.find(p => p.id === id);
+      if (!post) return;
+
+      await axios.put(`${API_URL}/posts/${id}`, {
+        password: post.password,
+        writer: editForm.writer,
+        content: editForm.content,
+        notion: editForm.notion
+      });
+      
+      setEditingId(null);
+      setEditForm({ writer: '', content: '', notion: '' });
+      fetchPosts();
+      alert('게시글이 수정되었습니다.');
+    } catch (error) {
+      console.error('게시글 수정에 실패했습니다:', error);
+      alert('게시글 수정에 실패했습니다.');
+    }
+  };
+
+  const handleEditCancel = () => {
+    setEditingId(null);
+    setEditForm({ writer: '', content: '', notion: '' });
   };
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -172,17 +227,65 @@ const Board: React.FC = () => {
                     <h3 className="text-lg font-semibold text-gray-800">{post.writer}</h3>
                     <p className="text-sm text-gray-500">{post.date}</p>
                   </div>
-                  <button 
-                    onClick={() => handleDelete(post.id)}
-                    className="px-3 py-1 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition-colors duration-200"
-                  >
-                    🗑️ 삭제
-                  </button>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => handleEdit(post.id)}
+                      className="px-3 py-1 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition-colors duration-200"
+                    >
+                      ✏️ 수정
+                    </button>
+                    <button 
+                      onClick={() => handleDelete(post.id)}
+                      className="px-3 py-1 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition-colors duration-200"
+                    >
+                      🗑️ 삭제
+                    </button>
+                  </div>
                 </div>
                 
-                <div className="text-gray-700 mb-4 leading-relaxed">
-                  {post.content}
-                </div>
+                {editingId === post.id ? (
+                  <div className="mb-4 space-y-4">
+                    <input
+                      placeholder="작성자"
+                      value={editForm.writer}
+                      onChange={e => setEditForm({ ...editForm, writer: e.target.value })}
+                      required
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    <textarea
+                      placeholder="내용을 입력하세요..."
+                      value={editForm.content}
+                      onChange={e => setEditForm({ ...editForm, content: e.target.value })}
+                      required
+                      rows={4}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                    />
+                    <input
+                      placeholder="노션 공유 링크 (선택)"
+                      value={editForm.notion}
+                      onChange={e => setEditForm({ ...editForm, notion: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => handleEditSubmit(post.id)}
+                        className="px-4 py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600 transition-colors duration-200"
+                      >
+                        ✅ 저장
+                      </button>
+                      <button 
+                        onClick={handleEditCancel}
+                        className="px-4 py-2 bg-gray-500 text-white rounded-lg text-sm hover:bg-gray-600 transition-colors duration-200"
+                      >
+                        ❌ 취소
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-gray-700 mb-4 leading-relaxed">
+                    {post.content}
+                  </div>
+                )}
 
                 {post.fileUrl && (
                   <div className="mb-4">
