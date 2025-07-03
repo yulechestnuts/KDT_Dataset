@@ -2,7 +2,7 @@
 import React, { useEffect, useState, ChangeEvent, FormEvent } from 'react';
 import axios from 'axios';
 
-const API_URL = 'http://localhost:4000'; // Express 서버 주소
+const API_URL = ''; // Next.js API routes 사용 (상대 경로)
 
 interface Post {
   id: string;
