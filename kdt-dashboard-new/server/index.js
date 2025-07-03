@@ -14,7 +14,15 @@ if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use('/uploads', express.static(UPLOAD_DIR));
+
+// PDF 파일을 브라우저에서 바로 보여주기 위한 미들웨어
+app.use('/uploads', (req, res, next) => {
+  if (req.path.endsWith('.pdf')) {
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('Content-Type', 'application/pdf');
+  }
+  next();
+}, express.static(UPLOAD_DIR));
 
 const upload = multer({ dest: UPLOAD_DIR });
 

@@ -16,11 +16,18 @@ interface Post {
 
 const PDFViewer = ({ fileUrl }: { fileUrl: string }) => (
   <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden shadow-sm">
-    <iframe
-      src={`${fileUrl}#toolbar=1&navpanes=1&scrollbar=1`}
-      className="w-full h-96 border-0"
-      title="PDF Viewer"
-    />
+    <object
+      data={fileUrl}
+      type="application/pdf"
+      className="w-full h-96"
+    >
+      <p className="p-4 text-center text-gray-500">
+        PDF를 표시할 수 없습니다. 
+        <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline ml-1">
+          새 탭에서 열기
+        </a>
+      </p>
+    </object>
   </div>
 );
 
