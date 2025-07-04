@@ -1,32 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-// 메모리 기반 저장소 (실제 프로덕션에서는 데이터베이스 사용 권장)
-let posts: any[] = [];
-
-// 파일에서 데이터 로드 (실제로는 데이터베이스에서 로드)
-function loadPosts() {
-  try {
-    // 여기서는 메모리 기반이므로 빈 배열로 시작
-    posts = [];
-  } catch (error) {
-    console.error('게시글 로드 오류:', error);
-    posts = [];
-  }
-}
-
-// 파일에 데이터 저장 (실제로는 데이터베이스에 저장)
-function savePosts() {
-  try {
-    // 여기서는 메모리 기반이므로 저장 로직 생략
-    // 실제 구현시에는 데이터베이스에 저장
-    console.log('게시글 저장됨:', posts.length);
-  } catch (error) {
-    console.error('게시글 저장 오류:', error);
-  }
-}
-
-// 초기 데이터 로드
-loadPosts();
+import { getPosts, addPost } from './data';
 
 interface Post {
   id: string;
@@ -44,9 +17,11 @@ interface Post {
 // 게시글 목록 조회
 export async function GET() {
   try {
+    const posts = getPosts();
     return NextResponse.json(posts);
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to load posts' }, { status: 500 });
+    console.error('게시글 목록 조회 오류:', error);
+    return NextResponse.json({ error: '게시글 목록을 불러오는데 실패했습니다.' }, { status: 500 });
   }
 }
 
@@ -80,8 +55,7 @@ export async function POST(request: NextRequest) {
       date: new Date().toISOString()
     };
 
-    posts.push(newPost);
-    savePosts();
+    addPost(newPost);
 
     return NextResponse.json(newPost);
   } catch (error) {
