@@ -11,30 +11,14 @@ interface Post {
   content: string;
   notion?: string;
   fileUrl?: string;
+  fileName?: string;
+  fileType?: string;
   date: string;
 }
 
-const PDFViewer = ({ fileUrl }: { fileUrl: string }) => (
-  <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden shadow-sm">
-    <object
-      data={fileUrl}
-      type="application/pdf"
-      className="w-full h-96"
-    >
-      <p className="p-4 text-center text-gray-500">
-        PDF를 표시할 수 없습니다. 
-        <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline ml-1">
-          새 탭에서 열기
-        </a>
-      </p>
-    </object>
-  </div>
-);
-
 const Board: React.FC = () => {
   const [posts, setPosts] = useState<Post[]>([]);
-  const [form, setForm] = useState({ writer: '', password: '', content: '', notion: '', file: null as File | null });
-  const [pdfViewId, setPdfViewId] = useState<string | null>(null);
+  const [form, setForm] = useState({ writer: '', password: '', content: '', notion: '', fileUrl: '', fileName: '', fileType: '' });
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ writer: '', content: '', notion: '' });
@@ -63,9 +47,11 @@ const Board: React.FC = () => {
       formData.append('password', form.password);
       formData.append('content', form.content);
       formData.append('notion', form.notion);
-      if (form.file) formData.append('file', form.file);
+      formData.append('fileUrl', form.fileUrl || '');
+      formData.append('fileName', form.fileName || '');
+      formData.append('fileType', form.fileType || '');
       await axios.post(`${API_URL}/posts`, formData);
-      setForm({ writer: '', password: '', content: '', notion: '', file: null });
+      setForm({ writer: '', password: '', content: '', notion: '', fileUrl: '', fileName: '', fileType: '' });
       fetchPosts();
     } catch (error) {
       console.error('게시글 작성에 실패했습니다:', error);
@@ -91,7 +77,6 @@ const Board: React.FC = () => {
     if (!pw) return;
     
     try {
-      // 비밀번호 확인
       const post = posts.find(p => p.id === id);
       if (!post) return;
       
@@ -100,7 +85,6 @@ const Board: React.FC = () => {
         return;
       }
 
-      // 수정 모드 활성화
       setEditingId(id);
       setEditForm({
         writer: post.writer,
@@ -139,8 +123,13 @@ const Board: React.FC = () => {
     setEditForm({ writer: '', content: '', notion: '' });
   };
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setForm({ ...form, file: e.target.files ? e.target.files[0] : null });
+  const handleFileUpload = (fileData: { name: string; type: string; url: string }) => {
+    setForm({ 
+      ...form, 
+      fileName: fileData.name,
+      fileType: fileData.type,
+      fileUrl: fileData.url
+    });
   };
 
   if (loading) {
@@ -188,18 +177,49 @@ const Board: React.FC = () => {
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
           />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <input
-              type="file"
-              accept="application/pdf"
-              onChange={handleFileChange}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-            />
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">📁 파일 업로드</label>
+              <input
+                type="file"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    handleFileUpload({
+                      name: file.name,
+                      type: file.type,
+                      url: URL.createObjectURL(file)
+                    });
+                  }
+                }}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+              />
+              {form.fileName && (
+                <p className="text-xs text-green-600">✅ {form.fileName} 선택됨</p>
+              )}
+              <p className="text-xs text-gray-500">
+                💡 모든 파일 형식 지원 (PDF, 이미지, 문서 등)
+              </p>
+            </div>
             <input
               placeholder="노션 공유 링크 (선택)"
               value={form.notion}
               onChange={e => setForm({ ...form, notion: e.target.value })}
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">🔗 외부 파일 링크</label>
+              <input
+                placeholder="Google Drive, Dropbox, OneDrive 등 파일 링크"
+                value={form.fileUrl || ''}
+                onChange={e => setForm({ ...form, fileUrl: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <p className="text-xs text-gray-500">
+                💡 외부 링크와 직접 업로드 중 하나만 사용하세요
+              </p>
+            </div>
           </div>
           <button 
             type="submit"
@@ -287,25 +307,16 @@ const Board: React.FC = () => {
                   </div>
                 )}
 
-                {post.fileUrl && (
+                {(post.fileUrl || post.fileName) && (
                   <div className="mb-4">
-                    <button 
-                      onClick={() => setPdfViewId(pdfViewId === post.id ? null : post.id)}
-                      className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition-colors duration-200 mr-2"
-                    >
-                      {pdfViewId === post.id ? '📄 미리보기 닫기' : '📄 PDF 미리보기'}
-                    </button>
                     <a 
-                      href={`${API_URL}${post.fileUrl}`} 
+                      href={post.fileUrl} 
                       target="_blank" 
                       rel="noopener noreferrer"
-                      className="px-4 py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600 transition-colors duration-200"
+                      className="inline-flex items-center px-4 py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600 transition-colors duration-200"
                     >
-                      💾 PDF 다운로드
+                      💾 {post.fileName || '파일 다운로드'}
                     </a>
-                    {pdfViewId === post.id && (
-                      <PDFViewer fileUrl={`${API_URL}${post.fileUrl}`} />
-                    )}
                   </div>
                 )}
 

@@ -17,6 +17,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko">
+      <head>
+        <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+        <script src="https://unpkg.com/@pdftron/pdfjs-express/dist/pdfjs-express.min.js"></script>
+      </head>
       <body className={inter.className}>
         <Toolbar />
         <div className="pt-16">{children}</div>
