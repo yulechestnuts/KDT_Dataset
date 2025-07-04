@@ -13,12 +13,13 @@ interface Post {
   fileUrl?: string;
   fileName?: string;
   fileType?: string;
+  fileData?: string; // base64 파일 데이터
   date: string;
 }
 
 const Board: React.FC = () => {
   const [posts, setPosts] = useState<Post[]>([]);
-  const [form, setForm] = useState({ writer: '', password: '', content: '', notion: '', fileUrl: '', fileName: '', fileType: '' });
+  const [form, setForm] = useState({ writer: '', password: '', content: '', notion: '', fileUrl: '', fileName: '', fileType: '', fileData: '' });
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ writer: '', content: '', notion: '' });
@@ -50,8 +51,9 @@ const Board: React.FC = () => {
       formData.append('fileUrl', form.fileUrl || '');
       formData.append('fileName', form.fileName || '');
       formData.append('fileType', form.fileType || '');
+      formData.append('fileData', form.fileData || '');
       await axios.post(`${API_URL}/posts`, formData);
-      setForm({ writer: '', password: '', content: '', notion: '', fileUrl: '', fileName: '', fileType: '' });
+      setForm({ writer: '', password: '', content: '', notion: '', fileUrl: '', fileName: '', fileType: '', fileData: '' });
       fetchPosts();
     } catch (error) {
       console.error('게시글 작성에 실패했습니다:', error);
@@ -123,13 +125,29 @@ const Board: React.FC = () => {
     setEditForm({ writer: '', content: '', notion: '' });
   };
 
-  const handleFileUpload = (fileData: { name: string; type: string; url: string }) => {
-    setForm({ 
-      ...form, 
-      fileName: fileData.name,
-      fileType: fileData.type,
-      fileUrl: fileData.url
-    });
+  const handleFileUpload = async (file: File) => {
+    try {
+      // 파일 크기 제한 (5MB)
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      if (file.size > maxSize) {
+        alert('파일 크기는 5MB 이하여야 합니다.');
+        return;
+      }
+
+      const arrayBuffer = await file.arrayBuffer();
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      const fileData = `data:${file.type};base64,${base64}`;
+      
+      setForm({ 
+        ...form, 
+        fileName: file.name,
+        fileType: file.type,
+        fileData: fileData
+      });
+    } catch (error) {
+      console.error('파일 변환 실패:', error);
+      alert('파일 변환에 실패했습니다.');
+    }
   };
 
   if (loading) {
@@ -184,11 +202,7 @@ const Board: React.FC = () => {
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) {
-                    handleFileUpload({
-                      name: file.name,
-                      type: file.type,
-                      url: URL.createObjectURL(file)
-                    });
+                    handleFileUpload(file);
                   }
                 }}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
@@ -310,9 +324,10 @@ const Board: React.FC = () => {
                 {(post.fileUrl || post.fileName) && (
                   <div className="mb-4">
                     <a 
-                      href={post.fileUrl} 
+                      href={post.fileData || post.fileUrl} 
                       target="_blank" 
                       rel="noopener noreferrer"
+                      download={post.fileName}
                       className="inline-flex items-center px-4 py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600 transition-colors duration-200"
                     >
                       💾 {post.fileName || '파일 다운로드'}
