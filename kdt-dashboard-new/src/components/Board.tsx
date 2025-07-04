@@ -63,14 +63,34 @@ const Board: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     if (!window.confirm('정말 삭제하시겠습니까?')) return;
+    
     const pw = prompt('비밀번호를 입력하세요');
     if (!pw) return;
+    
     try {
+      // 먼저 게시글을 찾아서 비밀번호 확인
+      const post = posts.find(p => p.id === id);
+      if (!post) {
+        alert('게시글을 찾을 수 없습니다.');
+        return;
+      }
+      
+      if (post.password !== pw) {
+        alert('비밀번호가 일치하지 않습니다.');
+        return;
+      }
+      
+      // 비밀번호가 일치하면 삭제 요청
       await axios.delete(`${API_URL}/posts/${id}`, { data: { password: pw } });
       fetchPosts();
-    } catch (error) {
+      alert('게시글이 삭제되었습니다.');
+    } catch (error: any) {
       console.error('게시글 삭제에 실패했습니다:', error);
-      alert('비밀번호가 일치하지 않거나 삭제에 실패했습니다.');
+      if (error.response?.status === 401) {
+        alert('비밀번호가 일치하지 않습니다.');
+      } else {
+        alert('삭제에 실패했습니다. 다시 시도해주세요.');
+      }
     }
   };
 
@@ -80,7 +100,10 @@ const Board: React.FC = () => {
     
     try {
       const post = posts.find(p => p.id === id);
-      if (!post) return;
+      if (!post) {
+        alert('게시글을 찾을 수 없습니다.');
+        return;
+      }
       
       if (post.password !== pw) {
         alert('비밀번호가 일치하지 않습니다.');
@@ -95,13 +118,17 @@ const Board: React.FC = () => {
       });
     } catch (error) {
       console.error('수정 모드 활성화에 실패했습니다:', error);
+      alert('수정 모드 활성화에 실패했습니다.');
     }
   };
 
   const handleEditSubmit = async (id: string) => {
     try {
       const post = posts.find(p => p.id === id);
-      if (!post) return;
+      if (!post) {
+        alert('게시글을 찾을 수 없습니다.');
+        return;
+      }
 
       await axios.put(`${API_URL}/posts/${id}`, {
         password: post.password,
@@ -114,9 +141,13 @@ const Board: React.FC = () => {
       setEditForm({ writer: '', content: '', notion: '' });
       fetchPosts();
       alert('게시글이 수정되었습니다.');
-    } catch (error) {
+    } catch (error: any) {
       console.error('게시글 수정에 실패했습니다:', error);
-      alert('게시글 수정에 실패했습니다.');
+      if (error.response?.status === 401) {
+        alert('비밀번호가 일치하지 않습니다.');
+      } else {
+        alert('수정에 실패했습니다. 다시 시도해주세요.');
+      }
     }
   };
 
@@ -134,19 +165,56 @@ const Board: React.FC = () => {
         return;
       }
 
-      const arrayBuffer = await file.arrayBuffer();
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-      const fileData = `data:${file.type};base64,${base64}`;
+      // 파일 타입 검증
+      const allowedTypes = [
+        'application/pdf',
+        'image/jpeg',
+        'image/png',
+        'image/gif',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'text/plain'
+      ];
       
-      setForm({ 
-        ...form, 
-        fileName: file.name,
-        fileType: file.type,
-        fileData: fileData
+      if (!allowedTypes.includes(file.type)) {
+        alert('지원하지 않는 파일 형식입니다. PDF, 이미지, 문서 파일만 업로드 가능합니다.');
+        return;
+      }
+
+      // FileReader를 사용한 안전한 변환
+      return new Promise<void>((resolve, reject) => {
+        const reader = new FileReader();
+        
+        reader.onload = () => {
+          try {
+            const result = reader.result as string;
+            const base64 = result.split(',')[1]; // data:application/pdf;base64, 부분 제거
+            const fileData = `data:${file.type};base64,${base64}`;
+            
+            setForm({ 
+              ...form, 
+              fileName: file.name,
+              fileType: file.type,
+              fileData: fileData
+            });
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
+        };
+        
+        reader.onerror = () => {
+          reject(new Error('파일 읽기 실패'));
+        };
+        
+        reader.readAsDataURL(file);
       });
+      
     } catch (error) {
       console.error('파일 변환 실패:', error);
-      alert('파일 변환에 실패했습니다.');
+      alert('파일 변환에 실패했습니다. 다른 파일을 시도해주세요.');
     }
   };
 
@@ -199,6 +267,7 @@ const Board: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700">📁 파일 업로드</label>
               <input
                 type="file"
+                accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.xls,.xlsx,.txt"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) {
@@ -208,10 +277,19 @@ const Board: React.FC = () => {
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
               />
               {form.fileName && (
-                <p className="text-xs text-green-600">✅ {form.fileName} 선택됨</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-green-600">✅ {form.fileName} 선택됨</p>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, fileName: '', fileType: '', fileData: '' })}
+                    className="text-xs text-red-500 hover:text-red-700"
+                  >
+                    ❌ 제거
+                  </button>
+                </div>
               )}
               <p className="text-xs text-gray-500">
-                💡 모든 파일 형식 지원 (PDF, 이미지, 문서 등)
+                💡 PDF, 이미지, 문서 파일 (최대 5MB)
               </p>
             </div>
             <input

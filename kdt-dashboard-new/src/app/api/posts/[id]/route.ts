@@ -12,13 +12,17 @@ export async function PUT(
     const { id } = params;
     const { password, writer, content, notion } = await request.json();
 
+    if (!password) {
+      return NextResponse.json({ error: '비밀번호가 필요합니다.' }, { status: 400 });
+    }
+
     const postIndex = posts.findIndex((p: any) => p.id === id);
     if (postIndex === -1) {
-      return NextResponse.json({ error: 'Post not found' }, { status: 404 });
+      return NextResponse.json({ error: '게시글을 찾을 수 없습니다.' }, { status: 404 });
     }
 
     if (posts[postIndex].password !== password) {
-      return NextResponse.json({ error: 'Password mismatch' }, { status: 403 });
+      return NextResponse.json({ error: '비밀번호가 일치하지 않습니다.' }, { status: 401 });
     }
 
     // 게시글 업데이트
@@ -27,12 +31,13 @@ export async function PUT(
       writer,
       content,
       notion,
-      date: new Date().toLocaleString()
+      date: new Date().toISOString()
     };
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, message: '게시글이 수정되었습니다.' });
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to update post' }, { status: 500 });
+    console.error('게시글 수정 오류:', error);
+    return NextResponse.json({ error: '게시글 수정에 실패했습니다.' }, { status: 500 });
   }
 }
 
@@ -45,19 +50,24 @@ export async function DELETE(
     const { id } = params;
     const { password } = await request.json();
 
+    if (!password) {
+      return NextResponse.json({ error: '비밀번호가 필요합니다.' }, { status: 400 });
+    }
+
     const post = posts.find((p: any) => p.id === id);
     if (!post) {
-      return NextResponse.json({ error: 'Post not found' }, { status: 404 });
+      return NextResponse.json({ error: '게시글을 찾을 수 없습니다.' }, { status: 404 });
     }
 
     if (post.password !== password) {
-      return NextResponse.json({ error: 'Password mismatch' }, { status: 403 });
+      return NextResponse.json({ error: '비밀번호가 일치하지 않습니다.' }, { status: 401 });
     }
 
     posts = posts.filter((p: any) => p.id !== id);
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, message: '게시글이 삭제되었습니다.' });
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to delete post' }, { status: 500 });
+    console.error('게시글 삭제 오류:', error);
+    return NextResponse.json({ error: '게시글 삭제에 실패했습니다.' }, { status: 500 });
   }
 } 
