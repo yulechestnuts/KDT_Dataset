@@ -1633,3 +1633,105 @@ export const applyRevenueAdjustment = (
   });
   return intermediate;
 }
+
+// 그룹화된 기관의 개별 기관 정보를 추출하는 함수
+export const getIndividualInstitutionsInGroup = (
+  allCourses: CourseData[],
+  groupName: string,
+  year?: number
+): InstitutionStat[] => {
+  // 그룹화 키워드 정의
+  const institutionGroups: { [key: string]: string[] } = {
+    '이젠아카데미': ['이젠'],
+    '그린컴퓨터아카데미': ['그린'],
+    '더조은아카데미': ['더조은'],
+    '코리아IT아카데미': ['코리아IT', 'KIT'],
+    '비트교육센터': ['비트'],
+    '하이미디어': ['하이미디어'],
+    '아이티윌': ['아이티윌', 'IT WILL'],
+    '메가스터디': ['메가스터디'],
+    '에이콘아카데미': ['에이콘'],
+    '한국ICT인재개발원': ['ICT'],
+    'MBC아카데미 컴퓨터 교육센터': ['MBC아카데미'],
+    '쌍용아카데미': ['쌍용'],
+    'KH정보교육원': ['KH'],
+    '이스트소프트': ['이스트소프트', '(주)이스트소프트']
+  };
+
+  // 해당 그룹의 키워드 찾기
+  const groupKeywords = institutionGroups[groupName];
+  if (!groupKeywords) {
+    return [];
+  }
+
+  // 원본 데이터에서 해당 그룹에 속하는 개별 기관들 찾기
+  const individualInstitutions = new Set<string>();
+  
+  allCourses.forEach(course => {
+    if (!course.훈련기관) return;
+    
+    // 원본 기관명 전처리
+    const cleanName = course.훈련기관
+      .replace(/[^가-힣A-Za-z0-9\s()]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toUpperCase();
+    
+    // 그룹 키워드와 매칭되는지 확인
+    for (const keyword of groupKeywords) {
+      if (cleanName.includes(keyword.toUpperCase())) {
+        individualInstitutions.add(course.훈련기관); // 원본 기관명 저장
+        break;
+      }
+    }
+  });
+
+  // 각 개별 기관별로 통계 계산
+  const individualStats: InstitutionStat[] = [];
+  
+  individualInstitutions.forEach(originalInstitutionName => {
+    // 해당 기관의 과정들 필터링
+    let institutionCourses = allCourses.filter(course => course.훈련기관 === originalInstitutionName);
+    
+    // 연도 필터링 적용
+    if (year !== undefined) {
+      institutionCourses = institutionCourses.filter(course => {
+        const courseYear = new Date(course.과정시작일).getFullYear();
+        return courseYear === year;
+      });
+    }
+
+    if (institutionCourses.length === 0) return;
+
+    // 통계 계산
+    const totalRevenue = institutionCourses.reduce((sum, course) => {
+      let revenue = 0;
+      if (year !== undefined) {
+        const yearKey = `조정_${year}년` as keyof CourseData;
+        revenue = (course[yearKey] as number | undefined) ?? 0;
+      } else {
+        revenue = course.조정_누적매출 ?? 0;
+      }
+      return sum + revenue;
+    }, 0);
+
+    const totalStudents = institutionCourses.reduce((sum, course) => sum + (course['수강신청 인원'] ?? 0), 0);
+    const completedStudents = institutionCourses.reduce((sum, course) => sum + (course.수료인원 ?? 0), 0);
+    const completionRate = totalStudents > 0 ? (completedStudents / totalStudents) * 100 : 0;
+    const avgSatisfaction = institutionCourses.reduce((sum, course) => sum + (course.만족도 ?? 0), 0) / institutionCourses.length;
+
+    individualStats.push({
+      institutionName: originalInstitutionName,
+      totalRevenue,
+      totalCourses: institutionCourses.length,
+      totalStudents,
+      completedStudents,
+      completionRate,
+      avgSatisfaction,
+      courses: institutionCourses
+    });
+  });
+
+  // 매출액 기준 내림차순 정렬
+  return individualStats.sort((a, b) => b.totalRevenue - a.totalRevenue);
+};

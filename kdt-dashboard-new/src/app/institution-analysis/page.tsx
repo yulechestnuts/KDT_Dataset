@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { loadDataFromGithub, preprocessData, applyRevenueAdjustment, calculateCompletionRate } from "@/utils/data-utils";
-import { CourseData, RawCourseData, InstitutionStat, calculateInstitutionStats, aggregateCoursesByCourseNameForInstitution, AggregatedCourseData, csvParseOptions, aggregateCoursesByCourseIdWithLatestInfo } from "@/lib/data-utils";
+import { CourseData, RawCourseData, InstitutionStat, calculateInstitutionStats, aggregateCoursesByCourseNameForInstitution, AggregatedCourseData, csvParseOptions, aggregateCoursesByCourseIdWithLatestInfo, getIndividualInstitutionsInGroup } from "@/lib/data-utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -43,6 +43,14 @@ export default function InstitutionAnalysis() {
   const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all'); // 월 선택 상태 추가
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedInstitutionRawCourses, setSelectedInstitutionRawCourses] = useState<CourseData[]>([]);
+  
+  // 원본 데이터 저장 (그룹화 전)
+  const [originalData, setOriginalData] = useState<CourseData[]>([]);
+  
+  // 드롭다운 상태
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+  const [selectedGroupName, setSelectedGroupName] = useState<string>('');
+  const [individualInstitutions, setIndividualInstitutions] = useState<InstitutionStat[]>([]);
 
   // 신기술 과정 정의: 선도기업 과정이 아닌 모든 과정
   const isNewTechCourse = (course: CourseData) => !course.isLeadingCompanyCourse;
@@ -54,6 +62,9 @@ export default function InstitutionAnalysis() {
       const processedData = preprocessData(parsedData.data as RawCourseData[]);
       const overallCompletion = calculateCompletionRate(processedData);
       const adjustedCourses = applyRevenueAdjustment(processedData, overallCompletion);
+
+      // 원본 데이터 저장 (그룹화 전)
+      setOriginalData(adjustedCourses);
 
       // 연도 목록은 전체 기준 한 번만 세팅 (if not already)
       if (availableYears.length === 0) {
@@ -149,6 +160,38 @@ export default function InstitutionAnalysis() {
     setSelectedInstitutionCourses(finalAggregated);
     setSelectedInstitutionRawCourses(filteredCourses);
     setIsModalOpen(true);
+  };
+
+  // 그룹화된 기관의 개별 기관 정보 보기
+  const handleViewGroupDetails = (groupName: string) => {
+    setSelectedGroupName(groupName);
+    
+    // 필터링된 원본 데이터 사용
+    let filteredOriginalData = originalData;
+    
+    // 유형 필터링
+    if (filterType === 'leading') {
+      filteredOriginalData = filteredOriginalData.filter((c) => c.isLeadingCompanyCourse);
+    } else if (filterType === 'tech') {
+      filteredOriginalData = filteredOriginalData.filter(isNewTechCourse);
+    }
+    
+    // 월별 필터링
+    if (selectedMonth !== 'all') {
+      filteredOriginalData = filteredOriginalData.filter(course => {
+        const courseStartDate = new Date(course.과정시작일);
+        return (courseStartDate.getMonth() + 1) === selectedMonth;
+      });
+    }
+    
+    const individualStats = getIndividualInstitutionsInGroup(
+      filteredOriginalData,
+      groupName,
+      selectedYear === 'all' ? undefined : selectedYear
+    );
+    
+    setIndividualInstitutions(individualStats);
+    setIsGroupModalOpen(true);
   };
 
   return (
@@ -317,6 +360,24 @@ export default function InstitutionAnalysis() {
                         >
                           상세 보기
                         </button>
+                        {/* 그룹화된 기관인지 확인하고 드롭다운 버튼 추가 */}
+                        {['이젠아카데미', '그린컴퓨터아카데미', '더조은아카데미', '코리아IT아카데미', '비트교육센터', '하이미디어', '아이티윌', '메가스터디', '에이콘아카데미', '한국ICT인재개발원', 'MBC아카데미 컴퓨터 교육센터', '쌍용아카데미', 'KH정보교육원', '이스트소프트'].includes(stat.institutionName) && (
+                          <button
+                            onClick={() => handleViewGroupDetails(stat.institutionName)}
+                            className="text-green-600 hover:text-green-900"
+                            style={{
+                              backgroundColor: '#D1FAE5', // green-100
+                              color: '#065F46', // green-800
+                              fontWeight: '500',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '0.375rem',
+                              border: '1px solid #A7F3D0', // green-200
+                              fontSize: '0.75rem'
+                            }}
+                          >
+                            ▽ 개별기관
+                          </button>
+                        )}
                       </div>
                   </td>
                 </tr>
@@ -524,6 +585,69 @@ export default function InstitutionAnalysis() {
               type="button"
               className="bg-white px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
               onClick={() => setIsModalOpen(false)}
+            >
+              닫기
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 개별 기관 정보 모달 */}
+      <Dialog
+        open={isGroupModalOpen}
+        onOpenChange={setIsGroupModalOpen}
+      >
+        <DialogContent className="mx-auto max-w-[80vw] max-h-[85vh] w-full bg-white rounded-xl shadow-lg p-0 overflow-y-auto">
+          <DialogHeader className="p-6 border-b">
+            <DialogTitle className="text-lg font-medium leading-6 text-gray-900">
+              {selectedGroupName} - 개별 기관 상세
+              {selectedYear !== 'all' && ` (${selectedYear}년)`}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedGroupName} 그룹에 속하는 개별 기관들의 상세 정보입니다. (매출액 기준 내림차순 정렬)
+            </DialogDescription>
+          </DialogHeader>
+          <div className="p-6">
+            <div className="overflow-x-auto max-h-[65vh]">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">순위</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">기관명</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">매출액</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">훈련과정 수</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">훈련생 수</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">수료인원</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">수료율</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">평균 만족도</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {individualInstitutions.map((institution, index) => (
+                    <tr key={institution.institutionName} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 font-medium">
+                        {index + 1}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                        {institution.institutionName}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatRevenue(institution.totalRevenue)}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatNumber(institution.totalCourses)}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatNumber(institution.totalStudents)}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatNumber(institution.completedStudents)}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{institution.completionRate.toFixed(1)}%</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{institution.avgSatisfaction.toFixed(1)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div className="bg-gray-50 px-6 py-3 flex justify-end">
+            <button
+              type="button"
+              className="bg-white px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
+              onClick={() => setIsGroupModalOpen(false)}
             >
               닫기
             </button>
