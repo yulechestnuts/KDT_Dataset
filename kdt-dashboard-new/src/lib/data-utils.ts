@@ -39,6 +39,7 @@ export interface RawCourseData {
 export interface CourseData {
   고유값: string;
   훈련기관: string;
+  원본훈련기관?: string; // 원본 기관명 보존
   '훈련과정 ID'?: string;
   과정명: string;
   과정시작일: string;
@@ -408,11 +409,17 @@ export const transformRawDataArray = (rawDataArray: any[]): CourseData[] => {
     });
   }
 
-  // 훈련기관 그룹화 적용 (기존 로직 유지)
-  transformedData = transformedData.map(course => ({
-    ...course,
-    훈련기관: groupInstitutionsAdvanced(course)
-  }));
+  // 훈련기관 그룹화 적용 (원본 기관명 보존)
+  transformedData = transformedData.map(course => {
+    const originalInstitutionName = course.훈련기관; // 원본 기관명 보존
+    const groupedInstitutionName = groupInstitutionsAdvanced(course); // 그룹화된 기관명
+    
+    return {
+      ...course,
+      훈련기관: groupedInstitutionName, // 그룹화된 기관명으로 표시
+      원본훈련기관: originalInstitutionName // 원본 기관명 보존
+    };
+  });
   
   return transformedData;
 };
@@ -1355,17 +1362,17 @@ function groupInstitutionsAdvanced(course: CourseData): string {
 
   // 2. 핵심 키워드 기반 그룹핑
   const institutionGroups: { [key: string]: string[] } = {
-    '이젠아카데미': ['이젠'],
-    '그린컴퓨터아카데미': ['그린'],
-    '더조은아카데미': ['더조은'],
-    '코리아IT아카데미': ['코리아IT', 'KIT'],
-    '비트교육센터': ['비트'],
-    '하이미디어': ['하이미디어'],
-    '아이티윌': ['아이티윌', 'IT WILL'],
+    '이젠아카데미': ['이젠', '이젠컴퓨터학원', '이젠아이티아카데미'],
+    '그린컴퓨터아카데미': ['그린', '그린컴퓨터아카데미', '그린아카데미컴퓨터학원'],
+    '더조은아카데미': ['더조은', '더조은컴퓨터아카데미', '더조은아이티아카데미'],
+    '코리아IT아카데미': ['코리아IT', '코리아아이티', 'KIT', '코리아IT아카데미'],
+    '비트교육센터': ['비트', '비트캠프', '비트교육센터'],
+    '하이미디어': ['하이미디어', '하이미디어아카데미', '하이미디어컴퓨터학원'],
+    '아이티윌': ['아이티윌', 'IT WILL', '아이티윌부산교육센터'],
     '메가스터디': ['메가스터디'],
     '에이콘아카데미': ['에이콘'],
     '한국ICT인재개발원': ['ICT'],
-    'MBC아카데미 컴퓨터 교육센터': ['MBC아카데미'],
+    'MBC아카데미 컴퓨터 교육센터': ['MBC아카데미', '(MBC)'],
     '쌍용아카데미': ['쌍용'],
     'KH정보교육원': ['KH'],
     '이스트소프트': ['이스트소프트', '(주)이스트소프트']
@@ -1642,17 +1649,17 @@ export const getIndividualInstitutionsInGroup = (
 ): InstitutionStat[] => {
   // 그룹화 키워드 정의
   const institutionGroups: { [key: string]: string[] } = {
-    '이젠아카데미': ['이젠'],
-    '그린컴퓨터아카데미': ['그린'],
-    '더조은아카데미': ['더조은'],
-    '코리아IT아카데미': ['코리아IT', 'KIT'],
-    '비트교육센터': ['비트'],
-    '하이미디어': ['하이미디어'],
-    '아이티윌': ['아이티윌', 'IT WILL'],
+    '이젠아카데미': ['이젠', '이젠컴퓨터학원', '이젠아이티아카데미'],
+    '그린컴퓨터아카데미': ['그린', '그린컴퓨터아카데미', '그린아카데미컴퓨터학원'],
+    '더조은아카데미': ['더조은', '더조은컴퓨터아카데미', '더조은아이티아카데미'],
+    '코리아IT아카데미': ['코리아IT', '코리아아이티', 'KIT', '코리아IT아카데미'],
+    '비트교육센터': ['비트', '비트캠프', '비트교육센터'],
+    '하이미디어': ['하이미디어', '하이미디어아카데미', '하이미디어컴퓨터학원'],
+    '아이티윌': ['아이티윌', 'IT WILL', '아이티윌부산교육센터'],
     '메가스터디': ['메가스터디'],
     '에이콘아카데미': ['에이콘'],
     '한국ICT인재개발원': ['ICT'],
-    'MBC아카데미 컴퓨터 교육센터': ['MBC아카데미'],
+    'MBC아카데미 컴퓨터 교육센터': ['MBC아카데미', '(MBC)'],
     '쌍용아카데미': ['쌍용'],
     'KH정보교육원': ['KH'],
     '이스트소프트': ['이스트소프트', '(주)이스트소프트']
@@ -1668,10 +1675,10 @@ export const getIndividualInstitutionsInGroup = (
   const individualInstitutions = new Set<string>();
   
   allCourses.forEach(course => {
-    if (!course.훈련기관) return;
+    if (!course.원본훈련기관) return;
     
     // 원본 기관명 전처리
-    const cleanName = course.훈련기관
+    const cleanName = course.원본훈련기관
       .replace(/[^가-힣A-Za-z0-9\s()]/g, '')
       .replace(/\s+/g, ' ')
       .trim()
@@ -1680,7 +1687,7 @@ export const getIndividualInstitutionsInGroup = (
     // 그룹 키워드와 매칭되는지 확인
     for (const keyword of groupKeywords) {
       if (cleanName.includes(keyword.toUpperCase())) {
-        individualInstitutions.add(course.훈련기관); // 원본 기관명 저장
+        individualInstitutions.add(course.원본훈련기관); // 원본 기관명 저장
         break;
       }
     }
@@ -1690,8 +1697,8 @@ export const getIndividualInstitutionsInGroup = (
   const individualStats: InstitutionStat[] = [];
   
   individualInstitutions.forEach(originalInstitutionName => {
-    // 해당 기관의 과정들 필터링
-    let institutionCourses = allCourses.filter(course => course.훈련기관 === originalInstitutionName);
+    // 해당 기관의 과정들 필터링 (원본 기관명으로 필터링)
+    let institutionCourses = allCourses.filter(course => course.원본훈련기관 === originalInstitutionName);
     
     // 연도 필터링 적용
     if (year !== undefined) {

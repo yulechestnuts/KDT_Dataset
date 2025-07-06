@@ -1,6 +1,6 @@
 import { RawCourseData, CourseData, YearlyStats, MonthlyStats } from "@/lib/data-utils";
 import Papa from 'papaparse';
-import { parseNumber, parsePercentage, parseDate, transformRawDataToCourseData } from "@/lib/data-utils";
+import { parseNumber, parsePercentage, parseDate, transformRawDataToCourseData, transformRawDataArray } from "@/lib/data-utils";
 
 // 메인 데이터 로딩 함수
 export const loadDataFromGithub = async (): Promise<string> => {
@@ -18,11 +18,8 @@ export const loadDataFromGithub = async (): Promise<string> => {
 
 // 데이터 전처리
 export const preprocessData = (rawData: any[]): CourseData[] => {
-  const processedData = rawData.map((row: any) => {
-    // 각 row를 CourseData 형식으로 변환
-    return transformRawDataToCourseData(row);
-  });
-  return processedData;
+  // transformRawDataArray를 사용하여 그룹화까지 포함한 전처리 수행
+  return transformRawDataArray(rawData);
 };
 
 export const generateYearlyStats = (data: CourseData[]): YearlyStats[] => {
@@ -429,17 +426,17 @@ export function calculateCompletionRate(data: CourseData[], year?: number): numb
 // 훈련기관 그룹화 함수 (Python의 group_institutions_advanced를 TypeScript로 변환)
 export const groupInstitutions = (data: CourseData[]): CourseData[] => {
   const institutionGroups: { [key: string]: string[] } = {
-    '이젠아카데미': ['이젠'],
-    '그린컴퓨터아카데미': ['그린'],
-    '더조은아카데미': ['더조은'],
-    '코리아IT아카데미': ['코리아IT', 'KIT'],
-    '비트교육센터': ['비트'],
-    '하이미디어': ['하이미디어'],
-    '아이티윌': ['아이티윌', 'IT WILL'],
+    '이젠아카데미': ['이젠', '이젠컴퓨터학원', '이젠아이티아카데미'],
+    '그린컴퓨터아카데미': ['그린', '그린컴퓨터아카데미', '그린아카데미컴퓨터학원'],
+    '더조은아카데미': ['더조은', '더조은컴퓨터아카데미', '더조은아이티아카데미'],
+    '코리아IT아카데미': ['코리아IT', '코리아아이티', 'KIT', '코리아IT아카데미'],
+    '비트교육센터': ['비트', '비트캠프', '비트교육센터'],
+    '하이미디어': ['하이미디어', '하이미디어아카데미', '하이미디어컴퓨터학원'],
+    '아이티윌': ['아이티윌', 'IT WILL', '아이티윌부산교육센터'],
     '메가스터디': ['메가스터디'],
     '에이콘아카데미': ['에이콘'],
     '한국ICT인재개발원': ['ICT'],
-    'MBC아카데미 컴퓨터 교육센터': ['MBC아카데미'],
+    'MBC아카데미 컴퓨터 교육센터': ['MBC아카데미', '(MBC)'],
     '쌍용아카데미': ['쌍용'],
     'KH정보교육원': ['KH'],
     '이스트소프트': ['이스트소프트','(주)이스트소프트']
