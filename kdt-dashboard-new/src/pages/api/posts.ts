@@ -63,7 +63,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(400).json({ error: '필수 필드가 누락되었습니다.' });
       }
 
+      console.log('게시글 작성 시도:', { writer, content: content.substring(0, 50) + '...' });
+      
       const password_hash = await bcrypt.hash(password, 10);
+      console.log('비밀번호 해시 생성 완료:', password_hash.substring(0, 20) + '...');
+      
       const insertObj: any = {
         writer,
         password_hash,
@@ -79,7 +83,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .from('posts')
         .insert([insertObj])
         .select();
-      if (error) throw error;
+      
+      if (error) {
+        console.error('supabase insert 에러:', error);
+        throw error;
+      }
+      
+      console.log('게시글 저장 성공:', data?.[0]?.id);
+      
       const post = data?.[0] ? dbToClient(data[0]) : null;
       return res.status(200).json(post);
     } catch (error) {
@@ -93,18 +104,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!id || !password) {
         return res.status(400).json({ error: '필수 필드가 누락되었습니다.' });
       }
+      
+      console.log('게시글 수정 시도:', { id, writer });
+      
+      // DB에서 해당 게시글의 해시된 비밀번호 조회
       const { data: postData, error: getError } = await supabase
         .from('posts')
         .select('password_hash')
         .eq('id', id)
         .single();
+      
       if (getError || !postData) {
+        console.error('게시글 조회 실패:', getError);
         return res.status(404).json({ error: '게시글을 찾을 수 없습니다.' });
       }
+      
+      console.log('저장된 비밀번호 해시:', postData.password_hash.substring(0, 20) + '...');
+      console.log('입력된 비밀번호:', password);
+      
       const isMatch = await bcrypt.compare(password, postData.password_hash);
+      console.log('비밀번호 비교 결과:', isMatch);
+      
       if (!isMatch) {
         return res.status(401).json({ error: '비밀번호가 일치하지 않습니다.' });
       }
+      
+      // 비밀번호가 맞으면 수정
       const { data, error } = await supabase
         .from('posts')
         .update({
