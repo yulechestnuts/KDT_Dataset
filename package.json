@@ -3,6 +3,7 @@
     "@heroicons/react": "^2.2.0",
     "@radix-ui/react-dialog": "^1.1.14",
     "@radix-ui/react-select": "^2.2.5",
+    "@supabase/supabase-js": "^2.50.3",
     "clsx": "^2.1.1",
     "lucide-react": "^0.513.0",
     "react-pdf": "^10.0.1",
