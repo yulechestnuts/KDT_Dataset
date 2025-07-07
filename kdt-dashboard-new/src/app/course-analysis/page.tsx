@@ -41,6 +41,7 @@ function aggregateCoursesByCourseIdWithLatestInfo(courses: CourseData[]) {
     const totalRevenue = group.reduce((sum, c) => sum + (c.조정_누적매출 ?? c.누적매출 ?? 0), 0);
     const totalStudents = group.reduce((sum, c) => sum + (c['수강신청 인원'] || 0), 0);
     const totalGraduates = group.reduce((sum, c) => sum + (c.수료인원 || 0), 0);
+    const totalCapacity = group.reduce((sum, c) => sum + (c.정원 || 0), 0);
     const courseCount = group.length;
     result.push({
       courseId,
@@ -48,6 +49,7 @@ function aggregateCoursesByCourseIdWithLatestInfo(courses: CourseData[]) {
       '훈련과정 ID': courseId,
       총수강신청인원: totalStudents,
       총수료인원: totalGraduates,
+      총정원: totalCapacity,
       총누적매출: totalRevenue,
       최소과정시작일: group.reduce((min, c) => new Date(c.과정시작일) < new Date(min) ? c.과정시작일 : min, group[0].과정시작일),
       최대과정종료일: group.reduce((max, c) => new Date(c.과정종료일) > new Date(max) ? c.과정종료일 : max, group[0].과정종료일),
@@ -246,6 +248,7 @@ function CourseAnalysisContent() {
                             <TableHead>훈련기관</TableHead>
                             <TableHead>시작일</TableHead>
                             <TableHead>종료일</TableHead>
+                            <TableHead>정원</TableHead>
                             <TableHead>훈련생 수</TableHead>
                             <TableHead>수료인원</TableHead>
                             <TableHead>수료율</TableHead>
@@ -274,6 +277,7 @@ function CourseAnalysisContent() {
                               <TableCell>{detail.훈련기관}</TableCell>
                               <TableCell>{new Date(detail.과정시작일).toLocaleDateString()}</TableCell>
                               <TableCell>{new Date(detail.과정종료일).toLocaleDateString()}</TableCell>
+                              <TableCell>{detail.정원}명</TableCell>
                               <TableCell>{detail['수강신청 인원']}명</TableCell>
                               <TableCell>{detail.수료인원}명</TableCell>
                               <TableCell>{((detail.수료인원 || 0) / (detail['수강신청 인원'] || 1) * 100).toFixed(1)}%</TableCell>
