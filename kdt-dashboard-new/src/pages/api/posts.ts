@@ -58,9 +58,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         fileType,
         fileData,
       } = req.body;
+
       if (!writer || !password || !content) {
         return res.status(400).json({ error: '필수 필드가 누락되었습니다.' });
       }
+
       const password_hash = await bcrypt.hash(password, 10);
       const insertObj: any = {
         writer,
@@ -72,6 +74,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         file_type: fileType || null,
         file_data: fileData || null,
       };
+
       const { data, error } = await supabase
         .from('posts')
         .insert([insertObj])

@@ -43,16 +43,22 @@ const Board: React.FC = () => {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      const formData = new FormData();
-      formData.append('writer', form.writer);
-      formData.append('password', form.password);
-      formData.append('content', form.content);
-      formData.append('notion', form.notion);
-      formData.append('fileUrl', form.fileUrl || '');
-      formData.append('fileName', form.fileName || '');
-      formData.append('fileType', form.fileType || '');
-      formData.append('fileData', form.fileData || '');
-      await axios.post(`${API_URL}/posts`, formData);
+      const postData = {
+        writer: form.writer,
+        password: form.password,
+        content: form.content,
+        notion: form.notion || '',
+        fileUrl: form.fileUrl || '',
+        fileName: form.fileName || '',
+        fileType: form.fileType || '',
+        fileData: form.fileData || '',
+      };
+      
+      await axios.post(`${API_URL}/posts`, postData, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
       setForm({ writer: '', password: '', content: '', notion: '', fileUrl: '', fileName: '', fileType: '', fileData: '' });
       fetchPosts();
     } catch (error) {
