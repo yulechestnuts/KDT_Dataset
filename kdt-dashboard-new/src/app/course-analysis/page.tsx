@@ -235,6 +235,7 @@ function CourseAnalysisContent() {
                       <p className="text-2xl font-bold">{agg.총수료인원}명</p>
                     </div>
                   </div>
+
                   {isExpanded && (
                     <div className="mt-6">
                       <h3 className="text-lg font-semibold mb-4">회차별 상세 정보</h3>
@@ -248,8 +249,20 @@ function CourseAnalysisContent() {
                             <TableHead>훈련생 수</TableHead>
                             <TableHead>수료인원</TableHead>
                             <TableHead>수료율</TableHead>
-                            <TableHead>취업인원(3개월)</TableHead>
-                            <TableHead>취업인원(6개월)</TableHead>
+                            <TableHead className="text-center">
+                              <div>취업인원</div>
+                              <div className="text-xs text-gray-500">(3개월)</div>
+                            </TableHead>
+                            <TableHead className="text-center">
+                              <div>취업인원</div>
+                              <div className="text-xs text-gray-500">(6개월)</div>
+                            </TableHead>
+                            <TableHead className="text-center">
+                              <div>총 일수</div>
+                            </TableHead>
+                            <TableHead className="text-center">
+                              <div>총 시간</div>
+                            </TableHead>
                             <TableHead>매출</TableHead>
                             <TableHead>과정 페이지</TableHead>
                           </TableRow>
@@ -264,8 +277,10 @@ function CourseAnalysisContent() {
                               <TableCell>{detail['수강신청 인원']}명</TableCell>
                               <TableCell>{detail.수료인원}명</TableCell>
                               <TableCell>{((detail.수료인원 || 0) / (detail['수강신청 인원'] || 1) * 100).toFixed(1)}%</TableCell>
-                              <TableCell>{detail['취업인원 (3개월)']}명</TableCell>
-                              <TableCell>{detail['취업인원 (6개월)']}명</TableCell>
+                              <TableCell className="text-center">{detail['취업인원 (3개월)']}명</TableCell>
+                              <TableCell className="text-center">{detail['취업인원 (6개월)']}명</TableCell>
+                              <TableCell className="text-center">{detail.총훈련일수}일</TableCell>
+                              <TableCell className="text-center">{detail.총훈련시간}시간</TableCell>
                               <TableCell>{formatCurrency(detail.조정_누적매출 ?? detail.누적매출)}</TableCell>
                               <TableCell>
                                 <Button

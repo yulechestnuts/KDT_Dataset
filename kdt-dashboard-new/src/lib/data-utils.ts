@@ -285,10 +285,30 @@ export const transformRawDataToCourseData = (rawData: any): CourseData => {
   const timeDiff = endDate.getTime() - startDate.getTime();
   const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
   const calculatedDays = daysDiff > 0 ? daysDiff : 0;
-  
-  // 훈련시간 계산 (보통 하루 8시간 기준, 또는 원본 데이터 사용)
-  const originalHours = parseNumber(rawData.총훈련시간 || rawData['총훈련시간']);
-  const calculatedHours = originalHours > 0 ? originalHours : calculatedDays * 8;
+
+  // 총훈련일수: 원본 값이 null/undefined/빈 문자열이 아닐 때만 원본 사용, 아니면 계산값 사용
+  let totalDays: number;
+  if (
+    rawData['총 훈련일수'] !== undefined &&
+    rawData['총 훈련일수'] !== null &&
+    String(rawData['총 훈련일수']).trim() !== ''
+  ) {
+    totalDays = parseNumber(rawData['총 훈련일수']);
+  } else {
+    totalDays = calculatedDays;
+  }
+
+  // 총훈련시간: 원본 값이 null/undefined/빈 문자열이 아닐 때만 원본 사용, 아니면 계산값 사용
+  let totalHours: number;
+  if (
+    rawData['총 훈련시간'] !== undefined &&
+    rawData['총 훈련시간'] !== null &&
+    String(rawData['총 훈련시간']).trim() !== ''
+  ) {
+    totalHours = parseNumber(rawData['총 훈련시간']);
+  } else {
+    totalHours = totalDays * 8;
+  }
   
   // 연도별 매출을 합산하여 누적매출 계산
   let totalCumulativeRevenue = 0;
@@ -325,8 +345,8 @@ export const transformRawDataToCourseData = (rawData: any): CourseData => {
     과정종료일: endDate.toISOString().split('T')[0],
 
     // 숫자 필드들 파싱
-    총훈련일수: parseNumber(rawData.총훈련일수 || rawData['총훈련일수']) || calculatedDays,
-    총훈련시간: calculatedHours,
+    총훈련일수: totalDays,
+    총훈련시간: totalHours,
     훈련비: parseNumber(rawData.훈련비 || rawData['훈련비']),
     정원: parseNumber(rawData.정원 || rawData['정원']),
     '수강신청 인원': parseNumber(rawData.수강신청인원 || rawData['수강신청인원'] || rawData['수강신청 인원']),
