@@ -23,6 +23,7 @@ const Board: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ writer: '', content: '', notion: '' });
+  const [editPassword, setEditPassword] = useState(''); // 수정 모드 비밀번호 상태
 
   useEffect(() => {
     fetchPosts();
@@ -74,19 +75,7 @@ const Board: React.FC = () => {
     if (!pw) return;
     
     try {
-      // 먼저 게시글을 찾아서 비밀번호 확인
-      const post = posts.find(p => p.id === id);
-      if (!post) {
-        alert('게시글을 찾을 수 없습니다.');
-        return;
-      }
-      
-      if (post.password !== pw) {
-        alert('비밀번호가 일치하지 않습니다.');
-        return;
-      }
-      
-      // 비밀번호가 일치하면 삭제 요청
+      // 백엔드에서 비밀번호 검증
       await axios.delete(`${API_URL}/posts/${id}`, { data: { password: pw } });
       fetchPosts();
       alert('게시글이 삭제되었습니다.');
@@ -110,11 +99,6 @@ const Board: React.FC = () => {
         alert('게시글을 찾을 수 없습니다.');
         return;
       }
-      
-      if (post.password !== pw) {
-        alert('비밀번호가 일치하지 않습니다.');
-        return;
-      }
 
       setEditingId(id);
       setEditForm({
@@ -122,6 +106,8 @@ const Board: React.FC = () => {
         content: post.content,
         notion: post.notion || ''
       });
+      // 비밀번호를 임시로 저장 (수정 시 사용)
+      setEditPassword(pw);
     } catch (error) {
       console.error('수정 모드 활성화에 실패했습니다:', error);
       alert('수정 모드 활성화에 실패했습니다.');
@@ -137,7 +123,7 @@ const Board: React.FC = () => {
       }
 
       await axios.put(`${API_URL}/posts/${id}`, {
-        password: post.password,
+        password: editPassword, // 수정 시 입력받은 비밀번호 사용
         writer: editForm.writer,
         content: editForm.content,
         notion: editForm.notion
@@ -145,6 +131,7 @@ const Board: React.FC = () => {
       
       setEditingId(null);
       setEditForm({ writer: '', content: '', notion: '' });
+      setEditPassword(''); // 비밀번호 초기화
       fetchPosts();
       alert('게시글이 수정되었습니다.');
     } catch (error: any) {
