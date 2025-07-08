@@ -13,9 +13,15 @@ interface Post {
   fileType?: string;
   fileData?: string;
   date: string;
+  category: 'notice' | 'dashboard';
 }
 
 function dbToClient(post: any): Post {
+  // UTC 시간을 한국 시간(KST)으로 변환
+  const utcDate = new Date(post.created_at);
+  const kstDate = new Date(utcDate.getTime() + (9 * 60 * 60 * 1000)); // UTC+9
+  const kstDateString = kstDate.toISOString().replace('T', ' ').substring(0, 19);
+  
   return {
     id: post.id,
     writer: post.writer,
@@ -26,7 +32,8 @@ function dbToClient(post: any): Post {
     fileName: post.file_name || '',
     fileType: post.file_type || '',
     fileData: post.file_data || '',
-    date: post.created_at,
+    date: kstDateString,
+    category: post.category || 'notice',
   };
 }
 
@@ -60,13 +67,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         fileName,
         fileType,
         fileData,
+        category,
       } = req.body;
 
       if (!writer || !password || !content) {
         return res.status(400).json({ error: '필수 필드가 누락되었습니다.' });
       }
 
-      console.log('게시글 작성 시도:', { writer, content: content.substring(0, 50) + '...' });
+      console.log('게시글 작성 시도:', { writer, content: content.substring(0, 50) + '...', category });
       
       const password_hash = await bcrypt.hash(password, 10);
       console.log('비밀번호 해시 생성 완료:', password_hash.substring(0, 20) + '...');
@@ -80,6 +88,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         file_name: fileName || null,
         file_type: fileType || null,
         file_data: fileData || null,
+        category: category || 'notice',
       };
 
       const { data, error } = await supabase
