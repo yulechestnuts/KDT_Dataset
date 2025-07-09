@@ -15,6 +15,8 @@ const EmploymentAnalysis = () => {
   const [yearType, setYearType] = useState<'started' | 'ended'>('started');
   const [sortKey, setSortKey] = useState<'totalEmployment' | 'avgRate' | 'totalCompletion' | 'courseCount'>('totalEmployment');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+  const [ncsSortKey, setNcsSortKey] = useState<'totalEmployment' | 'avgRate' | 'totalCompletion' | 'courseCount'>('totalEmployment');
+  const [ncsSortOrder, setNcsSortOrder] = useState<'desc' | 'asc'>('desc');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -195,6 +197,24 @@ const EmploymentAnalysis = () => {
     }
   };
 
+  // NCS별 표 정렬 함수
+  const sortedNcsStats = [...ncsStats].sort((a, b) => {
+    if (ncsSortOrder === 'desc') {
+      return b[ncsSortKey] - a[ncsSortKey];
+    } else {
+      return a[ncsSortKey] - b[ncsSortKey];
+    }
+  });
+
+  const handleNcsSort = (key: typeof ncsSortKey) => {
+    if (ncsSortKey === key) {
+      setNcsSortOrder(ncsSortOrder === 'desc' ? 'asc' : 'desc');
+    } else {
+      setNcsSortKey(key);
+      setNcsSortOrder('desc');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -330,14 +350,22 @@ const EmploymentAnalysis = () => {
               <tr className="bg-gray-50">
                 <th className="px-4 py-2 text-left">순위</th>
                 <th className="px-4 py-2 text-left">NCS명</th>
-                <th className="px-4 py-2 text-right">평균 취업률</th>
-                <th className="px-4 py-2 text-right">총 취업인원</th>
-                <th className="px-4 py-2 text-right">총 수료인원</th>
-                <th className="px-4 py-2 text-right">과정 수</th>
+                <th className="px-4 py-2 text-right cursor-pointer" onClick={() => handleNcsSort('avgRate')}>
+                  평균 취업률 {ncsSortKey === 'avgRate' ? (ncsSortOrder === 'desc' ? '▼' : '▲') : ''}
+                </th>
+                <th className="px-4 py-2 text-right cursor-pointer" onClick={() => handleNcsSort('totalEmployment')}>
+                  총 취업인원 {ncsSortKey === 'totalEmployment' ? (ncsSortOrder === 'desc' ? '▼' : '▲') : ''}
+                </th>
+                <th className="px-4 py-2 text-right cursor-pointer" onClick={() => handleNcsSort('totalCompletion')}>
+                  총 수료인원 {ncsSortKey === 'totalCompletion' ? (ncsSortOrder === 'desc' ? '▼' : '▲') : ''}
+                </th>
+                <th className="px-4 py-2 text-right cursor-pointer" onClick={() => handleNcsSort('courseCount')}>
+                  과정 수 {ncsSortKey === 'courseCount' ? (ncsSortOrder === 'desc' ? '▼' : '▲') : ''}
+                </th>
               </tr>
             </thead>
             <tbody>
-              {ncsStats.map((ncs, index) => (
+              {sortedNcsStats.map((ncs, index) => (
                 <tr key={ncs.name} className="border-b hover:bg-gray-50">
                   <td className="px-4 py-2">{index + 1}</td>
                   <td className="px-4 py-2 font-medium">{ncs.name}</td>
