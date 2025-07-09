@@ -80,6 +80,12 @@ const EmploymentAnalysis = () => {
     ? yearFilteredData.filter(course => course[empCol] > 0 && course[rateCol] > 0)
     : yearFilteredData;
 
+  // 상단 통계: 수강인원/수료인원/취업인원/취업률만 표시
+  const totalApplicants = filteredData.reduce((sum, course) => sum + (course['수강신청 인원'] || 0), 0);
+  const totalCompletion = filteredData.reduce((sum, course) => sum + (course['수료인원'] || 0), 0);
+  const totalEmployment = filteredData.reduce((sum, course) => sum + (course[empCol] || 0), 0);
+  const avgEmploymentRate = totalCompletion > 0 ? (totalEmployment / totalCompletion * 100) : 0;
+
   // 기본 통계 계산
   const calculateBasicStats = () => {
     const totalEmployment = filteredData.reduce((sum, course) => sum + course[empCol], 0);
@@ -101,7 +107,7 @@ const EmploymentAnalysis = () => {
 
   const stats = calculateBasicStats();
 
-  // 훈련기관별 평균 취업률
+  // 훈련기관별 표는 선도기업/파트너기관/훈련기관 기준으로 집계
   const calculateInstitutionStats = () => {
     const institutionMap = new Map<string, {
       totalEmployment: number;
@@ -111,16 +117,24 @@ const EmploymentAnalysis = () => {
     }>();
 
     yearFilteredData.forEach(course => {
-      if (!institutionMap.has(course.훈련기관)) {
-        institutionMap.set(course.훈련기관, {
+      let instName = course.훈련기관;
+      if (
+        course.선도기업 && course.선도기업.trim() !== '' &&
+        course.파트너기관 && course.파트너기관.trim() !== '' &&
+        course.파트너기관.trim() !== course.훈련기관.trim()
+      ) {
+        instName = course.파트너기관.trim();
+      }
+      // 그 외는 훈련기관 그대로
+      if (!institutionMap.has(instName)) {
+        institutionMap.set(instName, {
           totalEmployment: 0,
           totalCompletion: 0,
           avgRate: 0,
           courseCount: 0
         });
       }
-
-      const inst = institutionMap.get(course.훈련기관)!;
+      const inst = institutionMap.get(instName)!;
       inst.totalEmployment += course[empCol];
       inst.totalCompletion += course.수료인원;
       inst.avgRate += course[rateCol];
@@ -286,19 +300,23 @@ const EmploymentAnalysis = () => {
         </div>
       </div>
 
-      {/* 기본 통계 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+      {/* 상단 통계 UI (총 수강인원, 총 수료인원, 총 취업인원, 수료대비 취업률만 남김) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <h3 className="text-lg font-semibold text-gray-700 mb-2">총 수강인원</h3>
+          <p className="text-3xl font-bold text-blue-600">{totalApplicants.toLocaleString()}명</p>
+        </div>
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <h3 className="text-lg font-semibold text-gray-700 mb-2">총 수료인원</h3>
+          <p className="text-3xl font-bold text-green-600">{totalCompletion.toLocaleString()}명</p>
+        </div>
         <div className="bg-white rounded-lg shadow-lg p-6">
           <h3 className="text-lg font-semibold text-gray-700 mb-2">총 취업인원</h3>
-          <p className="text-3xl font-bold text-blue-600">{stats.totalEmployment.toLocaleString()}명</p>
+          <p className="text-3xl font-bold text-purple-600">{totalEmployment.toLocaleString()}명</p>
         </div>
         <div className="bg-white rounded-lg shadow-lg p-6">
           <h3 className="text-lg font-semibold text-gray-700 mb-2">수료 대비 취업률</h3>
-          <p className="text-3xl font-bold text-purple-600">{stats.employmentCompletionRate.toFixed(1)}%</p>
-        </div>
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-700 mb-2">취업 과정 비율</h3>
-          <p className="text-3xl font-bold text-orange-600">{stats.employmentCourseRate.toFixed(1)}%</p>
+          <p className="text-3xl font-bold text-orange-600">{avgEmploymentRate.toFixed(1)}%</p>
         </div>
       </div>
 
