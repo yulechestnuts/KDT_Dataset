@@ -531,7 +531,12 @@ const Board: React.FC = () => {
                   </div>
                 ) : (
                   <div className="text-gray-700 mb-4 leading-relaxed">
-                    {post.content}
+                    {post.content.split('\n').map((line, idx) => (
+                      <React.Fragment key={idx}>
+                        {line}
+                        <br />
+                      </React.Fragment>
+                    ))}
                   </div>
                 )}
 
