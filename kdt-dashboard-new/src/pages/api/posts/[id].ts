@@ -6,6 +6,7 @@ interface Post {
   id: string;
   writer: string;
   password: string;
+  title: string; // 추가
   content: string;
   notion?: string;
   fileUrl?: string;
@@ -26,6 +27,7 @@ function dbToClient(post: any): Post {
     id: post.id,
     writer: post.writer,
     password: '',
+    title: post.title || '', // 추가
     content: post.content,
     notion: post.notion_url || '',
     fileUrl: post.file_url || '',
@@ -43,7 +45,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === 'PUT') {
     // 게시글 수정
     try {
-      const { password, writer, content, notion, category } = req.body;
+      const { password, writer, title, content, notion, category } = req.body;
       
       if (!id || !password) {
         return res.status(400).json({ error: '필수 필드가 누락되었습니다.' });
@@ -62,6 +64,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           .from('posts')
           .update({
             writer,
+            title, // 추가
             content,
             notion_url: notion || null,
             category: category || 'notice',
@@ -99,6 +102,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .from('posts')
         .update({
           writer,
+          title, // 추가
           content,
           notion_url: notion || null,
           category: category || 'notice',

@@ -6,6 +6,7 @@ interface Post {
   id: string;
   writer: string;
   password: string;
+  title: string; // 추가
   content: string;
   notion?: string;
   fileUrl?: string;
@@ -26,6 +27,7 @@ function dbToClient(post: any): Post {
     id: post.id,
     writer: post.writer,
     password: '',
+    title: post.title || '', // 추가
     content: post.content,
     notion: post.notion_url || '',
     fileUrl: post.file_url || '',
@@ -61,6 +63,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const {
         writer,
         password,
+        title, // 추가
         content,
         notion,
         fileUrl,
@@ -82,6 +85,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const insertObj: any = {
         writer,
         password_hash,
+        title, // 추가
         content,
         notion_url: notion || null,
         file_url: fileUrl || null,

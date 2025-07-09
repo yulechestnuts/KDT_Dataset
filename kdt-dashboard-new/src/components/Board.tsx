@@ -8,6 +8,7 @@ interface Post {
   id: string;
   writer: string;
   password: string;
+  title: string; // 추가
   content: string;
   notion?: string;
   fileUrl?: string;
@@ -20,13 +21,18 @@ interface Post {
 
 const Board: React.FC = () => {
   const [posts, setPosts] = useState<Post[]>([]);
-  const [form, setForm] = useState({ writer: '', password: '', content: '', notion: '', fileUrl: '', fileName: '', fileType: '', fileData: '', category: 'notice' as 'notice' | 'dashboard' | 'info' });
+  const [form, setForm] = useState({ writer: '', password: '', title: '', content: '', notion: '', fileUrl: '', fileName: '', fileType: '', fileData: '', category: 'notice' as 'notice' | 'dashboard' | 'info' });
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ writer: '', content: '', notion: '', category: 'notice' as 'notice' | 'dashboard' | 'info' });
+  const [editForm, setEditForm] = useState({ writer: '', title: '', content: '', notion: '', category: 'notice' as 'notice' | 'dashboard' | 'info' });
   const [editPassword, setEditPassword] = useState('');
   const [showWriteForm, setShowWriteForm] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'notice' | 'dashboard' | 'info'>('all');
+  const [openPostId, setOpenPostId] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const postsPerPage = 15;
+  const [search, setSearch] = useState('');
+  const [searchType, setSearchType] = useState<'title' | 'content' | 'writer' | 'all'>('all');
 
   useEffect(() => {
     fetchPosts();
@@ -50,6 +56,7 @@ const Board: React.FC = () => {
       const postData = {
         writer: form.writer,
         password: form.password,
+        title: form.title,
         content: form.content,
         notion: form.notion || '',
         fileUrl: form.fileUrl || '',
@@ -64,7 +71,7 @@ const Board: React.FC = () => {
           'Content-Type': 'application/json',
         },
       });
-      setForm({ writer: '', password: '', content: '', notion: '', fileUrl: '', fileName: '', fileType: '', fileData: '', category: 'notice' });
+      setForm({ writer: '', password: '', title: '', content: '', notion: '', fileUrl: '', fileName: '', fileType: '', fileData: '', category: 'notice' });
       setShowWriteForm(false);
       fetchPosts();
     } catch (error) {
@@ -108,6 +115,7 @@ const Board: React.FC = () => {
       setEditingId(id);
       setEditForm({
         writer: post.writer,
+        title: post.title,
         content: post.content,
         notion: post.notion || '',
         category: post.category,
@@ -131,13 +139,14 @@ const Board: React.FC = () => {
       await axios.put(`${API_URL}/posts/${id}`, {
         password: editPassword, // 수정 시 입력받은 비밀번호 사용
         writer: editForm.writer,
+        title: editForm.title,
         content: editForm.content,
         notion: editForm.notion,
         category: editForm.category,
       });
       
       setEditingId(null);
-      setEditForm({ writer: '', content: '', notion: '', category: 'notice' });
+      setEditForm({ writer: '', title: '', content: '', notion: '', category: 'notice' });
       setEditPassword(''); // 비밀번호 초기화
       fetchPosts();
       alert('게시글이 수정되었습니다.');
@@ -153,7 +162,7 @@ const Board: React.FC = () => {
 
   const handleEditCancel = () => {
     setEditingId(null);
-    setEditForm({ writer: '', content: '', notion: '', category: 'notice' });
+    setEditForm({ writer: '', title: '', content: '', notion: '', category: 'notice' });
   };
 
   const handleFileUpload = async (file: File) => {
@@ -218,11 +227,34 @@ const Board: React.FC = () => {
     }
   };
 
+  // 날짜 내림차순 정렬 (최신순)
+  const sortedPosts = [...posts].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   // 카테고리별 게시글 필터링
-  const filteredPosts = posts.filter(post => {
+  const filteredPosts = sortedPosts.filter(post => {
     if (selectedCategory === 'all') return true;
     return post.category === selectedCategory;
   });
+
+  // 검색 필터 적용
+  const searchedPosts = filteredPosts.filter(post => {
+    if (!search) return true;
+    const lower = (s: string | undefined) => (s || '').toLowerCase();
+    if (searchType === 'title') return lower(post.title).includes(search.toLowerCase());
+    if (searchType === 'content') return lower(post.content).includes(search.toLowerCase());
+    if (searchType === 'writer') return lower(post.writer).includes(search.toLowerCase());
+    // all
+    return (
+      lower(post.title).includes(search.toLowerCase()) ||
+      lower(post.content).includes(search.toLowerCase()) ||
+      lower(post.writer).includes(search.toLowerCase())
+    );
+  });
+
+  // 페이지네이션 적용
+  const indexOfLastPost = currentPage * postsPerPage;
+  const indexOfFirstPost = indexOfLastPost - postsPerPage;
+  const currentPosts = searchedPosts.slice(indexOfFirstPost, indexOfLastPost);
+  const totalPages = Math.ceil(searchedPosts.length / postsPerPage);
 
   // 카테고리별 게시글 수
   const noticeCount = posts.filter(post => post.category === 'notice').length;
@@ -272,6 +304,33 @@ const Board: React.FC = () => {
         </button>
       </div>
 
+      {/* 검색창 UI 추가 (카테고리 토글 아래) */}
+      <div className="flex justify-center mb-6 gap-2">
+        <select
+          value={searchType}
+          onChange={e => setSearchType(e.target.value as any)}
+          className="px-2 py-1 border rounded"
+        >
+          <option value="all">전체</option>
+          <option value="title">제목</option>
+          <option value="content">내용</option>
+          <option value="writer">작성자</option>
+        </select>
+        <input
+          type="text"
+          placeholder="검색어를 입력하세요"
+          value={search}
+          onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
+          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-64"
+        />
+        <button
+          onClick={() => { setSearch(''); setCurrentPage(1); }}
+          className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 text-gray-700"
+        >
+          초기화
+        </button>
+      </div>
+
       {/* 글쓰기 토글 버튼 */}
       <div className="text-center mb-6">
         <button
@@ -287,10 +346,17 @@ const Board: React.FC = () => {
         <div className="bg-white rounded-lg shadow-lg p-6 mb-8 border border-gray-100">
           <h2 className="text-xl font-semibold mb-4 text-gray-800">새 글 작성</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
+            <input
+              placeholder="제목"
+              value={form.title || ""}
+              onChange={e => setForm({ ...form, title: e.target.value })}
+              required
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <input
                 placeholder="작성자"
-                value={form.writer}
+                value={form.writer || ""}
                 onChange={e => setForm({ ...form, writer: e.target.value })}
                 required
                 className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -298,7 +364,7 @@ const Board: React.FC = () => {
               <input
                 type="password"
                 placeholder="비밀번호"
-                value={form.password}
+                value={form.password || ""}
                 onChange={e => setForm({ ...form, password: e.target.value })}
                 required
                 className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -344,7 +410,7 @@ const Board: React.FC = () => {
             
             <textarea
               placeholder="내용을 입력하세요..."
-              value={form.content}
+              value={form.content || ""}
               onChange={e => setForm({ ...form, content: e.target.value })}
               required
               rows={4}
@@ -382,7 +448,7 @@ const Board: React.FC = () => {
               </div>
               <input
                 placeholder="노션 공유 링크 (선택)"
-                value={form.notion}
+                value={form.notion || ""}
                 onChange={e => setForm({ ...form, notion: e.target.value })}
                 className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
@@ -392,7 +458,7 @@ const Board: React.FC = () => {
                 <label className="block text-sm font-medium text-gray-700">🔗 외부 파일 링크</label>
                 <input
                   placeholder="Google Drive, Dropbox, OneDrive 등 파일 링크"
-                  value={form.fileUrl || ''}
+                  value={form.fileUrl || ""}
                   onChange={e => setForm({ ...form, fileUrl: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
@@ -413,53 +479,63 @@ const Board: React.FC = () => {
 
       {/* 게시글 목록 */}
       <div className="space-y-6">
-        {filteredPosts.length === 0 ? (
+        {currentPosts.length === 0 ? (
           <div className="text-center py-12">
             <div className="text-6xl mb-4">📭</div>
             <p className="text-gray-500 text-lg">아직 작성된 글이 없습니다.</p>
             <p className="text-gray-400">첫 번째 글을 작성해보세요!</p>
           </div>
         ) : (
-          filteredPosts.map(post => (
+          currentPosts.map(post => (
             <div key={post.id} className="bg-white rounded-lg shadow-lg border border-gray-100 overflow-hidden hover:shadow-xl transition-shadow duration-200">
               <div className="p-6">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="text-lg font-semibold text-gray-800">{post.writer}</h3>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        post.category === 'notice' 
-                          ? 'bg-red-100 text-red-800' 
-                          : post.category === 'dashboard'
-                            ? 'bg-blue-100 text-blue-800'
-                            : 'bg-green-100 text-green-800'
-                      }`}>
-                        {post.category === 'notice' ? '📢 공지사항' : post.category === 'dashboard' ? '📊 대시보드' : '💡 정보공유'}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-500">{post.date}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => handleEdit(post.id)}
-                      className="px-3 py-1 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition-colors duration-200"
-                    >
-                      ✏️ 수정
-                    </button>
-                    <button 
-                      onClick={() => handleDelete(post.id)}
-                      className="px-3 py-1 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition-colors duration-200"
-                    >
-                      🗑️ 삭제
-                    </button>
-                  </div>
+                {/* 제목/작성자/카테고리/날짜: 항상 보임 */}
+                <div
+                  className="cursor-pointer font-bold text-lg mb-1"
+                  onClick={() => setOpenPostId(openPostId === post.id ? null : post.id)}
+                >
+                  {post.title || '(제목 없음)'}
                 </div>
-                
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="text-xs text-gray-500">{post.writer}</div>
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    post.category === 'notice' 
+                      ? 'bg-red-100 text-red-800' 
+                      : post.category === 'dashboard'
+                        ? 'bg-blue-100 text-blue-800'
+                        : 'bg-green-100 text-green-800'
+                  }`}>
+                    {post.category === 'notice' ? '📢 공지사항' : post.category === 'dashboard' ? '📊 대시보드' : '💡 정보공유'}
+                  </span>
+                  <span className="text-sm text-gray-400">{post.date}</span>
+                </div>
+                <div className="flex gap-2 mb-4">
+                  <button 
+                    onClick={() => handleEdit(post.id)}
+                    className="px-3 py-1 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition-colors duration-200"
+                  >
+                    ✏️ 수정
+                  </button>
+                  <button 
+                    onClick={() => handleDelete(post.id)}
+                    className="px-3 py-1 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition-colors duration-200"
+                  >
+                    🗑️ 삭제
+                  </button>
+                </div>
+                {/* 드롭다운: 본문/파일/노션 등만 */}
                 {editingId === post.id ? (
                   <div className="mb-4 space-y-4">
                     <input
+                      placeholder="제목"
+                      value={editForm.title || ""}
+                      onChange={e => setEditForm({ ...editForm, title: e.target.value })}
+                      required
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    <input
                       placeholder="작성자"
-                      value={editForm.writer}
+                      value={editForm.writer || ""}
                       onChange={e => setEditForm({ ...editForm, writer: e.target.value })}
                       required
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -502,7 +578,7 @@ const Board: React.FC = () => {
                     </div>
                     <textarea
                       placeholder="내용을 입력하세요..."
-                      value={editForm.content}
+                      value={editForm.content || ""}
                       onChange={e => setEditForm({ ...editForm, content: e.target.value })}
                       required
                       rows={4}
@@ -510,7 +586,7 @@ const Board: React.FC = () => {
                     />
                     <input
                       placeholder="노션 공유 링크 (선택)"
-                      value={editForm.notion}
+                      value={editForm.notion || ""}
                       onChange={e => setEditForm({ ...editForm, notion: e.target.value })}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
@@ -530,47 +606,62 @@ const Board: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  <div className="text-gray-700 mb-4 leading-relaxed">
-                    {post.content.split('\n').map((line, idx) => (
-                      <React.Fragment key={idx}>
-                        {line}
-                        <br />
-                      </React.Fragment>
-                    ))}
-                  </div>
-                )}
-
-                {(post.fileUrl || post.fileName) && (
-                  <div className="mb-4">
-                    <a 
-                      href={post.fileData || post.fileUrl} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      download={post.fileName}
-                      className="inline-flex items-center px-4 py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600 transition-colors duration-200"
-                    >
-                      💾 {post.fileName || '파일 다운로드'}
-                    </a>
-                  </div>
-                )}
-
-                {post.notion && (
-                  <div className="mt-4">
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <h4 className="text-sm font-semibold text-gray-700 mb-2">📋 노션 페이지</h4>
-                      <iframe 
-                        src={post.notion} 
-                        className="w-full h-64 border-0 rounded" 
-                        title="notion" 
-                      />
-                    </div>
-                  </div>
+                  openPostId === post.id && (
+                    <>
+                      <div className="text-gray-700 mb-4 leading-relaxed">
+                        {post.content.split('\n').map((line, idx) => (
+                          <React.Fragment key={idx}>
+                            {line}
+                            <br />
+                          </React.Fragment>
+                        ))}
+                      </div>
+                      {(post.fileUrl || post.fileName) && (
+                        <div className="mb-4">
+                          <a 
+                            href={post.fileData || post.fileUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            download={post.fileName}
+                            className="inline-flex items-center px-4 py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600 transition-colors duration-200"
+                          >
+                            💾 {post.fileName || '파일 다운로드'}
+                          </a>
+                        </div>
+                      )}
+                      {post.notion && (
+                        <div className="mt-4">
+                          <div className="bg-gray-50 rounded-lg p-4">
+                            <h4 className="text-sm font-semibold text-gray-700 mb-2">📋 노션 페이지</h4>
+                            <iframe 
+                              src={post.notion} 
+                              className="w-full h-64 border-0 rounded" 
+                              title="notion" 
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )
                 )}
               </div>
             </div>
           ))
         )}
       </div>
+      {totalPages > 1 && (
+        <div className="flex justify-center mt-6">
+          {Array.from({ length: totalPages }, (_, i) => (
+            <button
+              key={i}
+              onClick={() => setCurrentPage(i + 1)}
+              className={`mx-1 px-3 py-1 rounded ${currentPage === i + 1 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+            >
+              {i + 1}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
