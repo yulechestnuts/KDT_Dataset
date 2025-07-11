@@ -266,6 +266,11 @@ export default function InstitutionAnalysis() {
         </div>
       </div>
 
+      {/* 안내 문구 추가 */}
+      <div className="mb-4 text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded px-4 py-2">
+        ※ 과정이 2개년도에 걸쳐있는 경우, 각 년도에 차지하는 비율에 맞추어 매출이 분배됩니다.
+      </div>
+
       {/* 매출액 차트 */}
       <div className="bg-white rounded-lg shadow p-6 mt-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">훈련기관별 매출액 (억원)</h3>
