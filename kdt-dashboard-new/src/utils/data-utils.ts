@@ -438,8 +438,7 @@ export const groupInstitutions = (data: CourseData[]): CourseData[] => {
     '한국ICT인재개발원': ['ICT'],
     'MBC아카데미 컴퓨터 교육센터': ['MBC아카데미', '(MBC)'],
     '쌍용아카데미': ['쌍용'],
-    'KH정보교육원': ['KH'],
-    '이스트소프트': ['이스트소프트','(주)이스트소프트']
+    'KH정보교육원': ['KH']
   };
 
   const groupedNames: { [key: string]: string } = {}; // clean_name -> group_name 매핑

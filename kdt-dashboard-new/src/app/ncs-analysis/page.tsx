@@ -24,7 +24,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { formatCurrency } from '@/utils/formatters';
+import { formatCurrency, formatNumber } from '@/utils/formatters';
 import { parse as parseCsv } from 'papaparse';
 import {
   BarChart,
@@ -170,6 +170,14 @@ export default function NcsAnalysis() {
         </div>
       </div>
 
+      {/* 안내 문구 */}
+      {selectedYear !== 'all' && (
+        <div className="mb-4 text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded px-4 py-3">
+          <div>* 수료율은 과정 종료일 기준으로 포함하여 계산되었습니다.</div>
+          <div>* ()는 전 해년 입과, 당 해년 수료 인원을 표기하였습니다.</div>
+        </div>
+      )}
+
       {/* Table */}
       <div className="bg-white rounded-lg shadow overflow-hidden mt-6">
         <div className="overflow-x-auto">
@@ -215,10 +223,26 @@ export default function NcsAnalysis() {
                     {stat.totalCourses}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {stat.totalStudents}
+                    {selectedYear !== 'all' && stat.prevYearStudents > 0 
+                      ? (
+                        <div>
+                          <div>{formatNumber(stat.totalStudents)}</div>
+                          <div className="text-xs text-gray-500">({formatNumber(stat.prevYearStudents)})</div>
+                        </div>
+                      )
+                      : formatNumber(stat.totalStudents)
+                    }
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {stat.completedStudents}
+                    {selectedYear !== 'all' && stat.prevYearCompletedStudents > 0 
+                      ? (
+                        <div>
+                          <div>{formatNumber(stat.completedStudents)}</div>
+                          <div className="text-xs text-gray-500">({formatNumber(stat.prevYearCompletedStudents)})</div>
+                        </div>
+                      )
+                      : formatNumber(stat.completedStudents)
+                    }
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {stat.completionRate.toFixed(1)}%

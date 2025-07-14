@@ -19,6 +19,218 @@ interface Post {
   category: 'notice' | 'dashboard' | 'info'; // 카테고리 추가
 }
 
+interface Comment {
+  id: string;
+  postId: string;
+  parentId: string | null;
+  writer: string;
+  password: string;
+  content: string;
+  date: string;
+  fileUrl?: string;
+  fileName?: string;
+  fileType?: string;
+  fileSize?: number;
+  children?: Comment[]; // 트리 구조용 children 필드 추가
+}
+
+// 트리 구조로 변환
+function buildCommentTree(comments: Comment[]): Comment[] {
+  const map: { [id: string]: Comment & { children?: Comment[] } } = {};
+  const roots: Comment[] = [];
+  comments.forEach(c => (map[c.id] = { ...c, children: [] }));
+  comments.forEach(c => {
+    if (c.parentId && map[c.parentId]) {
+      map[c.parentId].children!.push(map[c.id]);
+    } else {
+      roots.push(map[c.id]);
+    }
+  });
+  return roots;
+}
+
+const CommentTree: React.FC<{ comments: Comment[]; onReply: (parentId: string) => void }> = ({ comments, onReply }) => (
+  <ul className="ml-4">
+    {comments.map(comment => (
+      <li key={comment.id} className="mb-2">
+        <div className="bg-gray-100 p-2 rounded">
+          <div className="font-bold text-sm">{comment.writer} <span className="text-xs text-gray-400">{comment.date}</span></div>
+          <div className="text-sm whitespace-pre-line">{comment.content}</div>
+          {comment.fileUrl && (
+            <div className="mt-1">
+              <a href={comment.fileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline text-xs">{comment.fileName} 다운로드</a>
+            </div>
+          )}
+          <button className="text-xs text-blue-500 mt-1" onClick={() => onReply(comment.id)}>답글</button>
+        </div>
+        {comment.children && comment.children.length > 0 && (
+          <CommentTree comments={comment.children} onReply={onReply} />
+        )}
+      </li>
+    ))}
+  </ul>
+);
+
+const BoardWithComments: React.FC<{ postId: string }> = ({ postId }) => {
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [form, setForm] = useState({ writer: '', password: '', content: '', file: null as File | null, parentId: null as string | null });
+  const [replyTo, setReplyTo] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ content: '', file: null as File | null, password: '' });
+
+  useEffect(() => {
+    fetch(`/api/comments?postId=${postId}`)
+      .then(res => res.json())
+      .then(data => setComments(data));
+  }, [postId]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm({ ...form, file: e.target.files ? e.target.files[0] : null });
+  };
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    const fd = new FormData();
+    fd.append('postId', postId);
+    fd.append('writer', form.writer);
+    fd.append('password', form.password);
+    fd.append('content', form.content);
+    if (form.file) fd.append('file', form.file);
+    if (replyTo) fd.append('parentId', replyTo);
+    const res = await fetch('/api/comments', { method: 'POST', body: fd });
+    if (res.ok) {
+      setForm({ writer: '', password: '', content: '', file: null, parentId: null });
+      setReplyTo(null);
+      const data = await res.json();
+      setComments(prev => [...prev, data]);
+    } else {
+      alert('댓글 등록 실패: ' + (await res.json()).error);
+    }
+    setLoading(false);
+  };
+  const handleReply = (parentId: string) => {
+    setReplyTo(parentId);
+  };
+
+  // 댓글 삭제
+  const handleDelete = async (commentId: string) => {
+    const pw = prompt('댓글 비밀번호를 입력하세요');
+    if (!pw) return;
+    const res = await fetch(`/api/comments/${commentId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw })
+    });
+    if (res.ok) {
+      setComments(prev => prev.filter(c => c.id !== commentId));
+    } else {
+      alert('비밀번호가 일치하지 않거나 삭제 실패');
+    }
+  };
+
+  // 댓글 수정 모드 진입
+  const handleEdit = (comment: Comment) => {
+    setEditId(comment.id);
+    setEditForm({ content: comment.content, file: null, password: '' });
+  };
+  // 댓글 수정 제출
+  const handleEditSubmit = async (e: React.FormEvent, commentId: string) => {
+    e.preventDefault();
+    const fd = new FormData();
+    fd.append('content', editForm.content);
+    fd.append('password', editForm.password);
+    if (editForm.file) fd.append('file', editForm.file);
+    const res = await fetch(`/api/comments/${commentId}`, { method: 'PUT', body: fd });
+    if (res.ok) {
+      const updated = await res.json();
+      setComments(prev => prev.map(c => c.id === commentId ? { ...c, ...updated } : c));
+      setEditId(null);
+      setEditForm({ content: '', file: null, password: '' });
+    } else {
+      alert('비밀번호가 일치하지 않거나 수정 실패');
+    }
+  };
+  const handleEditChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    setEditForm({ ...editForm, [e.target.name]: e.target.value });
+  };
+  const handleEditFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setEditForm({ ...editForm, file: e.target.files ? e.target.files[0] : null });
+  };
+
+  const tree = buildCommentTree(comments);
+  return (
+    <div className="mt-8">
+      <h3 className="font-bold mb-2">댓글</h3>
+      <form onSubmit={handleSubmit} className="bg-gray-50 p-4 rounded mb-4">
+        <div className="flex gap-2 mb-2">
+          <input type="text" name="writer" placeholder="이름" required value={form.writer} onChange={handleChange} className="border p-2 rounded w-1/4" />
+          <input type="password" name="password" placeholder="비밀번호" required value={form.password} onChange={handleChange} className="border p-2 rounded w-1/4" />
+        </div>
+        <textarea name="content" placeholder="댓글을 입력하세요" required value={form.content} onChange={handleChange} className="border p-3 rounded w-full min-h-[90px] mb-2 text-base" />
+        <input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.xls,.xlsx,.txt" onChange={handleFileChange} className="border p-1 rounded mb-2 w-full" />
+        <button type="submit" className="bg-blue-500 text-white px-4 py-2 rounded" disabled={loading}>{loading ? '등록 중...' : replyTo ? '답글 등록' : '댓글 등록'}</button>
+        <div className="text-xs text-gray-500 mt-2">※ 5MB 이하 파일만 첨부 가능하며, <span className="text-blue-600 font-semibold">되도록 노션 임베드 등을 활용해주세요!</span></div>
+        {replyTo && <div className="text-xs text-blue-700 mt-1">답글 대상: {replyTo} <button type="button" onClick={() => setReplyTo(null)} className="ml-2 text-red-500">취소</button></div>}
+      </form>
+      <CommentTreeWithActions comments={tree} onReply={handleReply} onEdit={handleEdit} onDelete={handleDelete} editId={editId} editForm={editForm} onEditChange={handleEditChange} onEditFileChange={handleEditFileChange} onEditSubmit={handleEditSubmit} setEditId={setEditId} />
+    </div>
+  );
+};
+
+// 댓글 트리 + 수정/삭제/답글 버튼
+const CommentTreeWithActions: React.FC<{
+  comments: Comment[];
+  onReply: (parentId: string) => void;
+  onEdit: (comment: Comment) => void;
+  onDelete: (commentId: string) => void;
+  editId: string | null;
+  editForm: { content: string; file: File | null; password: string };
+  onEditChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+  onEditFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onEditSubmit: (e: React.FormEvent, commentId: string) => void;
+  setEditId: (id: string | null) => void;
+}> = ({ comments, onReply, onEdit, onDelete, editId, editForm, onEditChange, onEditFileChange, onEditSubmit, setEditId }) => (
+  <ul className="ml-4">
+    {comments.map(comment => (
+      <li key={comment.id} className="mb-2">
+        <div className="bg-gray-100 p-2 rounded">
+          <div className="font-bold text-sm">{comment.writer} <span className="text-xs text-gray-400">{comment.date}</span></div>
+          {editId === comment.id ? (
+            <form onSubmit={e => onEditSubmit(e, comment.id)} className="mb-2">
+              <textarea name="content" required value={editForm.content} onChange={onEditChange} className="border p-2 rounded w-full min-h-[70px] mb-1 text-base" />
+              <input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.xls,.xlsx,.txt" onChange={onEditFileChange} className="border p-1 rounded mb-1 w-full" />
+              <input type="password" name="password" placeholder="비밀번호" required value={editForm.password} onChange={onEditChange} className="border p-1 rounded mb-1 w-full" />
+              <button type="submit" className="bg-green-500 text-white px-3 py-1 rounded mr-2">수정 완료</button>
+              <button type="button" className="bg-gray-300 px-3 py-1 rounded" onClick={() => setEditId(null)}>취소</button>
+            </form>
+          ) : (
+            <>
+              <div className="text-sm whitespace-pre-line">{comment.content}</div>
+              {comment.fileUrl && (
+                <div className="mt-1">
+                  <a href={comment.fileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline text-xs">{comment.fileName} 다운로드</a>
+                </div>
+              )}
+              <div className="flex gap-2 mt-1">
+                <button className="text-xs text-blue-500" onClick={() => onReply(comment.id)}>답글</button>
+                <button className="text-xs text-green-600" onClick={() => onEdit(comment)}>수정</button>
+                <button className="text-xs text-red-500" onClick={() => onDelete(comment.id)}>삭제</button>
+              </div>
+            </>
+          )}
+        </div>
+        {comment.children && comment.children.length > 0 && (
+          <CommentTreeWithActions comments={comment.children} onReply={onReply} onEdit={onEdit} onDelete={onDelete} editId={editId} editForm={editForm} onEditChange={onEditChange} onEditFileChange={onEditFileChange} onEditSubmit={onEditSubmit} setEditId={setEditId} />
+        )}
+      </li>
+    ))}
+  </ul>
+);
+
 const Board: React.FC = () => {
   const [posts, setPosts] = useState<Post[]>([]);
   const [form, setForm] = useState({ writer: '', password: '', title: '', content: '', notion: '', fileUrl: '', fileName: '', fileType: '', fileData: '', category: 'notice' as 'notice' | 'dashboard' | 'info' });
@@ -641,6 +853,7 @@ const Board: React.FC = () => {
                           </div>
                         </div>
                       )}
+                      <BoardWithComments postId={post.id} />
                     </>
                   )
                 )}

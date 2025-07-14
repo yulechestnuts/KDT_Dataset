@@ -1,0 +1,24 @@
+[
+  {
+    "id": "cmt-1",
+    "postId": "1751586670928",
+    "parentId": null,
+    "writer": "홍길동",
+    "password": "pw1234",
+    "content": "좋은 분석 감사합니다!",
+    "date": "2025. 7. 4. 오전 9:00:00",
+    "fileUrl": "/uploads/sample.pdf",
+    "fileName": "sample.pdf",
+    "fileType": "application/pdf",
+    "fileSize": 123456
+  },
+  {
+    "id": "cmt-2",
+    "postId": "1751586670928",
+    "parentId": "cmt-1",
+    "writer": "이몽룡",
+    "password": "pw5678",
+    "content": "대댓글도 잘 됩니다!",
+    "date": "2025. 7. 4. 오전 9:10:00"
+  }
+] 

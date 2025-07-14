@@ -134,6 +134,9 @@ export interface InstitutionStat {
   completionRate: number;
   avgSatisfaction: number;
   courses: CourseData[];
+  // 이전 연도 시작 과정 정보 추가
+  prevYearStudents: number;
+  prevYearCompletedStudents: number;
 }
 
 export interface CompletionRateDetails {
@@ -159,6 +162,9 @@ export interface NcsStat {
   completionRate: number;
   avgSatisfaction: number;
   courses: CourseData[];
+  // 이전 연도 시작 과정 정보 추가
+  prevYearStudents: number;
+  prevYearCompletedStudents: number;
 }
 
 export interface LeadingCompanyStat {
@@ -275,6 +281,21 @@ export const classifyTrainingType = (course: RawCourseData): string => {
   return types.length > 0 ? types.join('&') : '신기술 훈련';
 };
 
+// 숫자와 괄호 안 숫자 분리 유틸
+function parseNumberWithParen(str: any) {
+  if (typeof str === 'number') return { value: str, display: String(str), paren: null };
+  if (typeof str !== 'string') return { value: 0, display: '', paren: null };
+  const match = str.match(/^(\d+)(?:\((\d+)\))?$/);
+  if (match) {
+    return {
+      value: parseInt(match[1], 10),
+      display: str,
+      paren: match[2] ? parseInt(match[2], 10) : null
+    };
+  }
+  return { value: parseNumber(str), display: str, paren: null };
+}
+
 // 메인 데이터 변환 함수
 export const transformRawDataToCourseData = (rawData: any): CourseData => {
   // 과정 시작일과 종료일로부터 훈련 일수와 시간 계산
@@ -328,6 +349,9 @@ export const transformRawDataToCourseData = (rawData: any): CourseData => {
     adjustedYearlyRevenues[`조정_${yearCol}`] = originalRevenue; 
   });
 
+  const parsedEnrollment = parseNumberWithParen(rawData.수강신청인원 || rawData['수강신청인원'] || rawData['수강신청 인원']);
+  const parsedCompletion = parseNumberWithParen(rawData.수료인원 || rawData['수료인원']);
+
   return {
     고유값: rawData.고유값 || rawData['고유값'] || '',
     과정명: rawData.과정명 || rawData['과정명'] || '',
@@ -349,8 +373,12 @@ export const transformRawDataToCourseData = (rawData: any): CourseData => {
     총훈련시간: totalHours,
     훈련비: parseNumber(rawData.훈련비 || rawData['훈련비']),
     정원: parseNumber(rawData.정원 || rawData['정원']),
-    '수강신청 인원': parseNumber(rawData.수강신청인원 || rawData['수강신청인원'] || rawData['수강신청 인원']),
-    '수료인원': parseNumber(rawData.수료인원 || rawData['수료인원']),
+    '수강신청 인원': parsedEnrollment.value,
+    수강신청_표시: parsedEnrollment.display,
+    수강신청_괄호: parsedEnrollment.paren,
+    '수료인원': parsedCompletion.value,
+    수료인원_표시: parsedCompletion.display,
+    수료인원_괄호: parsedCompletion.paren,
     수료율: parsePercentage(rawData.수료율 || rawData['수료율']),
     만족도: parsePercentage(rawData.만족도 || rawData['만족도']),
     취업인원: parseNumber(rawData.취업인원 || rawData['취업인원']),
@@ -633,34 +661,40 @@ function calculateRevenueAdjustmentFactor(completionRate: number): number {
 }
 
 export const calculateInstitutionStats = (data: CourseData[], year?: number): InstitutionStat[] => {
-  const institutionMap = new Map<string, {
+  // 1단계: 원본 기관명으로 매출 계산 (그룹핑 전)
+  const originalInstitutionMap = new Map<string, {
     totalRevenue: number;
     totalCourses: number;
     totalStudents: number;
     completedStudents: number;
     satisfactionSum: number;
-    satisfactionCoursesCount: number; // 만족도 계산에 사용된 과정 수
+    satisfactionCoursesCount: number;
     courses: CourseData[];
+    prevYearStudents: number;
+    prevYearCompletedStudents: number;
   }>();
 
   data.forEach(course => {
-    const institutionName = course.훈련기관;
+    // 원본 기관명 사용 (그룹핑 전)
+    const originalInstitutionName = course.원본훈련기관 || course.훈련기관;
     const partnerInstitutionName = course.leadingCompanyPartnerInstitution;
 
     // 각 과정에 대해 관련 기관(훈련기관, 파트너기관)의 통계를 업데이트하는 함수
     const updateStats = (instName: string, isPartner: boolean) => {
-      if (!institutionMap.has(instName)) {
-        institutionMap.set(instName, {
+      if (!originalInstitutionMap.has(instName)) {
+        originalInstitutionMap.set(instName, {
           totalRevenue: 0,
           totalCourses: 0,
           totalStudents: 0,
           completedStudents: 0,
           satisfactionSum: 0,
           satisfactionCoursesCount: 0,
-          courses: []
+          courses: [],
+          prevYearStudents: 0,
+          prevYearCompletedStudents: 0
         });
       }
-      const stats = institutionMap.get(instName)!;
+      const stats = originalInstitutionMap.get(instName)!;
 
       // 매출 계산
       let revenue = 0;
@@ -671,78 +705,152 @@ export const calculateInstitutionStats = (data: CourseData[], year?: number): In
         revenue = course.조정_누적매출 ?? 0;
       }
       
-      let revenueShare = 1;
-      if (partnerInstitutionName) {
-        if (instName === partnerInstitutionName) {
-          revenueShare = 0.9; // 파트너기관 90%
-        } else if (instName === institutionName) {
-          revenueShare = 0.1; // 훈련기관 10%
+      // 선도기업 훈련인 경우 매출 분배 적용
+      if (course.isLeadingCompanyCourse && course.leadingCompanyPartnerInstitution) {
+        if (isPartner) {
+          // 파트너기관: 90%
+          revenue = revenue * 0.9;
+        } else {
+          // 훈련기관: 10%
+          revenue = revenue * 0.1;
         }
       }
-      stats.totalRevenue += revenue * revenueShare;
+      stats.totalRevenue += revenue;
 
-      // 기타 통계는 '과정 시작 연도' 기준으로 계산
+      // === 통계는 '과정 시작 연도' 기준으로만 합산 ===
       const courseStartYear = new Date(course.과정시작일).getFullYear();
+      const courseEndYear = new Date(course.과정종료일).getFullYear();
+      
       if (year === undefined || courseStartYear === year) {
-        let studentShare = 1;
-        if (partnerInstitutionName) {
-           if (instName === partnerInstitutionName) {
-             studentShare = 1; // 파트너 기관이 학생 수 100%
-           } else if (instName === institutionName) {
-             studentShare = 0; // 훈련 기관은 0%
-           }
+        // 학생 수 계산 (선도기업 훈련에서는 파트너기관이 100% 담당)
+        let studentCount = course['수강신청 인원'] ?? 0;
+        let completedCount = course.수료인원 ?? 0;
+        
+        if (course.isLeadingCompanyCourse && course.leadingCompanyPartnerInstitution) {
+          if (!isPartner) {
+            // 훈련기관은 학생 수 0
+            studentCount = 0;
+            completedCount = 0;
+          }
+          // 파트너기관은 학생 수 100% (기본값)
         }
         
-        stats.totalStudents += (course['수강신청 인원'] ?? 0) * studentShare;
-        stats.completedStudents += (course.수료인원 ?? 0) * studentShare;
+        stats.totalStudents += studentCount;
+        stats.completedStudents += completedCount;
         if ((course.만족도 ?? 0) > 0) {
           stats.satisfactionSum += course.만족도 ?? 0;
           stats.satisfactionCoursesCount += 1;
         }
         stats.totalCourses += 1;
+      } else if (year !== undefined && courseStartYear < year && courseEndYear === year) {
+        // 이전 연도에 시작해서 해당 연도에 종료된 과정
+        let studentCount = course['수강신청 인원'] ?? 0;
+        let completedCount = course.수료인원 ?? 0;
+        
+        if (course.isLeadingCompanyCourse && course.leadingCompanyPartnerInstitution) {
+          if (!isPartner) {
+            // 훈련기관은 학생 수 0
+            studentCount = 0;
+            completedCount = 0;
+          }
+        }
+        
+        stats.prevYearStudents += studentCount;
+        stats.prevYearCompletedStudents += completedCount;
       }
       stats.courses.push(course);
     };
 
     // 훈련기관 통계 업데이트
-    updateStats(institutionName, false);
+    updateStats(originalInstitutionName, false);
     // 파트너 기관이 있으면 파트너 기관 통계도 업데이트
-    if (partnerInstitutionName && partnerInstitutionName !== institutionName) {
+    if (partnerInstitutionName && partnerInstitutionName !== originalInstitutionName) {
       updateStats(partnerInstitutionName, true);
     }
   });
 
-  const result: InstitutionStat[] = Array.from(institutionMap.entries()).map(([name, stats]) => {
-    const {
-      totalRevenue, totalCourses, totalStudents, completedStudents,
-      satisfactionSum, satisfactionCoursesCount, courses
-    } = stats;
+  // 2단계: 원본 기관별 통계를 InstitutionStat 형태로 변환
+  const originalStats: InstitutionStat[] = Array.from(originalInstitutionMap.entries()).map(([name, stats]) => {
+    const completionRate = stats.totalStudents > 0 ? (stats.completedStudents / stats.totalStudents) * 100 : 0;
+    const avgSatisfaction = stats.satisfactionCoursesCount > 0 ? stats.satisfactionSum / stats.satisfactionCoursesCount : 0;
     
-    // 매출 또는 학생 수가 있는 경우에만 통계에 포함
-    if (totalRevenue > 0 || totalStudents > 0) {
-      // 수료율 계산: 수료인원이 0이거나 수강신청 인원이 0인 과정은 제외
-      let validCompletedStudents = 0;
-      let validTotalStudents = 0;
-      courses.forEach(course => {
-        if ((course.수료인원 ?? 0) > 0 && (course['수강신청 인원'] ?? 0) > 0) {
-          validCompletedStudents += course.수료인원;
-          validTotalStudents += course['수강신청 인원'];
-        }
+    return {
+      institutionName: name,
+      totalRevenue: stats.totalRevenue,
+      totalCourses: stats.totalCourses,
+      totalStudents: stats.totalStudents,
+      completedStudents: stats.completedStudents,
+      completionRate,
+      avgSatisfaction,
+      courses: stats.courses,
+      prevYearStudents: stats.prevYearStudents,
+      prevYearCompletedStudents: stats.prevYearCompletedStudents
+    };
+  });
+
+  // 3단계: 그룹핑 적용
+  const groupedStats = new Map<string, {
+    totalRevenue: number;
+    totalCourses: number;
+    totalStudents: number;
+    completedStudents: number;
+    satisfactionSum: number;
+    satisfactionCoursesCount: number;
+    courses: CourseData[];
+    prevYearStudents: number;
+    prevYearCompletedStudents: number;
+  }>();
+
+  originalStats.forEach(stat => {
+    // 각 과정에 대해 그룹핑된 기관명 결정
+    const groupName = groupInstitutionsAdvanced(stat.courses[0] || { 훈련기관: stat.institutionName } as CourseData);
+    const displayName = groupName || stat.institutionName;
+
+    if (!groupedStats.has(displayName)) {
+      groupedStats.set(displayName, {
+        totalRevenue: 0,
+        totalCourses: 0,
+        totalStudents: 0,
+        completedStudents: 0,
+        satisfactionSum: 0,
+        satisfactionCoursesCount: 0,
+        courses: [],
+        prevYearStudents: 0,
+        prevYearCompletedStudents: 0
       });
-      const completionRate = validTotalStudents > 0 ? (validCompletedStudents / validTotalStudents) * 100 : 0;
-      return {
-        institutionName: name,
-        totalRevenue,
-        totalCourses,
-        totalStudents,
-        completedStudents,
-        completionRate,
-        avgSatisfaction: satisfactionCoursesCount > 0 ? satisfactionSum / satisfactionCoursesCount : 0,
-        courses,
-      };
     }
-    return null;
-  }).filter((stat): stat is InstitutionStat => stat !== null);
+
+    const groupStat = groupedStats.get(displayName)!;
+    groupStat.totalRevenue += stat.totalRevenue;
+    groupStat.totalCourses += stat.totalCourses;
+    groupStat.totalStudents += stat.totalStudents;
+    groupStat.completedStudents += stat.completedStudents;
+    // 만족도는 가중 평균으로 계산
+    groupStat.satisfactionSum += stat.avgSatisfaction * stat.totalCourses;
+    groupStat.satisfactionCoursesCount += stat.totalCourses;
+    groupStat.courses.push(...stat.courses);
+    groupStat.prevYearStudents += stat.prevYearStudents;
+    groupStat.prevYearCompletedStudents += stat.prevYearCompletedStudents;
+  });
+
+  // 4단계: 최종 결과 생성
+  const result: InstitutionStat[] = Array.from(groupedStats.entries()).map(([name, stats]) => {
+    const completionRate = stats.totalStudents > 0 ? (stats.completedStudents / stats.totalStudents) * 100 : 0;
+    const avgSatisfaction = stats.satisfactionCoursesCount > 0 ? stats.satisfactionSum / stats.satisfactionCoursesCount : 0;
+    
+    return {
+      institutionName: name,
+      totalRevenue: stats.totalRevenue,
+      totalCourses: stats.totalCourses,
+      totalStudents: stats.totalStudents,
+      completedStudents: stats.completedStudents,
+      completionRate,
+      avgSatisfaction,
+      courses: stats.courses,
+      prevYearStudents: stats.prevYearStudents,
+      prevYearCompletedStudents: stats.prevYearCompletedStudents
+    };
+  });
 
   return result.sort((a, b) => b.totalRevenue - a.totalRevenue);
 };
@@ -810,8 +918,12 @@ export const aggregateCoursesByCourseNameForInstitution = (
     }
   });
 
-  courses.forEach(course => {
-    // Determine revenue and student share for this institution
+  // === year가 지정된 경우 해당 연도 시작 과정만 합산 ===
+  const filteredCourses = year !== undefined
+    ? courses.filter(c => new Date(c.과정시작일).getFullYear() === year)
+    : courses;
+
+  filteredCourses.forEach(course => {
     let revenueShare = 1;
     let studentShare = 1;
     if (course.isLeadingCompanyCourse && course.leadingCompanyPartnerInstitution) {
@@ -877,7 +989,7 @@ export const aggregateCoursesByCourseNameForInstitution = (
       internal._satWeight += 1;
     }
 
-    // 기존 로직 유지
+    // === year가 지정된 경우 해당 연도 시작 과정만 집계 ===
     agg.총수강신청인원 += course['수강신청 인원'];
     agg.총수료인원 += course['수료인원'];
     const revenueForSum =
@@ -905,52 +1017,117 @@ export const aggregateCoursesByCourseNameForInstitution = (
     }
   });
 
-  // NOTE: _satSum / _satWeight 내부 키는 반환 이전에 굳이 제거할 필요가 없지만, 타입 안전을 위해 삭제.
-  // map.forEach(agg => { delete (agg as any)._satSum; delete (agg as any)._satWeight; });
-
   return Array.from(map.values()).sort((a, b) => b.총누적매출 - a.총누적매출);
 };
 
 // NCS별 통계 계산
 export const calculateNcsStats = (data: CourseData[], year?: number): NcsStat[] => {
-  // 연도 필터
-  const filtered = year
-    ? data.filter(c => new Date(c.과정시작일).getFullYear() === year)
-    : data;
+  const map = new Map<string, {
+    totalRevenue: number;
+    totalCourses: number;
+    totalStudents: number;
+    completedStudents: number;
+    satisfactionSum: number;
+    satisfactionCoursesCount: number;
+    courses: CourseData[];
+    prevYearStudents: number;
+    prevYearCompletedStudents: number;
+  }>();
 
-  const map = new Map<string, NcsStat>();
-
-  filtered.forEach(course => {
+  data.forEach(course => {
     const key = course.NCS명 || '기타';
     if (!map.has(key)) {
       map.set(key, {
-        ncsName: key,
         totalRevenue: 0,
         totalCourses: 0,
         totalStudents: 0,
         completedStudents: 0,
-        completionRate: 0,
-        avgSatisfaction: 0,
+        satisfactionSum: 0,
+        satisfactionCoursesCount: 0,
         courses: [],
+        prevYearStudents: 0,
+        prevYearCompletedStudents: 0
       });
     }
     const stat = map.get(key)!;
-    stat.totalRevenue += course.조정_누적매출 ?? course.누적매출 ?? 0;
-    stat.totalCourses += 1;
-    stat.totalStudents += course['수강신청 인원'] ?? 0;
-    stat.completedStudents += course['수료인원'] ?? 0;
+
+    // 매출 계산
+    let revenue = 0;
+    if (year !== undefined) {
+      const yearKey = `조정_${year}년` as keyof CourseData;
+      revenue = (course[yearKey] as number | undefined) ?? 0;
+    } else {
+      revenue = course.조정_누적매출 ?? course.누적매출 ?? 0;
+    }
+    stat.totalRevenue += revenue;
+
+    // === 통계는 '과정 시작 연도' 기준으로만 합산 ===
+    const courseStartYear = new Date(course.과정시작일).getFullYear();
+    const courseEndYear = new Date(course.과정종료일).getFullYear();
+    
+    if (year === undefined || courseStartYear === year) {
+      stat.totalStudents += course['수강신청 인원'] ?? 0;
+      stat.completedStudents += course['수료인원'] ?? 0;
+      if ((course.만족도 ?? 0) > 0) {
+        stat.satisfactionSum += course.만족도 ?? 0;
+        stat.satisfactionCoursesCount += 1;
+      }
+      stat.totalCourses += 1;
+    } else if (year !== undefined && courseStartYear < year && courseEndYear === year) {
+      // 이전 연도에 시작해서 해당 연도에 종료된 과정
+      stat.prevYearStudents += course['수강신청 인원'] ?? 0;
+      stat.prevYearCompletedStudents += course['수료인원'] ?? 0;
+    }
     stat.courses.push(course);
-    // 누적 평균 만족도
-    const idx = stat.courses.length;
-    stat.avgSatisfaction = ((stat.avgSatisfaction * (idx - 1)) + (course.만족도 || 0)) / idx;
   });
 
-  // completion rate 계산
-  map.forEach(stat => {
-    stat.completionRate = stat.totalStudents > 0 ? (stat.completedStudents / stat.totalStudents) * 100 : 0;
+  const result: NcsStat[] = Array.from(map.entries()).map(([name, stats]) => {
+    const {
+      totalRevenue, totalCourses, totalStudents, completedStudents,
+      satisfactionSum, satisfactionCoursesCount, courses,
+      prevYearStudents, prevYearCompletedStudents
+    } = stats;
+
+    // === 수료율 계산: 해당 연도 시작 과정 + 이전 연도 시작하여 해당 연도 종료된 과정 ===
+    let validCompletedStudents = 0;
+    let validTotalStudents = 0;
+    if (year !== undefined) {
+      courses.forEach(course => {
+        const courseStartYear = new Date(course.과정시작일).getFullYear();
+        const courseEndYear = new Date(course.과정종료일).getFullYear();
+        
+        // 해당 연도에 시작한 과정이거나 이전 연도에 시작해서 해당 연도에 종료된 과정
+        if ((courseStartYear === year || (courseStartYear < year && courseEndYear === year)) &&
+            (course.수료인원 ?? 0) > 0 && (course['수강신청 인원'] ?? 0) > 0) {
+          validCompletedStudents += course.수료인원;
+          validTotalStudents += course['수강신청 인원'];
+        }
+      });
+    } else {
+      courses.forEach(course => {
+        if ((course.수료인원 ?? 0) > 0 && (course['수강신청 인원'] ?? 0) > 0) {
+          validCompletedStudents += course.수료인원;
+          validTotalStudents += course['수강신청 인원'];
+        }
+      });
+    }
+    const completionRate = validTotalStudents > 0 ? (validCompletedStudents / validTotalStudents) * 100 : 0;
+
+    return {
+      ncsName: name,
+      totalRevenue,
+      totalCourses,
+      totalStudents,
+      completedStudents,
+      completionRate,
+      avgSatisfaction: satisfactionCoursesCount > 0 ? satisfactionSum / satisfactionCoursesCount : 0,
+      courses,
+      prevYearStudents,
+      prevYearCompletedStudents
+    };
   });
 
-  return Array.from(map.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
+  return result.sort((a, b) => b.totalRevenue - a.totalRevenue);
 };
 
 // NCS별 상세 모달용 Aggregator (과정명 기준)
@@ -1380,6 +1557,15 @@ function groupInstitutionsAdvanced(course: CourseData): string {
     .trim()
     .toUpperCase();
 
+  // 디버깅: 솔데스크 관련 기관명 로그
+  if (course.훈련기관.includes('솔데스크')) {
+    console.log('[그룹화 디버깅]', {
+      원본기관명: course.훈련기관,
+      전처리후: cleanName,
+      과정명: course.과정명
+    });
+  }
+
   // 2. 핵심 키워드 기반 그룹핑
   const institutionGroups: { [key: string]: string[] } = {
     '이젠아카데미': ['이젠', '이젠컴퓨터학원', '이젠아이티아카데미'],
@@ -1390,18 +1576,27 @@ function groupInstitutionsAdvanced(course: CourseData): string {
     '하이미디어': ['하이미디어', '하이미디어아카데미', '하이미디어컴퓨터학원'],
     '아이티윌': ['아이티윌', 'IT WILL', '아이티윌부산교육센터'],
     '메가스터디': ['메가스터디'],
-    '에이콘아카데미': ['에이콘'],
+    '에이콘아카데미': ['에이콘', '에이콘아카데미', '에이콘아카데미(강남)'],
     '한국ICT인재개발원': ['ICT'],
     'MBC아카데미 컴퓨터 교육센터': ['MBC아카데미', '(MBC)'],
     '쌍용아카데미': ['쌍용'],
     'KH정보교육원': ['KH'],
-    '이스트소프트': ['이스트소프트', '(주)이스트소프트']
+    '(주)솔데스크': ['솔데스크강남학원', '(주)솔데스크', '솔데스크']
   };
 
   // 그룹 매칭
   for (const [groupName, keywords] of Object.entries(institutionGroups)) {
     for (const keyword of keywords) {
       if (cleanName.includes(keyword.toUpperCase())) {
+        // 디버깅: 매칭된 그룹 로그
+        if (groupName === '(주)솔데스크') {
+          console.log('[그룹화 매칭]', {
+            원본기관명: course.훈련기관,
+            전처리후: cleanName,
+            매칭키워드: keyword,
+            그룹명: groupName
+          });
+        }
         return groupName;
       }
     }
@@ -1438,9 +1633,13 @@ export function aggregateCoursesByCourseIdWithLatestInfo(courses: CourseData[], 
       // 선도기업형 훈련의 매출 분배 적용
       let revenueShare = 1;
       if (c.isLeadingCompanyCourse && c.leadingCompanyPartnerInstitution && institutionName) {
-        if (institutionName === c.leadingCompanyPartnerInstitution) {
+        const originalInstitutionName = c.원본훈련기관 || c.훈련기관;
+        const isTrainingInstitution = originalInstitutionName === institutionName;
+        const isPartnerInstitution = c.leadingCompanyPartnerInstitution === institutionName;
+        
+        if (isPartnerInstitution) {
           revenueShare = 0.9; // 파트너기관 90%
-        } else if (institutionName === c.훈련기관) {
+        } else if (isTrainingInstitution) {
           revenueShare = 0.1; // 훈련기관 10%
         } else {
           revenueShare = 0; // 해당 기관과 관련 없는 경우
@@ -1667,98 +1866,153 @@ export const getIndividualInstitutionsInGroup = (
   groupName: string,
   year?: number
 ): InstitutionStat[] => {
-  // 그룹화 키워드 정의
-  const institutionGroups: { [key: string]: string[] } = {
-    '이젠아카데미': ['이젠', '이젠컴퓨터학원', '이젠아이티아카데미'],
-    '그린컴퓨터아카데미': ['그린', '그린컴퓨터아카데미', '그린아카데미컴퓨터학원'],
-    '더조은아카데미': ['더조은', '더조은컴퓨터아카데미', '더조은아이티아카데미'],
-    '코리아IT아카데미': ['코리아IT', '코리아아이티', 'KIT', '코리아IT아카데미'],
-    '비트교육센터': ['비트', '비트캠프', '비트교육센터'],
-    '하이미디어': ['하이미디어', '하이미디어아카데미', '하이미디어컴퓨터학원'],
-    '아이티윌': ['아이티윌', 'IT WILL', '아이티윌부산교육센터'],
-    '메가스터디': ['메가스터디'],
-    '에이콘아카데미': ['에이콘'],
-    '한국ICT인재개발원': ['ICT'],
-    'MBC아카데미 컴퓨터 교육센터': ['MBC아카데미', '(MBC)'],
-    '쌍용아카데미': ['쌍용'],
-    'KH정보교육원': ['KH'],
-    '이스트소프트': ['이스트소프트', '(주)이스트소프트']
-  };
+  // 그룹화 기준에 따라 row를 분리
+  const groupedCourses = allCourses.filter(course => groupInstitutionsAdvanced(course) === groupName);
 
-  // 해당 그룹의 키워드 찾기
-  const groupKeywords = institutionGroups[groupName];
-  if (!groupKeywords) {
-    return [];
-  }
+  // 실제 원본 기관명 목록 추출
+  const individualInstitutions = [...new Set(groupedCourses.map(c => c.원본훈련기관 || c.훈련기관))];
 
-  // 원본 데이터에서 해당 그룹에 속하는 개별 기관들 찾기
-  const individualInstitutions = new Set<string>();
-  
-  allCourses.forEach(course => {
-    if (!course.원본훈련기관) return;
-    
-    // 원본 기관명 전처리
-    const cleanName = course.원본훈련기관
-      .replace(/[^가-힣A-Za-z0-9\s()]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .toUpperCase();
-    
-    // 그룹 키워드와 매칭되는지 확인
-    for (const keyword of groupKeywords) {
-      if (cleanName.includes(keyword.toUpperCase())) {
-        individualInstitutions.add(course.원본훈련기관); // 원본 기관명 저장
-        break;
-      }
-    }
-  });
-
-  // 각 개별 기관별로 통계 계산
   const individualStats: InstitutionStat[] = [];
-  
   individualInstitutions.forEach(originalInstitutionName => {
-    // 해당 기관의 과정들 필터링 (원본 기관명으로 필터링)
-    let institutionCourses = allCourses.filter(course => course.원본훈련기관 === originalInstitutionName);
+    // 전체 데이터에서 해당 기관의 매출 계산 (그룹화된 과정들만이 아님)
+    const detailedStats = calculateInstitutionDetailedRevenue(allCourses, originalInstitutionName, year);
     
-    // 연도 필터링 적용
+    if (detailedStats.totalCourses === 0) return;
+    
+    const completionRate = detailedStats.totalStudents > 0 ? (detailedStats.completedStudents / detailedStats.totalStudents) * 100 : 0;
+    const avgSatisfaction = detailedStats.courses.reduce((sum, course) => sum + (course.만족도 ?? 0), 0) / detailedStats.courses.length;
+    
+    // 이전 연도 시작 과정 정보 계산 (전체 데이터에서)
+    let prevYearStudents = 0;
+    let prevYearCompletedStudents = 0;
     if (year !== undefined) {
-      institutionCourses = institutionCourses.filter(course => {
-        const courseYear = new Date(course.과정시작일).getFullYear();
-        return courseYear === year;
+      const prevYearCourses = allCourses.filter(course => {
+        const courseInstitution = course.원본훈련기관 || course.훈련기관;
+        const coursePartner = course.leadingCompanyPartnerInstitution;
+        const isTrainingInstitution = courseInstitution === originalInstitutionName;
+        const isPartnerInstitution = coursePartner === originalInstitutionName;
+        
+        return (isTrainingInstitution || isPartnerInstitution) &&
+               new Date(course.과정시작일).getFullYear() < year &&
+               new Date(course.과정종료일).getFullYear() === year;
+      });
+      
+      prevYearCourses.forEach(course => {
+        let studentCount = course['수강신청 인원'] ?? 0;
+        let completedCount = course.수료인원 ?? 0;
+        
+        // 선도기업 훈련에서는 파트너기관이 학생 수 100% 담당
+        if (course.isLeadingCompanyCourse && course.leadingCompanyPartnerInstitution) {
+          const courseInstitution = course.원본훈련기관 || course.훈련기관;
+          if (courseInstitution === originalInstitutionName) {
+            // 훈련기관은 학생 수 0
+            studentCount = 0;
+            completedCount = 0;
+          }
+        }
+        
+        prevYearStudents += studentCount;
+        prevYearCompletedStudents += completedCount;
       });
     }
-
-    if (institutionCourses.length === 0) return;
-
-    // 통계 계산
-    const totalRevenue = institutionCourses.reduce((sum, course) => {
-      let revenue = 0;
-      if (year !== undefined) {
-        const yearKey = `조정_${year}년` as keyof CourseData;
-        revenue = (course[yearKey] as number | undefined) ?? 0;
-      } else {
-        revenue = course.조정_누적매출 ?? 0;
-      }
-      return sum + revenue;
-    }, 0);
-
-    const totalStudents = institutionCourses.reduce((sum, course) => sum + (course['수강신청 인원'] ?? 0), 0);
-    const completedStudents = institutionCourses.reduce((sum, course) => sum + (course.수료인원 ?? 0), 0);
-    const completionRate = totalStudents > 0 ? (completedStudents / totalStudents) * 100 : 0;
-    const avgSatisfaction = institutionCourses.reduce((sum, course) => sum + (course.만족도 ?? 0), 0) / institutionCourses.length;
-
+    
     individualStats.push({
       institutionName: originalInstitutionName,
-      totalRevenue,
-      totalCourses: institutionCourses.length,
-      totalStudents,
-      completedStudents,
+      totalRevenue: detailedStats.totalRevenue,
+      totalCourses: detailedStats.totalCourses,
+      totalStudents: detailedStats.totalStudents,
+      completedStudents: detailedStats.completedStudents,
       completionRate,
       avgSatisfaction,
-      courses: institutionCourses
+      courses: detailedStats.courses,
+      prevYearStudents,
+      prevYearCompletedStudents
     });
   });
-
   // 매출액 기준 내림차순 정렬
   return individualStats.sort((a, b) => b.totalRevenue - a.totalRevenue);
+};
+
+// 기관별 상세 매출 계산을 위한 통합 함수 (훈련기관/파트너기관 역할 모두 포함)
+export const calculateInstitutionDetailedRevenue = (
+  allCourses: CourseData[],
+  institutionName: string,
+  year?: number
+): {
+  totalRevenue: number;
+  totalCourses: number;
+  totalStudents: number;
+  completedStudents: number;
+  courses: CourseData[];
+} => {
+  let totalRevenue = 0;
+  let totalCourses = 0;
+  let totalStudents = 0;
+  let completedStudents = 0;
+  const courses: CourseData[] = [];
+
+  allCourses.forEach(course => {
+    // 연도 필터링
+    if (year !== undefined) {
+      const courseYear = new Date(course.과정시작일).getFullYear();
+      if (courseYear !== year) return;
+    }
+
+    const courseInstitution = course.원본훈련기관 || course.훈련기관;
+    const coursePartner = course.leadingCompanyPartnerInstitution;
+    
+    // 해당 기관이 훈련기관이거나 파트너기관으로 참여한 과정인지 확인
+    const isTrainingInstitution = courseInstitution === institutionName;
+    const isPartnerInstitution = coursePartner === institutionName;
+    
+    if (!isTrainingInstitution && !isPartnerInstitution) return;
+
+    // 매출 계산
+    let revenue = 0;
+    if (year !== undefined) {
+      const yearKey = `조정_${year}년` as keyof CourseData;
+      revenue = (course[yearKey] as number | undefined) ?? 0;
+    } else {
+      revenue = course.조정_누적매출 ?? 0;
+    }
+
+    // 선도기업 훈련인 경우 매출 분배 적용
+    if (course.isLeadingCompanyCourse && course.leadingCompanyPartnerInstitution) {
+      if (isPartnerInstitution) {
+        // 파트너기관: 90%
+        revenue = revenue * 0.9;
+      } else if (isTrainingInstitution) {
+        // 훈련기관: 10%
+        revenue = revenue * 0.1;
+      }
+    }
+
+    // 학생 수 계산 (선도기업 훈련에서는 파트너기관이 100% 담당)
+    let studentCount = course['수강신청 인원'] ?? 0;
+    let completedCount = course.수료인원 ?? 0;
+    
+    if (course.isLeadingCompanyCourse && course.leadingCompanyPartnerInstitution) {
+      if (isTrainingInstitution) {
+        // 훈련기관은 학생 수 0
+        studentCount = 0;
+        completedCount = 0;
+      }
+      // 파트너기관은 학생 수 100% (기본값)
+    }
+
+    totalRevenue += revenue;
+    totalStudents += studentCount;
+    completedStudents += completedCount;
+    courses.push(course);
+  });
+
+  totalCourses = courses.length;
+
+  return {
+    totalRevenue,
+    totalCourses,
+    totalStudents,
+    completedStudents,
+    courses
+  };
 };
