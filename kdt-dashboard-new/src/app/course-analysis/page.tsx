@@ -66,7 +66,7 @@ function aggregateCoursesByCourseIdWithLatestInfo(courses: CourseData[]) {
 
 function CourseAnalysisContent() {
   const searchParams = useSearchParams();
-  const selectedCourse = searchParams.get('course');
+  const selectedCourse = searchParams ? searchParams.get('course') : null;
 
   const [courseData, setCourseData] = useState<CourseData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,6 +74,8 @@ function CourseAnalysisContent() {
   const [courseStats, setCourseStats] = useState<Record<string, CourseStats>>({});
   const [expandedCourses, setExpandedCourses] = useState<Set<string>>(new Set());
   const [filterType, setFilterType] = useState<'all' | 'leading' | 'tech'>('all');
+  // 훈련기관 검색 상태 추가
+  const [institutionSearch, setInstitutionSearch] = useState('');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -140,8 +142,22 @@ function CourseAnalysisContent() {
     return courseData;
   };
 
-  // 집계 결과 생성
-  const aggregatedCourses = aggregateCoursesByCourseIdWithLatestInfo(getFilteredCourseData());
+  // 훈련기관명 기준으로 필터링 (선도기업 과정은 파트너기관 기준)
+  const getInstitutionFilteredCourses = (courses: CourseData[]) => {
+    if (!institutionSearch.trim()) return courses;
+    const search = institutionSearch.trim().toLowerCase();
+    return courses.filter((c) => {
+      // 선도기업 과정이면 파트너기관 기준, 아니면 훈련기관 기준
+      if (c.isLeadingCompanyCourse && c.leadingCompanyPartnerInstitution) {
+        return c.leadingCompanyPartnerInstitution.toLowerCase().includes(search);
+      } else {
+        return (c.훈련기관 || '').toLowerCase().includes(search);
+      }
+    });
+  };
+
+  // 집계 결과 생성 (검색 필터 반영)
+  const aggregatedCourses = aggregateCoursesByCourseIdWithLatestInfo(getInstitutionFilteredCourses(getFilteredCourseData()));
 
   // 안전한 링크 열기 (http/https 미포함 시 https 추가)
   const openLinkSafe = (url?: string) => {
@@ -187,6 +203,14 @@ function CourseAnalysisContent() {
             <SelectItem value="tech">신기술 과정만</SelectItem>
           </SelectContent>
         </Select>
+        {/* 훈련기관 검색 UI */}
+        <input
+          type="text"
+          value={institutionSearch}
+          onChange={e => setInstitutionSearch(e.target.value)}
+          placeholder="훈련기관명 검색 (선도기업 과정은 파트너기관 기준)"
+          className="ml-4 px-3 py-2 border rounded w-64"
+        />
       </div>
       <div className="grid gap-6">
         {aggregatedCourses.length === 0 ? (
@@ -274,7 +298,18 @@ function CourseAnalysisContent() {
                           {agg.allCourseDetails.map((detail: CourseData, detailIdx: number) => (
                             <TableRow key={detailIdx}>
                               <TableCell>{detail.회차}</TableCell>
-                              <TableCell>{detail.훈련기관}</TableCell>
+                              <TableCell>
+                                {detail.isLeadingCompanyCourse && detail.leadingCompanyPartnerInstitution ? (
+                                  <span>
+                                    {detail.leadingCompanyPartnerInstitution}
+                                    {detail.훈련기관 && (
+                                      <span> (<span style={{ whiteSpace: 'pre' }}>{detail.훈련기관}</span>)</span>
+                                    )}
+                                  </span>
+                                ) : (
+                                  detail.훈련기관
+                                )}
+                              </TableCell>
                               <TableCell>{new Date(detail.과정시작일).toLocaleDateString()}</TableCell>
                               <TableCell>{new Date(detail.과정종료일).toLocaleDateString()}</TableCell>
                               <TableCell>{detail.정원}명</TableCell>
