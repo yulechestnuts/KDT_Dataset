@@ -1,4 +1,4 @@
-const GITHUB_URL = 'https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202505.csv?raw=true';
+const GITHUB_URL = 'https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202506.csv?raw=true';
 
 export async function loadDataFromGithub() {
   try {
