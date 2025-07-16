@@ -4,7 +4,7 @@ import path from 'path';
 
 export async function GET() {
   try {
-    const filePath = path.join(process.cwd(), '..', 'result_kdtdata_202505.csv');
+    const filePath = path.join(process.cwd(), '..', 'result_kdtdata_202506.csv');
     const fileContent = fs.readFileSync(filePath, 'utf-8');
     
     return new NextResponse(fileContent, {
