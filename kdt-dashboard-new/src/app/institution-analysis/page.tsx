@@ -448,6 +448,20 @@ export default function InstitutionAnalysis() {
                 const modalTotalRevenue = selectedInstitutionCourses.reduce((sum, course) => sum + course.총누적매출, 0);
 
                 // === 연도별 훈련생/수료인원/수료율 계산 명확화 ===
+                // 예시:
+                // const yearNum = selectedYear === 'all' ? undefined : selectedYear;
+                // const onlyThisYear = selectedInstitutionRawCourses.filter(c => new Date(c.과정시작일).getFullYear() === yearNum);
+                // const totalStudents = onlyThisYear.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
+                // const totalGraduates = onlyThisYear.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+                // const completionRate = totalStudents > 0 ? (totalGraduates / totalStudents) * 100 : 0;
+                // const prevYear = yearNum - 1;
+                // const prevYearCourses = selectedInstitutionRawCourses.filter(c => new Date(c.과정시작일).getFullYear() === prevYear && new Date(c.과정종료일).getFullYear() === yearNum);
+                // const prevYearStudents = prevYearCourses.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
+                // const prevYearGraduates = prevYearCourses.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+                // const displayStudents = `${totalStudents}${prevYearStudents ? `(${prevYearStudents})` : ''}`;
+                // const displayGraduates = `${totalGraduates}${prevYearGraduates ? `(${prevYearGraduates})` : ''}`;
+
+                // 연도 정보
                 const yearNum = selectedYear === 'all' ? undefined : selectedYear;
 
                 // 운영 중인 과정: 해당 연도에 한 번이라도 운영된 과정
@@ -468,10 +482,49 @@ export default function InstitutionAnalysis() {
                 });
                 const openedCourseCount = openedCourses.length;
 
-                // === 표와 동일하게 집계 ===
-                const totalStudents = selectedInstitutionCourses.reduce((sum, c) => sum + (c.총수강신청인원 ?? 0), 0);
-                const totalGraduates = selectedInstitutionCourses.reduce((sum, c) => sum + (c.총수료인원 ?? 0), 0);
-                // 괄호 표기(이전 연도 인원)는 일단 생략
+                // 상단 요약 카드: 해당 연도 개강 과정(숫자 부분)만 합산, 괄호(이전 연도 인원)는 표기만
+                let totalStudents = 0;
+                let totalGraduates = 0;
+                let totalOpenedCourses = 0;
+                let otherYearStudents: {[year: number]: number} = {};
+                let otherYearGraduates: {[year: number]: number} = {};
+                let otherYearOpenedCourses: {[year: number]: number} = {};
+                if (yearNum) {
+                  // 해당 연도 개강 과정만 합산
+                  totalStudents = selectedInstitutionRawCourses
+                    .filter(c => new Date(c.과정시작일).getFullYear() === yearNum)
+                    .reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
+                  totalGraduates = selectedInstitutionRawCourses
+                    .filter(c => new Date(c.과정시작일).getFullYear() === yearNum)
+                    .reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+                  totalOpenedCourses = selectedInstitutionRawCourses
+                    .filter(c => new Date(c.과정시작일).getFullYear() === yearNum).length;
+                  // 괄호 표기용: 이전 연도 개강+해당 연도 종료
+                  selectedInstitutionRawCourses.forEach(c => {
+                    const startYear = new Date(c.과정시작일).getFullYear();
+                    const endYear = new Date(c.과정종료일).getFullYear();
+                    if (startYear !== yearNum && endYear === yearNum) {
+                      otherYearStudents[startYear] = (otherYearStudents[startYear] || 0) + (c['수강신청 인원'] ?? 0);
+                      otherYearGraduates[startYear] = (otherYearGraduates[startYear] || 0) + (c['수료인원'] ?? 0);
+                      otherYearOpenedCourses[startYear] = (otherYearOpenedCourses[startYear] || 0) + 1;
+                    }
+                  });
+                } else {
+                  // 전체 연도: 모든 과정 합산
+                  totalStudents = selectedInstitutionRawCourses.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
+                  totalGraduates = selectedInstitutionRawCourses.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+                  totalOpenedCourses = selectedInstitutionRawCourses.length;
+                }
+                // 괄호 표기용 문자열 생성
+                const otherYearStudentsStr = Object.entries(otherYearStudents).length > 0
+                  ? ' (' + Object.entries(otherYearStudents).map(([y, n]) => `${y}년: ${n}명`).join(', ') + ')'
+                  : '';
+                const otherYearGraduatesStr = Object.entries(otherYearGraduates).length > 0
+                  ? ' (' + Object.entries(otherYearGraduates).map(([y, n]) => `${y}년: ${n}명`).join(', ') + ')'
+                  : '';
+                const otherYearOpenedCoursesStr = Object.entries(otherYearOpenedCourses).length > 0
+                  ? ' (' + Object.entries(otherYearOpenedCourses).map(([y, n]) => `${y}년: ${n}개`).join(', ') + ')'
+                  : '';
 
                 return (
                   <>
@@ -481,15 +534,15 @@ export default function InstitutionAnalysis() {
                     </div>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <div className="text-sm text-gray-500">{yearNum ? `${yearNum}년 개강 과정 수` : '개강 과정 수'}</div>
-                      <div className="text-lg font-semibold">{openedCourseCount}</div>
+                      <div className="text-lg font-semibold">{totalOpenedCourses}{otherYearOpenedCoursesStr}</div>
                     </div>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <div className="text-sm text-gray-500">훈련생 수</div>
-                      <div className="text-lg font-semibold">{totalStudents}</div>
+                      <div className="text-lg font-semibold">{totalStudents}{otherYearStudentsStr}</div>
                     </div>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <div className="text-sm text-gray-500">수료인원</div>
-                      <div className="text-lg font-semibold">{totalGraduates}</div>
+                      <div className="text-lg font-semibold">{totalGraduates}{otherYearGraduatesStr}</div>
                     </div>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <div className="text-sm text-gray-500">매출액</div>
