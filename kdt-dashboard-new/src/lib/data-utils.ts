@@ -1929,8 +1929,9 @@ export const calculateInstitutionDetailedRevenue = (
   allCourses.forEach(course => {
     // 연도 필터링
     if (year !== undefined) {
-      const courseYear = new Date(course.과정시작일).getFullYear();
-      if (courseYear !== year) return;
+      const startYear = new Date(course.과정시작일).getFullYear();
+      const endYear = new Date(course.과정종료일).getFullYear();
+      if (endYear < year || startYear > year) return; // 연도 필터링 수정: 해당 연도에 운영(시작 또는 종료)된 과정만 포함
     }
 
     const courseInstitution = course.원본훈련기관 || course.훈련기관;

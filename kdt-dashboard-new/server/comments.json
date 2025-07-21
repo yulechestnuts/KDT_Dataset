@@ -20,5 +20,18 @@
     "password": "pw5678",
     "content": "대댓글도 잘 됩니다!",
     "date": "2025. 7. 4. 오전 9:10:00"
+  },
+  {
+    "id": "cmt-1753074121883",
+    "postId": "9bb9f381-9995-453a-b90f-df93c43527dd",
+    "parentId": null,
+    "writer": "오유현",
+    "password": "alcam5704*",
+    "content": "수정완료!!!!!!!!!",
+    "date": "2025. 7. 21. 오후 2:02:01",
+    "fileUrl": "",
+    "fileName": "",
+    "fileType": "",
+    "fileSize": 0
   }
-] 
+]
