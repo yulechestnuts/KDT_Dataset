@@ -1500,22 +1500,22 @@ export function aggregateCoursesByCourseIdWithLatestInfo(courses: CourseData[], 
       let revenueShare = 1;
       if (c.isLeadingCompanyCourse && c.leadingCompanyPartnerInstitution && institutionName) {
         const originalInstitutionName = c.원본훈련기관 || c.훈련기관;
-        const isTrainingInstitution = originalInstitutionName === institutionName;
-        const isPartnerInstitution = c.leadingCompanyPartnerInstitution === institutionName;
-        
-        // 그룹명 기준으로도 매칭 시도
-        const isTrainingInstitutionInGroup = groupInstitutionsAdvanced({ ...c, 훈련기관: originalInstitutionName }) === institutionName;
-        const isPartnerInstitutionInGroup = groupInstitutionsAdvanced({ ...c, 훈련기관: c.leadingCompanyPartnerInstitution }) === institutionName;
-        
-
-        
-        if (isPartnerInstitution || isPartnerInstitutionInGroup) {
-          revenueShare = 0.9; // 파트너기관 90%
-          revenueShare = 0.9; // 파트너기관 90%
-        } else if (isTrainingInstitution || isTrainingInstitutionInGroup) {
-          revenueShare = 0.1; // 훈련기관 10%
+        // 동일 기관 예외 처리
+        if (originalInstitutionName === c.leadingCompanyPartnerInstitution && institutionName === originalInstitutionName) {
+          revenueShare = 1.0;
         } else {
-          revenueShare = 0; // 해당 기관과 관련 없는 경우
+          const isTrainingInstitution = originalInstitutionName === institutionName;
+          const isPartnerInstitution = c.leadingCompanyPartnerInstitution === institutionName;
+          // 그룹명 기준으로도 매칭 시도
+          const isTrainingInstitutionInGroup = groupInstitutionsAdvanced({ ...c, 훈련기관: originalInstitutionName }) === institutionName;
+          const isPartnerInstitutionInGroup = groupInstitutionsAdvanced({ ...c, 훈련기관: c.leadingCompanyPartnerInstitution }) === institutionName;
+          if (isPartnerInstitution || isPartnerInstitutionInGroup) {
+            revenueShare = 0.9;
+          } else if (isTrainingInstitution || isTrainingInstitutionInGroup) {
+            revenueShare = 0.1;
+          } else {
+            revenueShare = 0;
+          }
         }
       }
       
@@ -1957,7 +1957,10 @@ export const calculateInstitutionDetailedRevenue = (
 
     // 선도기업 훈련인 경우 매출 분배 적용
     if (course.isLeadingCompanyCourse && course.leadingCompanyPartnerInstitution) {
-      if (isPartnerInstitution) {
+      if (courseInstitution === course.leadingCompanyPartnerInstitution && isTrainingInstitution && isPartnerInstitution) {
+        // 동일 기관: 100% 집계
+        // 아무런 분배 없이 그대로 둠 (revenue = revenue * 1)
+      } else if (isPartnerInstitution) {
         // 파트너기관: 90%
         revenue = revenue * 0.9;
       } else if (isTrainingInstitution) {
@@ -1969,9 +1972,10 @@ export const calculateInstitutionDetailedRevenue = (
     // 학생 수 계산 (선도기업 훈련에서는 파트너기관이 100% 담당)
     let studentCount = course['수강신청 인원'] ?? 0;
     let completedCount = course.수료인원 ?? 0;
-    
     if (course.isLeadingCompanyCourse && course.leadingCompanyPartnerInstitution) {
-      if (isTrainingInstitution) {
+      if (courseInstitution === course.leadingCompanyPartnerInstitution && isTrainingInstitution && isPartnerInstitution) {
+        // 동일 기관: 100% 집계 (변경 없음)
+      } else if (isTrainingInstitution) {
         // 훈련기관은 학생 수 0
         studentCount = 0;
         completedCount = 0;
