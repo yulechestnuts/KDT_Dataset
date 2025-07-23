@@ -72,10 +72,12 @@ function getInstitutionYearlyStats({
     // === 수료율 계산 방식 변경 ===
     // 1. 해당 연도에 종료된 과정만 필터링
     const endedThisYear = filtered.filter(c => new Date(c.과정종료일).getFullYear() === year);
-    // 2. 분모: 해당 연도에 종료된 과정의 입과생
-    const entryForEndedThisYear = endedThisYear.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
-    // 3. 분자: 해당 연도에 종료된 과정의 수료인원
-    const graduatedThisYear = endedThisYear.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+    // 1-1. 수료인원이 1명 이상인 과정만 필터링
+    const endedThisYearWithGraduates = endedThisYear.filter(c => (c['수료인원'] ?? 0) > 0);
+    // 2. 분모: 해당 연도에 종료된 과정(수료인원 1명 이상)의 입과생
+    const entryForEndedThisYear = endedThisYearWithGraduates.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
+    // 3. 분자: 해당 연도에 종료된 과정(수료인원 1명 이상)의 수료인원
+    const graduatedThisYear = endedThisYearWithGraduates.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
     // 4. 수료율
     const completionRate = entryForEndedThisYear > 0 ? (graduatedThisYear / entryForEndedThisYear) * 100 : 0;
     const completionRateStr = `${completionRate.toFixed(1)}% (${graduatedThisYear}/${entryForEndedThisYear})`;
