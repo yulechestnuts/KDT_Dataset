@@ -35,11 +35,13 @@ export interface AggregatedCourseDataWithOpenCount extends AggregatedCourseData 
 function getInstitutionYearlyStats({
   rows,
   institutionName,
-  year
+  year,
+  month // 월 파라미터 추가
 }: {
   rows: CourseData[];
   institutionName: string;
   year: number | undefined;
+  month: number | 'all'; // 월 타입 추가
 }) {
   const filtered = rows.filter(c => {
     const isLeadingWithPartner = c.isLeadingCompanyCourse && c.leadingCompanyPartnerInstitution;
@@ -50,18 +52,74 @@ function getInstitutionYearlyStats({
     ) return false;
     return c.훈련기관 === institutionName || c.파트너기관 === institutionName;
   });
-  if (year === undefined) {
-    const totalStudents = filtered.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
-    const totalGraduates = filtered.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
-    const totalCourses = filtered.length;
-    const validRows = filtered.filter(c => (c['수강신청 인원'] ?? 0) > 0 && (c['수료인원'] ?? 0) > 0);
+
+  let finalFilteredRows = filtered;
+
+  // 연도와 월이 모두 선택된 경우 해당 연도/월에 시작된 과정만 필터링
+  if (year !== undefined && month !== 'all') {
+    finalFilteredRows = filtered.filter(c => {
+      const startDate = new Date(c.과정시작일);
+      return startDate.getFullYear() === year && (startDate.getMonth() + 1) === month;
+    });
+  } else if (year !== undefined) {
+    // 연도만 선택된 경우 해당 연도에 시작된 과정과 이전 연도에 시작하여 해당 연도에 종료된 과정 포함
+    finalFilteredRows = filtered.filter(c => {
+      const startDate = new Date(c.과정시작일);
+      const endDate = new Date(c.과정종료일);
+      return startDate.getFullYear() === year || (startDate.getFullYear() < year && endDate.getFullYear() === year);
+    });
+  }
+  // year가 undefined (전체 기간)인 경우, finalFilteredRows는 초기 filtered와 동일
+
+  // 전체 연도 + 전체 월일 때는 전체 합계만 표기 (x(y) 표기 대신)
+  if (year === undefined && month === 'all') {
+    const totalStudents = finalFilteredRows.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
+    const totalGraduates = finalFilteredRows.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+    const totalCourses = finalFilteredRows.length;
+    const uniqueCourseNames = new Set(finalFilteredRows.map(c => c.과정명));
+    const validRows = finalFilteredRows.filter(c => (c['수강신청 인원'] ?? 0) > 0 && (c['수료인원'] ?? 0) > 0);
     const validStudents = validRows.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
     const validGraduates = validRows.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
     const completionRate = validStudents > 0 ? (validGraduates / validStudents) * 100 : 0;
+    // 평균 만족도 계산
+    const validSatisfaction = validRows.filter(c => c.만족도 && c.만족도 > 0);
+    const totalWeighted = validSatisfaction.reduce((sum, c) => sum + (c.만족도 ?? 0) * (c['수료인원'] ?? 0), 0);
+    const totalWeight = validSatisfaction.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+    const avgSatisfaction = totalWeight > 0 ? totalWeighted / totalWeight : 0;
+    return {
+      studentStr: formatNumber(totalStudents),
+      graduateStr: formatNumber(totalGraduates),
+      openCountStr: formatNumber(totalCourses),
+      operatedCourseCount: uniqueCourseNames.size,
+      openedCourseCount: formatNumber(totalCourses),
+      completionRate: completionRate === 0 ? '-' : `${completionRate.toFixed(1)}%`,
+      avgSatisfaction,
+      x: totalStudents,
+      y: 0,
+      xg: totalGraduates,
+      yg: 0,
+      xc: totalCourses,
+      yc: 0
+    };
+  }
+
+  const totalStudents = finalFilteredRows.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
+  const totalGraduates = finalFilteredRows.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+  const totalCourses = finalFilteredRows.length;
+  const uniqueCourseNames = new Set(finalFilteredRows.map(c => c.과정명));
+  const validRows = finalFilteredRows.filter(c => (c['수강신청 인원'] ?? 0) > 0 && (c['수료인원'] ?? 0) > 0);
+  const validStudents = validRows.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
+  const validGraduates = validRows.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+  const completionRate = validStudents > 0 ? (validGraduates / validStudents) * 100 : 0;
+
+  // x(y) 표기법을 따르지 않는 경우 (연도+월 선택 시)
+  if (year !== undefined && month !== 'all') {
     return {
       studentStr: `${formatNumber(totalStudents)}`,
       graduateStr: `${formatNumber(totalGraduates)}`,
       openCountStr: `${totalCourses}`,
+      operatedCourseCount: uniqueCourseNames.size,
+      openedCourseCount: `${totalCourses}`,
       completionRate: completionRate === 0 ? '-' : `${completionRate.toFixed(1)}%`,
       x: totalStudents,
       y: 0,
@@ -71,6 +129,8 @@ function getInstitutionYearlyStats({
       yc: 0
     };
   }
+
+  // 기존 x(y) 표기법 로직 (연도만 선택되거나 전체 기간일 때)
   const startRows = filtered.filter(c => new Date(c.과정시작일).getFullYear() === year);
   const endRows = filtered.filter(c => new Date(c.과정시작일).getFullYear() !== year && new Date(c.과정종료일).getFullYear() === year);
   const startSum = startRows.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
@@ -79,23 +139,34 @@ function getInstitutionYearlyStats({
   const gradEndSum = endRows.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
   const openStartSum = startRows.length;
   const openEndSum = endRows.length;
-  // 표기 (x<br/>(y) 형태)
+
   const studentStr = startSum > 0 && endSum > 0 ? `${formatNumber(startSum)}<br/>(${formatNumber(endSum)})` : startSum > 0 ? `${formatNumber(startSum)}` : endSum > 0 ? `(${formatNumber(endSum)})` : '';
   const graduateStr = gradStartSum > 0 && gradEndSum > 0 ? `${formatNumber(gradStartSum)}<br/>(${formatNumber(gradEndSum)})` : gradStartSum > 0 ? `${formatNumber(gradStartSum)}` : gradEndSum > 0 ? `(${formatNumber(gradEndSum)})` : '';
   const openCountStr = openStartSum > 0 && openEndSum > 0 ? `${openStartSum}<br/>(${openEndSum})` : openStartSum > 0 ? `${openStartSum}` : openEndSum > 0 ? `(${openEndSum})` : '';
-  const operatedCourseCount = openStartSum + openEndSum; // 운영 과정 수: 올해 개강 + 작년 개강/올해 종료
-  const openedCourseCount = openStartSum; // 개강 과정 수: 올해 개강
-  const validRows = [...startRows, ...endRows].filter(c => (c['수강신청 인원'] ?? 0) > 0 && (c['수료인원'] ?? 0) > 0);
-  const validStudents = validRows.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
-  const validGraduates = validRows.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
-  const completionRate = validStudents > 0 ? (validGraduates / validStudents) * 100 : 0;
+
+  // 운영중인 과정 수: 해당 연도에 운영된 고유한 과정명 수
+  const uniqueCourseNamesForYear = new Set([...startRows, ...endRows].map(c => c.과정명));
+  const operatedCourseCount = uniqueCourseNamesForYear.size;
+  const openedCourseCount = openStartSum + openEndSum; // 개강 과정 수: 올해 개강 + 작년 개강/올해 종료 (회차 수)
+  const validRowsForCompletion = [...startRows, ...endRows].filter(c => (c['수강신청 인원'] ?? 0) > 0 && (c['수료인원'] ?? 0) > 0);
+  const validStudentsForCompletion = validRowsForCompletion.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
+  const validGraduatesForCompletion = validRowsForCompletion.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+  const completionRateForYear = validStudentsForCompletion > 0 ? (validGraduatesForCompletion / validStudentsForCompletion) * 100 : 0;
+
+  // 평균 만족도 계산
+  const validSatisfaction = [...startRows, ...endRows].filter(c => c.만족도 && c.만족도 > 0);
+  const totalWeighted = validSatisfaction.reduce((sum, c) => sum + (c.만족도 ?? 0) * (c['수료인원'] ?? 0), 0);
+  const totalWeight = validSatisfaction.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+  const avgSatisfaction = totalWeight > 0 ? totalWeighted / totalWeight : 0;
+
   return {
     studentStr,
     graduateStr,
     openCountStr, // x<br/>(y) 표기
     operatedCourseCount, // 운영 과정 수
-    openedCourseCount, // 개강 과정 수
-    completionRate: completionRate === 0 ? '-' : `${completionRate.toFixed(1)}%`,
+    openedCourseCount: openStartSum > 0 && openEndSum > 0 ? `${openStartSum}<br/>(${openEndSum})` : openStartSum > 0 ? `${openStartSum}` : openEndSum > 0 ? `(${openEndSum})` : '', // 개강 회차수: 올해 개강 (작년 개강/올해 종료)
+    completionRate: completionRateForYear === 0 ? '-' : `${completionRateForYear.toFixed(1)}%`,
+    avgSatisfaction,
     x: startSum,
     y: endSum,
     xg: gradStartSum,
@@ -225,10 +296,7 @@ export default function InstitutionAnalysis() {
     
     // 개강 과정 수 계산 로직 추가
     const finalAggregated = aggregated.map(agg => {
-      const originalCourses = detailedStats.courses.filter(c => (c['훈련과정 ID'] || c.과정명) === (agg['훈련과정 ID'] || agg.과정명));
-      const openedInYearCount = selectedYear === 'all' 
-        ? originalCourses.length 
-        : originalCourses.filter(c => new Date(c.과정시작일).getFullYear() === selectedYear).length;
+      const openedInYearCount = agg.원천과정수; // aggregateCoursesByCourseIdWithLatestInfo에서 이미 계산된 회차 수
       return { ...agg, openedInYearCount };
     });
     
@@ -352,20 +420,29 @@ export default function InstitutionAnalysis() {
         <div className="h-[400px]">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={filteredInstitutionStats.slice(0, 10)}>
-              <XAxis 
-                dataKey="institutionName" 
-                angle={-45} 
-                textAnchor="end" 
+              <XAxis
+                dataKey="institutionName"
+                angle={0} // 각도를 0으로 변경하여 수평으로 표시
+                textAnchor="middle" // 텍스트 앵커를 가운데로 변경
                 height={100}
-                tick={{ fontSize: 12 }}
+                tick={{ fontSize: 14 }} // 폰트 크기 약간 줄임
+                interval={0} // 모든 레이블 표시
                 tickFormatter={(value: string, index: number) => {
                   const rank = index + 1;
-                  let displayValue = `${rank}. ${value}`;
+                  let displayValue = `${value}`;
                   if (value === '주식회사 코드스테이츠') {
                     displayValue += ' (2023년 감사를 통해 훈련비 전액 반환)';
                   }
-                  return displayValue;
+                  // 너무 길면 줄임표 추가 (예: 15자 이상)
+                  if (displayValue.length > 15) {
+                    displayValue = displayValue.substring(0, 12) + '...';
+                  }
+                  return `🏅 ${rank}위\n${displayValue}`;
                 }}
+                // X축 레이블이 겹치지 않도록 간격 조정
+                interval="preserveStartEnd"
+                // 텍스트가 그래프 선 안에 들어오도록 dy 조정
+                dy={20}
               />
               <YAxis 
                 tickFormatter={formatRevenue}
@@ -429,43 +506,80 @@ export default function InstitutionAnalysis() {
                   <td className="px-6 py-4 whitespace-nowrap">{formatRevenue(stat.totalRevenue)}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {(() => {
+                      const filteredRows = originalData.filter((c) => {
+                        if (filterType === 'leading') return c.isLeadingCompanyCourse;
+                        if (filterType === 'tech') return !c.isLeadingCompanyCourse;
+                        return true;
+                      });
                       const stats = getInstitutionYearlyStats({
-                        rows: originalData,
+                        rows: filteredRows,
                         institutionName: stat.institutionName,
-                        year: selectedYear === 'all' ? undefined : selectedYear
+                        year: selectedYear === 'all' ? undefined : selectedYear,
+                        month: selectedMonth // 월 파라미터 추가
                       });
                       return <span dangerouslySetInnerHTML={{__html: stats.openCountStr}} />;
                     })()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {(() => {
+                      const filteredRows = originalData.filter((c) => {
+                        if (filterType === 'leading') return c.isLeadingCompanyCourse;
+                        if (filterType === 'tech') return !c.isLeadingCompanyCourse;
+                        return true;
+                      });
                       const stats = getInstitutionYearlyStats({
-                        rows: originalData,
+                        rows: filteredRows,
                         institutionName: stat.institutionName,
-                        year: selectedYear === 'all' ? undefined : selectedYear
+                        year: selectedYear === 'all' ? undefined : selectedYear,
+                        month: selectedMonth // 월 파라미터 추가
                       });
                       return <span dangerouslySetInnerHTML={{__html: stats.studentStr}} />;
                     })()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {(() => {
+                      const filteredRows = originalData.filter((c) => {
+                        if (filterType === 'leading') return c.isLeadingCompanyCourse;
+                        if (filterType === 'tech') return !c.isLeadingCompanyCourse;
+                        return true;
+                      });
                       const stats = getInstitutionYearlyStats({
-                        rows: originalData,
+                        rows: filteredRows,
                         institutionName: stat.institutionName,
-                        year: selectedYear === 'all' ? undefined : selectedYear
+                        year: selectedYear === 'all' ? undefined : selectedYear,
+                        month: selectedMonth // 월 파라미터 추가
                       });
                       return <span dangerouslySetInnerHTML={{__html: stats.graduateStr}} />;
                     })()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">{(() => {
+                    const filteredRows = originalData.filter((c) => {
+                      if (filterType === 'leading') return c.isLeadingCompanyCourse;
+                      if (filterType === 'tech') return !c.isLeadingCompanyCourse;
+                      return true;
+                    });
                     const stats = getInstitutionYearlyStats({
-                      rows: originalData,
+                      rows: filteredRows,
                       institutionName: stat.institutionName,
-                      year: selectedYear === 'all' ? undefined : selectedYear
+                      year: selectedYear === 'all' ? undefined : selectedYear,
+                      month: selectedMonth // 월 파라미터 추가
                     });
                     return stats.completionRate;
                   })()}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">{stat.avgSatisfaction.toFixed(1)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">{(() => {
+                    const filteredRows = originalData.filter((c) => {
+                      if (filterType === 'leading') return c.isLeadingCompanyCourse;
+                      if (filterType === 'tech') return !c.isLeadingCompanyCourse;
+                      return true;
+                    });
+                    const stats = getInstitutionYearlyStats({
+                      rows: filteredRows,
+                      institutionName: stat.institutionName,
+                      year: selectedYear === 'all' ? undefined : selectedYear,
+                      month: selectedMonth // 월 파라미터 추가
+                    });
+                    return (typeof stats.avgSatisfaction === 'number' && !isNaN(stats.avgSatisfaction)) ? stats.avgSatisfaction.toFixed(1) : '-';
+                  })()}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex items-center space-x-2">
                         <button
@@ -529,10 +643,16 @@ export default function InstitutionAnalysis() {
             <div className="grid grid-cols-5 gap-4 mb-6"> {/* 컬럼 수 원복 */}
               {/* 상세보기 모달 상단 요약 카드 표기 부분 */}
               {(() => {
+                const filteredRows = originalData.filter((c) => {
+                  if (filterType === 'leading') return c.isLeadingCompanyCourse;
+                  if (filterType === 'tech') return !c.isLeadingCompanyCourse;
+                  return true;
+                });
                 const stats = getInstitutionYearlyStats({
-                  rows: selectedInstitutionRawCourses,
+                  rows: filteredRows,
                   institutionName: selectedInstitutionName,
-                  year: selectedYear === 'all' ? undefined : selectedYear
+                  year: selectedYear === 'all' ? undefined : selectedYear,
+                  month: selectedMonth // 월 파라미터 추가
                 });
                 return (
                   <>
@@ -541,8 +661,8 @@ export default function InstitutionAnalysis() {
                       <div className="text-lg font-semibold">{stats.operatedCourseCount}</div>
                     </div>
                     <div className="bg-gray-50 p-4 rounded-lg">
-                      <div className="text-sm text-gray-500">{selectedYear === 'all' ? '개강 과정 수' : `${selectedYear}년 개강 과정 수`}</div>
-                      <div className="text-lg font-semibold">{stats.openedCourseCount}</div>
+                      <div className="text-sm text-gray-500">{selectedYear === 'all' ? '전체 개강 회차수' : `${selectedYear}년 개강 회차수`}</div>
+                      <div className="text-lg font-semibold" dangerouslySetInnerHTML={{__html: stats.openedCourseCount}}></div>
                     </div>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <div className="text-sm text-gray-500">훈련생 수</div>
@@ -571,15 +691,21 @@ export default function InstitutionAnalysis() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">수료율</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">매출액</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">만족도</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">개강 과정수</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">개강 회차수</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {selectedInstitutionCourses.map((course) => {
+                    const filteredRows = selectedInstitutionRawCourses.filter((c) => {
+                      if (filterType === 'leading') return c.isLeadingCompanyCourse;
+                      if (filterType === 'tech') return !c.isLeadingCompanyCourse;
+                      return true;
+                    });
                     const stats = getInstitutionYearlyStats({
-                      rows: selectedInstitutionRawCourses.filter(c => (c['훈련과정 ID'] || c.과정명) === (course['훈련과정 ID'] || course.과정명)),
+                      rows: filteredRows.filter(c => (c['훈련과정 ID'] || c.과정명) === (course['훈련과정 ID'] || course.과정명)),
                       institutionName: selectedInstitutionName,
-                      year: selectedYear === 'all' ? undefined : selectedYear
+                      year: selectedYear === 'all' ? undefined : selectedYear,
+                      month: selectedMonth // 월 파라미터 추가
                     });
                     return (
                       <tr key={course['훈련과정 ID'] || course.과정명} className="hover:bg-gray-50">
@@ -589,8 +715,21 @@ export default function InstitutionAnalysis() {
                         <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500" dangerouslySetInnerHTML={{__html: stats.graduateStr}}></td>
                         <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{stats.completionRate}</td>
                         <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatRevenue(course.총누적매출)}</td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.평균만족도.toFixed(1)}</td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500" dangerouslySetInnerHTML={{__html: stats.openCountStr}}></td>
+                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{(() => {
+                          const filteredRows = selectedInstitutionRawCourses.filter((c) => {
+                            if (filterType === 'leading') return c.isLeadingCompanyCourse;
+                            if (filterType === 'tech') return !c.isLeadingCompanyCourse;
+                            return true;
+                          });
+                          const stats = getInstitutionYearlyStats({
+                            rows: filteredRows.filter(c => (c['훈련과정 ID'] || c.과정명) === (course['훈련과정 ID'] || course.과정명)),
+                            institutionName: selectedInstitutionName,
+                            year: selectedYear === 'all' ? undefined : selectedYear,
+                            month: selectedMonth // 월 파라미터 추가
+                          });
+                          return (typeof stats.avgSatisfaction === 'number' && !isNaN(stats.avgSatisfaction)) ? stats.avgSatisfaction.toFixed(1) : '-';
+                        })()}</td>
+                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500" dangerouslySetInnerHTML={{__html: stats.openedCourseCount}}></td>
                       </tr>
                     );
                   })}
@@ -652,7 +791,7 @@ export default function InstitutionAnalysis() {
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatRevenue(institution.totalRevenue)}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatNumber(institution.totalCourses)}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                        {selectedYear !== 'all' && institution.prevYearStudents > 0 
+                        {selectedYear !== 'all' && selectedMonth === 'all' && institution.prevYearStudents > 0
                           ? (
                             <div>
                               <div>{formatNumber(institution.totalStudents)}</div>
@@ -663,7 +802,7 @@ export default function InstitutionAnalysis() {
                         }
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                        {selectedYear !== 'all' && institution.prevYearCompletedStudents > 0 
+                        {selectedYear !== 'all' && selectedMonth === 'all' && institution.prevYearCompletedStudents > 0
                           ? (
                             <div>
                               <div>{formatNumber(institution.completedStudents)}</div>
@@ -695,3 +834,27 @@ export default function InstitutionAnalysis() {
     </div>
   );
 }
+
+// Custom Tick 컴포넌트
+const CustomTick = (props: any) => {
+  const { x, y, payload, index } = props;
+  const value = payload.value;
+  const rank = index + 1;
+  let displayValue = `${value}`;
+  if (value === '주식회사 코드스테이츠') {
+    displayValue += ' (2023년 감사를 통해 훈련비 전액 반환)';
+  }
+  // 너무 길면 줄임표 추가 (예: 15자 이상)
+  if (displayValue.length > 15) {
+    displayValue = displayValue.substring(0, 12) + '...';
+  }
+
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text x={0} y={0} dy={16} textAnchor="middle" fill="#666" fontSize={10}>
+        <tspan x={0} dy="-1.2em">🥇 {rank}위</tspan>
+        <tspan x={0} dy="1.2em">{displayValue}</tspan>
+      </text>
+    </g>
+  );
+};

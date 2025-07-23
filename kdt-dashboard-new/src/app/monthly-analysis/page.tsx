@@ -2,7 +2,8 @@
 
 import React from 'react';
 import { useEffect, useState } from 'react';
-import { loadDataFromGithub, preprocessData, calculateMonthlyStatistics, calculateCompletionRate, applyRevenueAdjustment } from "@/utils/data-utils";
+import { calculateMonthlyStatistics, calculateCompletionRate, applyRevenueAdjustment } from "@/lib/data-utils";
+import { loadDataFromGithub, preprocessData } from "@/utils/data-loader";
 import { CourseData } from "@/lib/data-utils";
 import { MonthlyStats } from "@/lib/data-utils";
 import { RevenueChart } from "@/components/dashboard/revenue-chart";
@@ -36,7 +37,8 @@ import Papa from 'papaparse';
 import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 
 export default function MonthlyAnalysisPage() {
-  const [data, setData] = useState<CourseData[]>([]);
+  const [data, setData] = useState<CourseData[]>([]); // 원본 데이터
+  const [processedAdjustedData, setProcessedAdjustedData] = useState<CourseData[]>([]); // 전처리 및 조정된 데이터
   const [monthlyStats, setMonthlyStats] = useState<MonthlyStats[]>([]);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -55,27 +57,24 @@ export default function MonthlyAnalysisPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const data = await loadDataFromGithub();
-        const parsedData = Papa.parse(data, { header: true });
-        let processedData = preprocessData(parsedData.data);
+        const rawData = await loadDataFromGithub();
+        const parsedData = Papa.parse(rawData, { header: true });
+        let initialProcessedData = preprocessData(parsedData.data);
         
-        if (!Array.isArray(processedData) || processedData.length === 0) {
+        if (!Array.isArray(initialProcessedData) || initialProcessedData.length === 0) {
           throw new Error('처리된 데이터가 유효하지 않습니다.');
         }
 
-        // 전체 수료율을 calculateCompletionRate 함수를 사용하여 계산
-        const overallCompletionRate = calculateCompletionRate(processedData);
-        processedData = applyRevenueAdjustment(processedData, overallCompletionRate);
+        // 전체 수료율을 calculateCompletionRate 함수를 사용하여 계산 (초기 1회만)
+        const overallCompletionRate = calculateCompletionRate(initialProcessedData);
+        const adjustedData = applyRevenueAdjustment(initialProcessedData, overallCompletionRate);
 
-        setData(processedData);
-        // 전체 기간에 대한 통계 계산
-        const stats = calculateMonthlyStatistics(processedData);
-        
-        if (!Array.isArray(stats) || stats.length === 0) {
-          throw new Error('월별 통계 데이터를 생성할 수 없습니다.');
-        }
+        setData(initialProcessedData); // 원본 데이터 저장
+        setProcessedAdjustedData(adjustedData); // 조정된 데이터 저장
 
-        setMonthlyStats(stats);
+        // 초기 월별 통계 계산 (전체 기간)
+        const initialStats = calculateMonthlyStatistics(adjustedData, undefined); // 초기에는 selectedYear 없이 호출
+        setMonthlyStats(initialStats);
 
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -86,18 +85,15 @@ export default function MonthlyAnalysisPage() {
     };
 
     fetchData();
-  }, []);
+  }, []); // 초기 로딩 시에만 실행
 
-  // 연도 선택 시 통계 업데이트
+  // 연도 선택 시 통계 업데이트 (processedAdjustedData가 준비된 후에만 실행)
   useEffect(() => {
-    if (data.length > 0) {
-      const overallCompletionRate = calculateCompletionRate(data);
-      const adjustedData = applyRevenueAdjustment(data, overallCompletionRate);
-      const stats = calculateMonthlyStatistics(adjustedData, selectedYear);
+    if (processedAdjustedData.length > 0) {
+      const stats = calculateMonthlyStatistics(processedAdjustedData, selectedYear ?? undefined);
       setMonthlyStats(stats);
-
     }
-  }, [selectedYear, data]);
+  }, [selectedYear, processedAdjustedData]); // selectedYear 또는 조정된 데이터가 변경될 때만 실행
 
   const handleViewDetails = (monthStr: string) => {
     setSelectedMonth(monthStr);
@@ -105,7 +101,7 @@ export default function MonthlyAnalysisPage() {
     
     // Filter data for the selected month
     const [year, month] = monthStr.split('-').map(Number);
-    const filtered = data
+    const filtered = processedAdjustedData
       .filter(course => {
         const startDate = new Date(course.과정시작일);
         return (
@@ -253,7 +249,7 @@ export default function MonthlyAnalysisPage() {
                 // 고유 key 생성을 위해 idx 추가
                 const courseId = `${course.과정명}-${course.회차}-${idx}`;
                 const isExpanded = expandedCourses.has(courseId);
-                const allCourseDetails = data.filter(c => c.과정명 === course.과정명)
+                const allCourseDetails = processedAdjustedData.filter(c => c.과정명 === course.과정명)
                   .sort((a, b) => new Date(a.과정시작일).getTime() - new Date(b.과정시작일).getTime());
 
                 return (
