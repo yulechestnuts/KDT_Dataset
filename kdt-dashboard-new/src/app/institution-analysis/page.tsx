@@ -68,8 +68,71 @@ function getInstitutionYearlyStats({
       const endDate = new Date(c.과정종료일);
       return startDate.getFullYear() === year || (startDate.getFullYear() < year && endDate.getFullYear() === year);
     });
+
+    // === 수료율 계산 방식 변경 ===
+    // 1. 해당 연도에 종료된 과정만 필터링
+    const endedThisYear = filtered.filter(c => new Date(c.과정종료일).getFullYear() === year);
+    // 2. 분모: 해당 연도에 종료된 과정의 입과생
+    const entryForEndedThisYear = endedThisYear.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
+    // 3. 분자: 해당 연도에 종료된 과정의 수료인원
+    const graduatedThisYear = endedThisYear.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+    // 4. 수료율
+    const completionRate = entryForEndedThisYear > 0 ? (graduatedThisYear / entryForEndedThisYear) * 100 : 0;
+    const completionRateStr = `${completionRate.toFixed(1)}% (${graduatedThisYear}/${entryForEndedThisYear})`;
+
+    // 훈련생 수 표기: 올해 입과생 + (작년 입과, 올해 종료 과정의 입과생)
+    const startedThisYear = filtered.filter(c => new Date(c.과정시작일).getFullYear() === year);
+    const entryThisYear = startedThisYear.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
+    const prevYearEntryEndedThisYear = endedThisYear
+      .filter(c => new Date(c.과정시작일).getFullYear() < year)
+      .reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
+    const entryStr = prevYearEntryEndedThisYear > 0
+      ? `${formatNumber(entryThisYear)}(${formatNumber(prevYearEntryEndedThisYear)})`
+      : `${formatNumber(entryThisYear)}`;
+
+    // 수료인원 표기: 올해 종료 과정의 수료인원 + (작년 입과, 올해 종료 과정의 수료인원)
+    const gradThisYear = startedThisYear.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+    const gradPrevYearEndedThisYear = endedThisYear
+      .filter(c => new Date(c.과정시작일).getFullYear() < year)
+      .reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+    const gradStr = gradPrevYearEndedThisYear > 0
+      ? `${formatNumber(gradThisYear)}(${formatNumber(gradPrevYearEndedThisYear)})`
+      : `${formatNumber(gradThisYear)}`;
+
+    // 개강 회차수 표기: 올해 시작 + (작년 시작, 올해 종료)
+    const openStartSum = startedThisYear.length;
+    const openEndSum = endedThisYear.filter(c => new Date(c.과정시작일).getFullYear() < year).length;
+    const openCountStr = openEndSum > 0
+      ? `${openStartSum}(${openEndSum})`
+      : `${openStartSum}`;
+
+    // 운영중인 과정 수: 해당 연도에 운영된 고유한 과정명 수
+    const uniqueCourseNamesForYear = new Set([...startedThisYear, ...endedThisYear].map(c => c.과정명));
+    const operatedCourseCount = uniqueCourseNamesForYear.size;
+    const openedCourseCount = openStartSum + openEndSum;
+
+    // 평균 만족도 계산 (올해 종료 과정 기준)
+    const validSatisfaction = endedThisYear.filter(c => c.만족도 && c.만족도 > 0);
+    const totalWeighted = validSatisfaction.reduce((sum, c) => sum + (c.만족도 ?? 0) * (c['수료인원'] ?? 0), 0);
+    const totalWeight = validSatisfaction.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+    const avgSatisfaction = totalWeight > 0 ? totalWeighted / totalWeight : 0;
+
+    return {
+      studentStr: entryStr,
+      graduateStr: gradStr,
+      openCountStr: openCountStr,
+      operatedCourseCount,
+      openedCourseCount: openCountStr,
+      completionRate: completionRateStr,
+      avgSatisfaction,
+      x: entryThisYear,
+      y: prevYearEntryEndedThisYear,
+      xg: gradThisYear,
+      yg: gradPrevYearEndedThisYear,
+      xc: openStartSum,
+      yc: openEndSum
+    };
   }
-  // year가 undefined (전체 기간)인 경우, finalFilteredRows는 초기 filtered와 동일
 
   // 전체 연도 + 전체 월일 때는 전체 합계만 표기 (x(y) 표기 대신)
   if (year === undefined && month === 'all') {
@@ -467,7 +530,7 @@ export default function InstitutionAnalysis() {
       {/* 안내 문구 */}
       {selectedYear !== 'all' && (
         <div className="mb-4 text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded px-4 py-3">
-          <div>* 수료율은 과정 종료일 기준으로 포함하여 계산되었습니다.</div>
+          <div>* 수료율은 과정 종료일 기준으로 계산하였으며, 분자는 {selectedYear}년 기준 {selectedYear}년의 수료생, 분모는 {selectedYear}년 기준 {selectedYear}년에 끝나는 과정이 있는 모든 과정의 입과생입니다.</div>
           <div>* ()는 전 해년 입과, 당 해년 수료 인원을 표기하였습니다.</div>
         </div>
       )}
