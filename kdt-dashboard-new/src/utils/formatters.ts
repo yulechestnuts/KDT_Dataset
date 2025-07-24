@@ -42,6 +42,6 @@ export const formatEok = (eokValue: number): string => {
 
 // 매출액을 억 단위로 변환하는 함수
 export const formatRevenue = (value: number | undefined | null): string => {
-  if (value === undefined || value === null) return '0억';
+  if (value === undefined || value === null || isNaN(value)) return '0억';
   return `${(value / 100000000).toFixed(1)}억`;
 };

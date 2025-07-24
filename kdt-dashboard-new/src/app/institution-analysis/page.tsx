@@ -92,8 +92,8 @@ function getInstitutionYearlyStats({
       ? `${formatNumber(entryThisYear)}(${formatNumber(prevYearEntryEndedThisYear)})`
       : `${formatNumber(entryThisYear)}`;
 
-    // 수료인원 표기: 올해 종료 과정의 수료인원 + (작년 입과, 올해 종료 과정의 수료인원)
-    const gradThisYear = startedThisYear.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+    // 수료인원 표기: 올해 시작, 올해 종료 과정의 수료인원 + (작년 입과, 올해 종료 과정의 수료인원)
+    const gradThisYear = startedThisYear.filter(c => new Date(c.과정종료일).getFullYear() === year).reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
     const gradPrevYearEndedThisYear = endedThisYear
       .filter(c => new Date(c.과정시작일).getFullYear() < year)
       .reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
@@ -205,9 +205,9 @@ function getInstitutionYearlyStats({
   const openStartSum = startRows.length;
   const openEndSum = endRows.length;
 
-  const studentStr = startSum > 0 && endSum > 0 ? `${formatNumber(startSum)}<br/>(${formatNumber(endSum)})` : startSum > 0 ? `${formatNumber(startSum)}` : endSum > 0 ? `(${formatNumber(endSum)})` : '';
-  const graduateStr = gradStartSum > 0 && gradEndSum > 0 ? `${formatNumber(gradStartSum)}<br/>(${formatNumber(gradEndSum)})` : gradStartSum > 0 ? `${formatNumber(gradStartSum)}` : gradEndSum > 0 ? `(${formatNumber(gradEndSum)})` : '';
-  const openCountStr = openStartSum > 0 && openEndSum > 0 ? `${openStartSum}<br/>(${openEndSum})` : openStartSum > 0 ? `${openStartSum}` : openEndSum > 0 ? `(${openEndSum})` : '';
+  const studentStr = startSum > 0 && endSum > 0 ? `${formatNumber(startSum)}(${formatNumber(endSum)})` : startSum > 0 ? `${formatNumber(startSum)}` : endSum > 0 ? `(${formatNumber(endSum)})` : '';
+  const graduateStr = gradStartSum > 0 && gradEndSum > 0 ? `${formatNumber(gradStartSum)}(${formatNumber(gradEndSum)})` : gradStartSum > 0 ? `${formatNumber(gradStartSum)}` : gradEndSum > 0 ? `(${formatNumber(gradEndSum)})` : '';
+  const openCountStr = openStartSum > 0 && openEndSum > 0 ? `${openStartSum}(${openEndSum})` : openStartSum > 0 ? `${openStartSum}` : openEndSum > 0 ? `(${openEndSum})` : '';
 
   // 운영중인 과정 수: 해당 연도에 운영된 고유한 과정명 수
   const uniqueCourseNamesForYear = new Set([...startRows, ...endRows].map(c => c.과정명));
@@ -359,13 +359,7 @@ export default function InstitutionAnalysis() {
     // aggregateCoursesByCourseIdWithLatestInfo 함수에 연도 정보와 기관명 전달
     const aggregated = aggregateCoursesByCourseIdWithLatestInfo(detailedStats.courses, yearForCalculation, institutionName);
     
-    // 개강 과정 수 계산 로직 추가
-    const finalAggregated = aggregated.map(agg => {
-      const openedInYearCount = agg.원천과정수; // aggregateCoursesByCourseIdWithLatestInfo에서 이미 계산된 회차 수
-      return { ...agg, openedInYearCount };
-    });
-    
-    setSelectedInstitutionCourses(finalAggregated);
+    setSelectedInstitutionCourses(aggregated as any);
     setSelectedInstitutionRawCourses(detailedStats.courses);
     setIsModalOpen(true);
   };
@@ -505,7 +499,6 @@ export default function InstitutionAnalysis() {
                   return `🏅 ${rank}위\n${displayValue}`;
                 }}
                 // X축 레이블이 겹치지 않도록 간격 조정
-                interval="preserveStartEnd"
                 // 텍스트가 그래프 선 안에 들어오도록 dy 조정
                 dy={20}
               />
@@ -727,15 +720,15 @@ export default function InstitutionAnalysis() {
                     </div>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <div className="text-sm text-gray-500">{selectedYear === 'all' ? '전체 개강 회차수' : `${selectedYear}년 개강 회차수`}</div>
-                      <div className="text-lg font-semibold" dangerouslySetInnerHTML={{__html: stats.openedCourseCount}}></div>
+                      <div className="text-lg font-semibold">{stats.openedCourseCount}</div>
                     </div>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <div className="text-sm text-gray-500">훈련생 수</div>
-                      <div className="text-lg font-semibold" dangerouslySetInnerHTML={{__html: stats.studentStr}}></div>
+                      <div className="text-lg font-semibold">{stats.studentStr}</div>
                     </div>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <div className="text-sm text-gray-500">수료인원</div>
-                      <div className="text-lg font-semibold" dangerouslySetInnerHTML={{__html: stats.graduateStr}}></div>
+                      <div className="text-lg font-semibold">{stats.graduateStr}</div>
                     </div>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <div className="text-sm text-gray-500">평균 수료율</div>
@@ -760,83 +753,18 @@ export default function InstitutionAnalysis() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {(() => {
-                    const thisYear = selectedYear === 'all' ? undefined : selectedYear;
-                    // 올해 시작 or (전년도 시작, 올해 종료) 과정 모두 포함
-                    const courseList = selectedInstitutionRawCourses.filter(course => {
-                      if (thisYear === undefined) return true;
-                      const startYear = new Date(course.과정시작일).getFullYear();
-                      const endYear = new Date(course.과정종료일).getFullYear();
-                      return (startYear === thisYear) || (startYear < thisYear && endYear === thisYear);
-                    });
-                    // '훈련과정ID+과정명' 단위로 그룹핑
-                    const grouped = {};
-                    for (const course of courseList) {
-                      const key = `${course['훈련과정 ID']}___${course.과정명}`;
-                      if (!grouped[key]) grouped[key] = [];
-                      grouped[key].push(course);
-                    }
-                    return Object.entries(grouped).map(([key, group]) => {
-                      // 집계: group 전체를 대상으로
-                      // 훈련생 수: 합산
-                      const totalStudents = group.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
-                      // 수료인원: 합산
-                      const totalGraduates = group.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
-                      // 매출: 합산
-                      const totalRevenue = group.reduce((sum, c) => sum + (c.총누적매출 ?? 0), 0);
-                      // 만족도: 평균
-                      const avgSatisfaction = group.length > 0 ? (group.reduce((sum, c) => sum + (c.만족도 ?? 0), 0) / group.length) : 0;
-                      // 개강 회차수: group.length
-                      const openCount = group.length;
-                      // 수료율: 해당 연도에 종료된 과정 중 수료인원이 1명 이상인 과정만 분모/분자에 포함
-                      let endedThisYearWithGraduates = [];
-                      if (thisYear !== undefined) {
-                        endedThisYearWithGraduates = group.filter(c => new Date(c.과정종료일).getFullYear() === thisYear && (c['수료인원'] ?? 0) > 0);
-                      } else {
-                        endedThisYearWithGraduates = group.filter(c => (c['수료인원'] ?? 0) > 0);
-                      }
-                      const entryForEndedThisYear = endedThisYearWithGraduates.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
-                      const graduatedThisYear = endedThisYearWithGraduates.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
-                      const completionRate = entryForEndedThisYear > 0 ? (graduatedThisYear / entryForEndedThisYear) * 100 : 0;
-                      // 수료인원 표기: 올해 시작, 올해 종료: 수료인원 / 올해 시작, 올해 종료 아님: 0 / 작년 시작, 올해 종료: (수료인원) / 둘 다 해당: x(y)
-                      let graduateStr = '';
-                      if (thisYear !== undefined) {
-                        // 올해 시작, 올해 종료
-                        const startedThisYear = group.filter(c => new Date(c.과정시작일).getFullYear() === thisYear && new Date(c.과정종료일).getFullYear() === thisYear);
-                        const startedThisYearGraduates = startedThisYear.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
-                        // 올해 시작, 올해 종료 아님
-                        const startedThisYearNotEnded = group.filter(c => new Date(c.과정시작일).getFullYear() === thisYear && new Date(c.과정종료일).getFullYear() !== thisYear);
-                        // 작년 시작, 올해 종료
-                        const prevYearStartedEndedThisYear = group.filter(c => new Date(c.과정시작일).getFullYear() < thisYear && new Date(c.과정종료일).getFullYear() === thisYear);
-                        const prevYearGraduates = prevYearStartedEndedThisYear.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
-                        if (startedThisYear.length > 0 && prevYearStartedEndedThisYear.length > 0) {
-                          graduateStr = `${startedThisYearGraduates}(${prevYearGraduates})`;
-                        } else if (startedThisYear.length > 0) {
-                          graduateStr = `${startedThisYearGraduates}`;
-                        } else if (prevYearStartedEndedThisYear.length > 0) {
-                          graduateStr = `(${prevYearGraduates})`;
-                        } else if (startedThisYearNotEnded.length > 0) {
-                          graduateStr = '0';
-                        } else {
-                          graduateStr = '0';
-                        }
-                      } else {
-                        graduateStr = `${totalGraduates}`;
-                      }
-                      return (
-                        <tr key={key} className="hover:bg-gray-50">
-                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{group[0].과정명}</td>
-                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{group[0].훈련유형들?.join(', ') || '-'}</td>
-                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{totalStudents}</td>
-                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{graduateStr}</td>
-                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{completionRate.toFixed(1)}% ({graduatedThisYear}/{entryForEndedThisYear})</td>
-                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatRevenue(totalRevenue)}</td>
-                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{avgSatisfaction.toFixed(1)}</td>
-                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{openCount}</td>
-                        </tr>
-                      );
-                    });
-                  })()}
+                  {selectedInstitutionCourses.map((course: any) => (
+                    <tr key={course['훈련과정 ID']} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{course.과정명}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.훈련유형들?.join(', ') || '-'}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.studentsStr}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.graduatesStr}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.평균수료율.toFixed(1)}% ({course.총수료인원}/{course.총수강신청인원})</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatRevenue(course.총누적매출)}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.평균만족도.toFixed(1)}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.openCountStr}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
