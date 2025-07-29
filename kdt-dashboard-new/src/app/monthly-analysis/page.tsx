@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useEffect, useState } from 'react';
-import { calculateMonthlyStatistics, calculateCompletionRate, applyRevenueAdjustment } from "@/lib/data-utils";
+import { calculateMonthlyStatistics, calculateCompletionRate, applyRevenueAdjustment, computeCourseRevenue } from "@/lib/data-utils";
 import { loadDataFromGithub, preprocessData } from "@/utils/data-loader";
 import { CourseData } from "@/lib/data-utils";
 import { MonthlyStats } from "@/lib/data-utils";
@@ -104,10 +104,13 @@ export default function MonthlyAnalysisPage() {
     const filtered = processedAdjustedData
       .filter(course => {
         const startDate = new Date(course.과정시작일);
-        return (
-          startDate.getFullYear() === year &&
-          startDate.getMonth() + 1 === month
-        );
+        const endDate = new Date(course.과정종료일);
+        const targetMonthStart = new Date(year, month - 1, 1);
+        const targetMonthEnd = new Date(year, month, 0); // 다음 달의 0일은 현재 달의 마지막 날
+
+        // 과정의 시작일이 해당 월의 마지막 날보다 이전이거나 같고,
+        // 과정의 종료일이 해당 월의 시작일보다 이후이거나 같으면 포함
+        return startDate <= targetMonthEnd && endDate >= targetMonthStart;
       })
       // 매출액(조정_누적매출 > 누적매출) 기준 내림차순 정렬
       .sort(
@@ -188,8 +191,8 @@ export default function MonthlyAnalysisPage() {
               <TableRow>
                 <TableHead>월</TableHead>
                 <TableHead>매출</TableHead>
-                <TableHead>훈련생 수</TableHead>
                 <TableHead>과정 수</TableHead>
+                <TableHead>훈련생 수</TableHead>
                 <TableHead>수료인원</TableHead>
                 <TableHead>수료율</TableHead>
                 <TableHead>상세보기</TableHead>
@@ -200,8 +203,8 @@ export default function MonthlyAnalysisPage() {
                 <TableRow key={stat.month}>
                   <TableCell>{stat.month}</TableCell>
                   <TableCell>{formatCurrency(stat.revenue)}</TableCell>
-                  <TableCell>{formatNumber(stat.totalStudents)}</TableCell>
                   <TableCell>{formatNumber(stat.courses.length)}</TableCell>
+                  <TableCell>{formatNumber(stat.totalStudents)}</TableCell>
                   <TableCell>{formatNumber(stat.completedStudents)}</TableCell>
                   <TableCell>{stat.completionRate.toFixed(1)}%</TableCell>
                   <TableCell>
@@ -265,7 +268,7 @@ export default function MonthlyAnalysisPage() {
                       <TableCell>{formatNumber(course['수강신청 인원'])}</TableCell>
                       <TableCell>{formatNumber(course.수료인원)}</TableCell>
                       <TableCell>{((course.수료인원 || 0) / (course['수강신청 인원'] || 1) * 100).toFixed(1)}%</TableCell>
-                      <TableCell>{formatCurrency(course.조정_누적매출 ?? course.누적매출)}</TableCell>
+                      <TableCell>{formatCurrency(computeCourseRevenue(course, parseInt(selectedMonth.split('-')[0])))}</TableCell>
                       <TableCell>
                         <div className="flex gap-2">
                           <Button
@@ -306,7 +309,7 @@ export default function MonthlyAnalysisPage() {
                           <TableCell>{formatNumber(detail['수강신청 인원'])}</TableCell>
                           <TableCell>{formatNumber(detail.수료인원)}</TableCell>
                           <TableCell>{((detail.수료인원 || 0) / (detail['수강신청 인원'] || 1) * 100).toFixed(1)}%</TableCell>
-                          <TableCell>{formatCurrency(detail.조정_누적매출 ?? detail.누적매출)}</TableCell>
+                          <TableCell>{formatCurrency(computeCourseRevenue(detail, parseInt(selectedMonth.split('-')[0])))}</TableCell>
                           <TableCell>
                             {detail.과정페이지링크 && (
                               <Button

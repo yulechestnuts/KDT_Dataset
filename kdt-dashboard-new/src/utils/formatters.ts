@@ -8,7 +8,7 @@ export const formatNumber = (value: number | undefined | null): string => {
 
 // 통화 포맷팅 함수 (조·억·천만원·백만원 단위 한국형 표기)
 export const formatCurrency = (value: number | undefined | null): string => {
-  if (value === undefined || value === null) return '0억';
+  if (value === undefined || value === null || isNaN(value)) return '0억';
 
   const num = Math.abs(value);
   const sign = value < 0 ? '-' : '';

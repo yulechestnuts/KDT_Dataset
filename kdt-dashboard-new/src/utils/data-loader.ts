@@ -1,4 +1,12 @@
-const GITHUB_URL = 'https://github.com/yulechestnuts/KDT_Dataset/blob/main/result_kdtdata_202506.csv?raw=true';
+// Use internal API route to avoid external fetch failures and ensure fast, reliable data access
+const GITHUB_URL = '/api/data';
+
+// 문자열/숫자 값을 안전하게 숫자로 변환 (콤마 제거·공백 트림)
+export function safeParseNumber(value: any): number {
+  if (value === null || value === undefined) return 0;
+  const num = Number(String(value).replace(/,/g, '').trim());
+  return isNaN(num) ? 0 : num;
+}
 
 export async function loadDataFromGithub() {
   try {
@@ -70,28 +78,31 @@ export function getInstitutionYearlyRevenues(courses: any[]): { year: number; re
 
 // 데이터 전처리 함수
 export const preprocessData = (data: any[]): any[] => {
-  return data.map(course => {
-    // 기본 정보 복사
-    const processed = { ...course };
+  return data.map(raw => {
+    // 깊은 복사 방지, 새 객체 생성
+    const course: any = { ...raw };
 
-    // 금액 관련 필드 정리
     const yearColumns = ['2021년', '2022년', '2023년', '2024년', '2025년', '2026년'];
     yearColumns.forEach(year => {
-      processed[year] = Number(processed[year]) || 0;
+      course[year] = safeParseNumber(course[year]);
     });
 
-    // 누적 매출 계산
-    processed.누적매출 = calculateTotalRevenue(processed);
-    
-    // 실제 매출 계산 (현재 연도의 매출)
+    // 주요 숫자 필드 정리
+    course['수강신청 인원'] = safeParseNumber(course['수강신청 인원']);
+    course['수료인원'] = safeParseNumber(course['수료인원']);
+    course['정원'] = safeParseNumber(course['정원']);
+    course['훈련비'] = safeParseNumber(course['훈련비']);
+
+    // 누적·실제 매출 및 최소/최대 매출 계산
+    course.누적매출 = calculateTotalRevenue(course);
+
     const currentYear = new Date().getFullYear();
-    processed.실제매출 = calculateYearlyRevenue(processed, currentYear);
+    course.실제매출 = calculateYearlyRevenue(course, currentYear);
 
-    // 최소/최대 매출 계산
-    const revenues = yearColumns.map(year => Number(processed[year]) || 0);
-    processed.최소매출 = Math.min(...revenues);
-    processed.최대매출 = Math.max(...revenues);
+    const revenues = yearColumns.map(year => course[year]);
+    course.최소매출 = Math.min(...revenues);
+    course.최대매출 = Math.max(...revenues);
 
-    return processed;
+    return course;
   });
 }; 

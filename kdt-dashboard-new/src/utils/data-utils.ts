@@ -145,10 +145,9 @@ export const calculateMonthlyStatistics = (
     // 선택된 연도에 해당하는 과정만 처리 (선택된 연도가 없으면 모든 연도 처리)
     for (let y = startYear; y <= endYear; y++) {
       const yearColumn = `${y}년` as keyof CourseData;
-      const adjustedYearlyRevenueKey = `조정_${yearColumn}` as keyof CourseData;
-      const adjustedRevenue = course[adjustedYearlyRevenueKey] as number | undefined;
+      const adjustedRevenue = course[`조정_${yearColumn}`] ?? course[yearColumn]; // 조정된 연도별 매출을 가져옴
 
-      if (adjustedRevenue !== undefined && adjustedRevenue > 0) {
+      if (typeof adjustedRevenue === 'number' && adjustedRevenue > 0) {
         let monthsInThisCourseYear = 0;
         const currentYearMonths: string[] = [];
 

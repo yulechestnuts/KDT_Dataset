@@ -1,19 +1,32 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
 
 export async function GET() {
   try {
-    const filePath = path.join(process.cwd(), '..', 'result_kdtdata_202506.csv');
-    const fileContent = fs.readFileSync(filePath, 'utf-8');
-    
-    return new NextResponse(fileContent, {
+    // Remote raw CSV on GitHub (latest dataset)
+    const remoteUrl =
+      'https://raw.githubusercontent.com/yulechestnuts/KDT_Dataset/main/result_kdtdata_202506.csv';
+
+    const res = await fetch(remoteUrl, {
+      // Bypass Next.js fetch caching so the client-side revalidation logic in data-loader can manage its own cache.
+      cache: 'no-store',
+      headers: {
+        Accept: 'text/csv',
+      },
+    });
+
+    if (!res.ok) {
+      throw new Error(`Failed to download CSV from GitHub. Status: ${res.status}`);
+    }
+
+    const csv = await res.text();
+
+    return new NextResponse(csv, {
       headers: {
         'Content-Type': 'text/csv',
       },
     });
   } catch (error) {
-    console.error('Error reading CSV file:', error);
-    return new NextResponse('Error reading data file', { status: 500 });
+    console.error('[API /api/data] Error fetching remote CSV:', error);
+    return new NextResponse('Error fetching data', { status: 500 });
   }
-} 
+}
