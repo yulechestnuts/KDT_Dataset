@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 1, "column": 0}, "map": {"version":3,"sources":["file:///C:/Users/User/Documents/GitHub/KDT_Dataset/kdt-dashboard-renewal/src/app/globals.css"],"sourcesContent":["\n/* Tailwind CSS 기본 지시문 */\n@tailwind base;\n@tailwind components;\n@tailwind utilities;\n"],"names":[],"mappings":"AAEA;;AACA;;AACA","debugId":null}}]
+}

@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 7, "column": 0}, "map": {"version":3,"sources":["file:///C:/Users/User/Documents/GitHub/KDT_Dataset/kdt-dashboard-renewal/src/app/layout.tsx"],"sourcesContent":["\nimport type { Metadata } from \"next\";\nimport \"./globals.css\";\n\nexport const metadata: Metadata = {\n  title: \"KDT Dashboard Renewal\",\n  description: \"Pre-processed KDT Data Dashboard\",\n};\n\nexport default function RootLayout({\n  children,\n}: Readonly<{\n  children: React.ReactNode;\n}>) {\n  return (\n    <html lang=\"en\">\n      <body>{children}</body>\n    </html>\n  );\n}\n"],"names":[],"mappings":";;;;;;;AAIO,MAAM,WAAqB;IAChC,OAAO;IACP,aAAa;AACf;AAEe,SAAS,WAAW,EACjC,QAAQ,EAGR;IACA,qBACE,8OAAC;QAAK,MAAK;kBACT,cAAA,8OAAC;sBAAM;;;;;;;;;;;AAGb","debugId":null}},
+    {"offset": {"line": 39, "column": 0}, "map": {"version":3,"sources":["file:///C:/Users/User/Documents/GitHub/KDT_Dataset/kdt-dashboard-renewal/node_modules/next/src/server/route-modules/app-page/vendored/rsc/react-jsx-dev-runtime.ts"],"sourcesContent":["module.exports = require('../../module.compiled').vendored[\n  'react-rsc'\n].ReactJsxDevRuntime\n"],"names":["module","exports","require","vendored","ReactJsxDevRuntime"],"mappings":";AAAAA,OAAOC,OAAO,GAAGC,QAAQ,4HAAyBC,QAAQ,CACxD,YACD,CAACC,kBAAkB","ignoreList":[0],"debugId":null}}]
+}

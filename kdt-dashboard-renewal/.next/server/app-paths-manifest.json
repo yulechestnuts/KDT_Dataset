@@ -1,0 +1,7 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/institution-analysis/page": "app/institution-analysis/page.js",
+  "/monthly-analysis/page": "app/monthly-analysis/page.js",
+  "/page": "app/page.js",
+  "/yearly-analysis/page": "app/yearly-analysis/page.js"
+}

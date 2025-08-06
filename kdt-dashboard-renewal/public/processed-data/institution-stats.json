@@ -1,0 +1,1937 @@
+[
+  {
+    "institutionName": "대한상공회의소",
+    "totalRevenue": 217906055507.48465,
+    "totalCourses": 802,
+    "totalStudents": 18639,
+    "completedStudents": 13967,
+    "averageCompletionRate": 74.9,
+    "averageSatisfaction": 88.3
+  },
+  {
+    "institutionName": "팀스파르타주식회사",
+    "totalRevenue": 115831437145.38542,
+    "totalCourses": 109,
+    "totalStudents": 7841,
+    "completedStudents": 5688,
+    "averageCompletionRate": 72.5,
+    "averageSatisfaction": 84.1
+  },
+  {
+    "institutionName": "멀티캠퍼스",
+    "totalRevenue": 87972250534.74681,
+    "totalCourses": 268,
+    "totalStudents": 6845,
+    "completedStudents": 4911,
+    "averageCompletionRate": 71.7,
+    "averageSatisfaction": 84.2
+  },
+  {
+    "institutionName": "주식회사코드스테이츠",
+    "totalRevenue": 55460317437.207756,
+    "totalCourses": 64,
+    "totalStudents": 4280,
+    "completedStudents": 3659,
+    "averageCompletionRate": 85.5,
+    "averageSatisfaction": 81
+  },
+  {
+    "institutionName": "주식회사멋쟁이사자처럼",
+    "totalRevenue": 53681671509.969154,
+    "totalCourses": 113,
+    "totalStudents": 5183,
+    "completedStudents": 3593,
+    "averageCompletionRate": 69.3,
+    "averageSatisfaction": 83.7
+  },
+  {
+    "institutionName": "패스트캠퍼스강남학원",
+    "totalRevenue": 33149807051.939724,
+    "totalCourses": 105,
+    "totalStudents": 3664,
+    "completedStudents": 2166,
+    "averageCompletionRate": 59.1,
+    "averageSatisfaction": 80.5
+  },
+  {
+    "institutionName": "한국전파진흥협회",
+    "totalRevenue": 31863765473.67757,
+    "totalCourses": 87,
+    "totalStudents": 2370,
+    "completedStudents": 1468,
+    "averageCompletionRate": 61.9,
+    "averageSatisfaction": 82.8
+  },
+  {
+    "institutionName": "(주)그렙",
+    "totalRevenue": 28323546980.706596,
+    "totalCourses": 75,
+    "totalStudents": 2839,
+    "completedStudents": 1896,
+    "averageCompletionRate": 66.8,
+    "averageSatisfaction": 83
+  },
+  {
+    "institutionName": "코드잇 평생교육원",
+    "totalRevenue": 27681280324.88644,
+    "totalCourses": 58,
+    "totalStudents": 1760,
+    "completedStudents": 876,
+    "averageCompletionRate": 49.8,
+    "averageSatisfaction": 86.8
+  },
+  {
+    "institutionName": "주식회사구름",
+    "totalRevenue": 26675732633.555183,
+    "totalCourses": 95,
+    "totalStudents": 2225,
+    "completedStudents": 1246,
+    "averageCompletionRate": 56,
+    "averageSatisfaction": 78.5
+  },
+  {
+    "institutionName": "플레이데이터평생교육원",
+    "totalRevenue": 23014764191.8171,
+    "totalCourses": 98,
+    "totalStudents": 2317,
+    "completedStudents": 1632,
+    "averageCompletionRate": 70.4,
+    "averageSatisfaction": 80.9
+  },
+  {
+    "institutionName": "한국표준협회",
+    "totalRevenue": 22723368115.88224,
+    "totalCourses": 66,
+    "totalStudents": 1643,
+    "completedStudents": 837,
+    "averageCompletionRate": 50.9,
+    "averageSatisfaction": 80.4
+  },
+  {
+    "institutionName": "그린컴퓨터아카데미",
+    "totalRevenue": 20975986161.22337,
+    "totalCourses": 198,
+    "totalStudents": 3084,
+    "completedStudents": 2381,
+    "averageCompletionRate": 77.2,
+    "averageSatisfaction": 87.7
+  },
+  {
+    "institutionName": "(주)엘리스그룹",
+    "totalRevenue": 20521821781.990723,
+    "totalCourses": 48,
+    "totalStudents": 1978,
+    "completedStudents": 1559,
+    "averageCompletionRate": 78.8,
+    "averageSatisfaction": 81.6
+  },
+  {
+    "institutionName": "더조은아카데미",
+    "totalRevenue": 19833492346.36918,
+    "totalCourses": 160,
+    "totalStudents": 2571,
+    "completedStudents": 1920,
+    "averageCompletionRate": 74.7,
+    "averageSatisfaction": 85.4
+  },
+  {
+    "institutionName": "스마트인재개발원",
+    "totalRevenue": 19222519014.557495,
+    "totalCourses": 90,
+    "totalStudents": 1959,
+    "completedStudents": 1748,
+    "averageCompletionRate": 89.2,
+    "averageSatisfaction": 87.4
+  },
+  {
+    "institutionName": "부스트캠프평생교육시설",
+    "totalRevenue": 18641510290.302013,
+    "totalCourses": 65,
+    "totalStudents": 1476,
+    "completedStudents": 1368,
+    "averageCompletionRate": 92.7,
+    "averageSatisfaction": 95
+  },
+  {
+    "institutionName": "인포섹 아카데미",
+    "totalRevenue": 18544548986.31459,
+    "totalCourses": 34,
+    "totalStudents": 1391,
+    "completedStudents": 993,
+    "averageCompletionRate": 71.4,
+    "averageSatisfaction": 86.2
+  },
+  {
+    "institutionName": "넥스트러너스평생교육시설",
+    "totalRevenue": 16024950341.216707,
+    "totalCourses": 45,
+    "totalStudents": 1467,
+    "completedStudents": 708,
+    "averageCompletionRate": 48.3,
+    "averageSatisfaction": 305.7
+  },
+  {
+    "institutionName": "(주)모두의연구소",
+    "totalRevenue": 15127988851.879213,
+    "totalCourses": 70,
+    "totalStudents": 1427,
+    "completedStudents": 1023,
+    "averageCompletionRate": 71.7,
+    "averageSatisfaction": 85.8
+  },
+  {
+    "institutionName": "(주)솔데스크",
+    "totalRevenue": 13114286640.626785,
+    "totalCourses": 78,
+    "totalStudents": 1861,
+    "completedStudents": 1482,
+    "averageCompletionRate": 79.6,
+    "averageSatisfaction": 88.4
+  },
+  {
+    "institutionName": "(주)이스트소프트",
+    "totalRevenue": 12712237194.658415,
+    "totalCourses": 39,
+    "totalStudents": 1213,
+    "completedStudents": 795,
+    "averageCompletionRate": 65.5,
+    "averageSatisfaction": 82
+  },
+  {
+    "institutionName": "이젠아카데미",
+    "totalRevenue": 12106819947.605343,
+    "totalCourses": 94,
+    "totalStudents": 1597,
+    "completedStudents": 1024,
+    "averageCompletionRate": 64.1,
+    "averageSatisfaction": 85.4
+  },
+  {
+    "institutionName": "하이미디어",
+    "totalRevenue": 11945417513.889448,
+    "totalCourses": 106,
+    "totalStudents": 1867,
+    "completedStudents": 1266,
+    "averageCompletionRate": 67.8,
+    "averageSatisfaction": 87.9
+  },
+  {
+    "institutionName": "MBC아카데미 컴퓨터 교육센터",
+    "totalRevenue": 11694806960.179445,
+    "totalCourses": 87,
+    "totalStudents": 1607,
+    "completedStudents": 698,
+    "averageCompletionRate": 43.4,
+    "averageSatisfaction": 79.9
+  },
+  {
+    "institutionName": "주식회사경일게임아이티아카데미",
+    "totalRevenue": 11366165969.868305,
+    "totalCourses": 40,
+    "totalStudents": 1110,
+    "completedStudents": 662,
+    "averageCompletionRate": 59.6,
+    "averageSatisfaction": 88.9
+  },
+  {
+    "institutionName": "아이티윌",
+    "totalRevenue": 11168372168.336666,
+    "totalCourses": 86,
+    "totalStudents": 1653,
+    "completedStudents": 1306,
+    "averageCompletionRate": 79,
+    "averageSatisfaction": 91.5
+  },
+  {
+    "institutionName": "네이버클라우드주식회사",
+    "totalRevenue": 9894046147.449524,
+    "totalCourses": 28,
+    "totalStudents": 651,
+    "completedStudents": 568,
+    "averageCompletionRate": 87.3,
+    "averageSatisfaction": 81.2
+  },
+  {
+    "institutionName": "중앙정보기술인재개발원",
+    "totalRevenue": 9618951242.972597,
+    "totalCourses": 57,
+    "totalStudents": 1321,
+    "completedStudents": 1124,
+    "averageCompletionRate": 85.1,
+    "averageSatisfaction": 90
+  },
+  {
+    "institutionName": "한국정보교육원(구.경원직업전문학교)",
+    "totalRevenue": 8311005064.956785,
+    "totalCourses": 61,
+    "totalStudents": 1134,
+    "completedStudents": 841,
+    "averageCompletionRate": 74.2,
+    "averageSatisfaction": 89.4
+  },
+  {
+    "institutionName": "(주)문화방송",
+    "totalRevenue": 8276049326.143967,
+    "totalCourses": 24,
+    "totalStudents": 564,
+    "completedStudents": 375,
+    "averageCompletionRate": 66.5,
+    "averageSatisfaction": 72.3
+  },
+  {
+    "institutionName": "(주)우아한형제들",
+    "totalRevenue": 7750042347.378281,
+    "totalCourses": 10,
+    "totalStudents": 473,
+    "completedStudents": 364,
+    "averageCompletionRate": 77,
+    "averageSatisfaction": 98.4
+  },
+  {
+    "institutionName": "한국ICT인재개발원",
+    "totalRevenue": 7132747346.068543,
+    "totalCourses": 41,
+    "totalStudents": 940,
+    "completedStudents": 649,
+    "averageCompletionRate": 69,
+    "averageSatisfaction": 92
+  },
+  {
+    "institutionName": "한국소프트웨어인재개발원",
+    "totalRevenue": 6370020201.502699,
+    "totalCourses": 41,
+    "totalStudents": 855,
+    "completedStudents": 715,
+    "averageCompletionRate": 83.6,
+    "averageSatisfaction": 79.9
+  },
+  {
+    "institutionName": "(주)엠비씨플러스",
+    "totalRevenue": 6303556226.433754,
+    "totalCourses": 8,
+    "totalStudents": 429,
+    "completedStudents": 163,
+    "averageCompletionRate": 38,
+    "averageSatisfaction": 88.2
+  },
+  {
+    "institutionName": "(재)대덕인재개발원",
+    "totalRevenue": 6268010321.303222,
+    "totalCourses": 36,
+    "totalStudents": 837,
+    "completedStudents": 675,
+    "averageCompletionRate": 80.6,
+    "averageSatisfaction": 90.1
+  },
+  {
+    "institutionName": "쌍용아카데미",
+    "totalRevenue": 6243828091.153894,
+    "totalCourses": 41,
+    "totalStudents": 775,
+    "completedStudents": 582,
+    "averageCompletionRate": 75.1,
+    "averageSatisfaction": 95.8
+  },
+  {
+    "institutionName": "에이콘아카데미",
+    "totalRevenue": 6226355831.147587,
+    "totalCourses": 46,
+    "totalStudents": 889,
+    "completedStudents": 728,
+    "averageCompletionRate": 81.9,
+    "averageSatisfaction": 87.9
+  },
+  {
+    "institutionName": "(주)천재교육",
+    "totalRevenue": 6210961740.097193,
+    "totalCourses": 34,
+    "totalStudents": 440,
+    "completedStudents": 307,
+    "averageCompletionRate": 69.8,
+    "averageSatisfaction": 77.1
+  },
+  {
+    "institutionName": "(주)신세계아이앤씨",
+    "totalRevenue": 6046429907.815522,
+    "totalCourses": 21,
+    "totalStudents": 466,
+    "completedStudents": 308,
+    "averageCompletionRate": 66.1,
+    "averageSatisfaction": 87.2
+  },
+  {
+    "institutionName": "한경닷컴IT교육센터",
+    "totalRevenue": 5897066782.535752,
+    "totalCourses": 37,
+    "totalStudents": 825,
+    "completedStudents": 552,
+    "averageCompletionRate": 66.9,
+    "averageSatisfaction": 83.3
+  },
+  {
+    "institutionName": "에티버스러닝평생교육원",
+    "totalRevenue": 5761998209.913627,
+    "totalCourses": 35,
+    "totalStudents": 690,
+    "completedStudents": 533,
+    "averageCompletionRate": 77.2,
+    "averageSatisfaction": 77.2
+  },
+  {
+    "institutionName": "서울대학교",
+    "totalRevenue": 5738862047.778451,
+    "totalCourses": 9,
+    "totalStudents": 344,
+    "completedStudents": 182,
+    "averageCompletionRate": 52.9,
+    "averageSatisfaction": 89
+  },
+  {
+    "institutionName": "(학교법인)인하대학교",
+    "totalRevenue": 5448652504.427521,
+    "totalCourses": 22,
+    "totalStudents": 499,
+    "completedStudents": 376,
+    "averageCompletionRate": 75.4,
+    "averageSatisfaction": 92.2
+  },
+  {
+    "institutionName": "KH정보교육원",
+    "totalRevenue": 4735574698.955854,
+    "totalCourses": 30,
+    "totalStudents": 624,
+    "completedStudents": 391,
+    "averageCompletionRate": 62.7,
+    "averageSatisfaction": 88.7
+  },
+  {
+    "institutionName": "아시아경제 교육센터",
+    "totalRevenue": 4422025062.475155,
+    "totalCourses": 38,
+    "totalStudents": 654,
+    "completedStudents": 492,
+    "averageCompletionRate": 75.2,
+    "averageSatisfaction": 83.6
+  },
+  {
+    "institutionName": "(재)부산인재개발원 부산IT교육센터",
+    "totalRevenue": 4388006829.625068,
+    "totalCourses": 33,
+    "totalStudents": 621,
+    "completedStudents": 465,
+    "averageCompletionRate": 74.9,
+    "averageSatisfaction": 89.9
+  },
+  {
+    "institutionName": "(주)한국능률협회컨설팅",
+    "totalRevenue": 4100067992.028816,
+    "totalCourses": 16,
+    "totalStudents": 347,
+    "completedStudents": 170,
+    "averageCompletionRate": 49,
+    "averageSatisfaction": 79.7
+  },
+  {
+    "institutionName": "구디아카데미",
+    "totalRevenue": 4093291595.3832927,
+    "totalCourses": 29,
+    "totalStudents": 618,
+    "completedStudents": 501,
+    "averageCompletionRate": 81.1,
+    "averageSatisfaction": 89.1
+  },
+  {
+    "institutionName": "(주)알파코",
+    "totalRevenue": 4002895045.0184817,
+    "totalCourses": 21,
+    "totalStudents": 436,
+    "completedStudents": 327,
+    "averageCompletionRate": 75,
+    "averageSatisfaction": 79.5
+  },
+  {
+    "institutionName": "대한상공회의소 충남인력개발원",
+    "totalRevenue": 4000939824.6660876,
+    "totalCourses": 17,
+    "totalStudents": 279,
+    "completedStudents": 229,
+    "averageCompletionRate": 82.1,
+    "averageSatisfaction": 86.1
+  },
+  {
+    "institutionName": "케이지에듀원 아이티뱅크종로학원",
+    "totalRevenue": 3940993676.120253,
+    "totalCourses": 31,
+    "totalStudents": 604,
+    "completedStudents": 413,
+    "averageCompletionRate": 68.4,
+    "averageSatisfaction": 78
+  },
+  {
+    "institutionName": "한국공학대학교",
+    "totalRevenue": 3938699509.731128,
+    "totalCourses": 24,
+    "totalStudents": 552,
+    "completedStudents": 397,
+    "averageCompletionRate": 71.9,
+    "averageSatisfaction": 79.8
+  },
+  {
+    "institutionName": "성균관대학교산학협력단",
+    "totalRevenue": 3882823065.8797703,
+    "totalCourses": 16,
+    "totalStudents": 476,
+    "completedStudents": 294,
+    "averageCompletionRate": 61.8,
+    "averageSatisfaction": 86.1
+  },
+  {
+    "institutionName": "중앙정보처리학원",
+    "totalRevenue": 3875779118.3075447,
+    "totalCourses": 21,
+    "totalStudents": 525,
+    "completedStudents": 455,
+    "averageCompletionRate": 86.7,
+    "averageSatisfaction": 87.5
+  },
+  {
+    "institutionName": "유비온디지털교육센터",
+    "totalRevenue": 3741063280.2765365,
+    "totalCourses": 21,
+    "totalStudents": 404,
+    "completedStudents": 289,
+    "averageCompletionRate": 71.5,
+    "averageSatisfaction": 84.8
+  },
+  {
+    "institutionName": "애드인에듀 아카데미 구로가산센터",
+    "totalRevenue": 3627185462.009508,
+    "totalCourses": 27,
+    "totalStudents": 616,
+    "completedStudents": 331,
+    "averageCompletionRate": 53.7,
+    "averageSatisfaction": 88.9
+  },
+  {
+    "institutionName": "솔데스크강남학원",
+    "totalRevenue": 3591230884.212605,
+    "totalCourses": 25,
+    "totalStudents": 521,
+    "completedStudents": 370,
+    "averageCompletionRate": 71,
+    "averageSatisfaction": 84.6
+  },
+  {
+    "institutionName": "(주)에스엠유니버스",
+    "totalRevenue": 3355856197.3659544,
+    "totalCourses": 10,
+    "totalStudents": 228,
+    "completedStudents": 100,
+    "averageCompletionRate": 43.9,
+    "averageSatisfaction": 69.3
+  },
+  {
+    "institutionName": "메디치교육센터 평생교육시설",
+    "totalRevenue": 3338821979.2091475,
+    "totalCourses": 25,
+    "totalStudents": 386,
+    "completedStudents": 302,
+    "averageCompletionRate": 78.2,
+    "averageSatisfaction": 89.9
+  },
+  {
+    "institutionName": "대한상공회의소 서울기술교육센터",
+    "totalRevenue": 3306893644.986128,
+    "totalCourses": 9,
+    "totalStudents": 237,
+    "completedStudents": 164,
+    "averageCompletionRate": 69.2,
+    "averageSatisfaction": 93.4
+  },
+  {
+    "institutionName": "현대경제연구원 인재개발원",
+    "totalRevenue": 3189236324.0240083,
+    "totalCourses": 13,
+    "totalStudents": 219,
+    "completedStudents": 109,
+    "averageCompletionRate": 49.8,
+    "averageSatisfaction": 75.7
+  },
+  {
+    "institutionName": "글로벌아이티(IT)인재개발학원",
+    "totalRevenue": 3185645101.458261,
+    "totalCourses": 28,
+    "totalStudents": 436,
+    "completedStudents": 315,
+    "averageCompletionRate": 72.2,
+    "averageSatisfaction": 85.1
+  },
+  {
+    "institutionName": "경북산업직업전문학교",
+    "totalRevenue": 3122553806.091924,
+    "totalCourses": 27,
+    "totalStudents": 404,
+    "completedStudents": 323,
+    "averageCompletionRate": 80,
+    "averageSatisfaction": 88.9
+  },
+  {
+    "institutionName": "부산대학교산학협력단",
+    "totalRevenue": 3024970973.8267574,
+    "totalCourses": 20,
+    "totalStudents": 331,
+    "completedStudents": 239,
+    "averageCompletionRate": 72.2,
+    "averageSatisfaction": 85.2
+  },
+  {
+    "institutionName": "코리아IT아카데미",
+    "totalRevenue": 3023757484.024,
+    "totalCourses": 23,
+    "totalStudents": 434,
+    "completedStudents": 353,
+    "averageCompletionRate": 81.3,
+    "averageSatisfaction": 84.7
+  },
+  {
+    "institutionName": "한국직업능력교육원 안산",
+    "totalRevenue": 2899692028.1119256,
+    "totalCourses": 29,
+    "totalStudents": 429,
+    "completedStudents": 262,
+    "averageCompletionRate": 61.1,
+    "averageSatisfaction": 82.3
+  },
+  {
+    "institutionName": "(주)포스코 미래창조아카데미",
+    "totalRevenue": 2845657822.3082995,
+    "totalCourses": 30,
+    "totalStudents": 508,
+    "completedStudents": 350,
+    "averageCompletionRate": 68.9,
+    "averageSatisfaction": 81.2
+  },
+  {
+    "institutionName": "코드랩아카데미학원",
+    "totalRevenue": 2791470404.2506404,
+    "totalCourses": 18,
+    "totalStudents": 301,
+    "completedStudents": 181,
+    "averageCompletionRate": 60.1,
+    "averageSatisfaction": 88.7
+  },
+  {
+    "institutionName": "대한상공회의소광주인력개발원",
+    "totalRevenue": 2776288075.02977,
+    "totalCourses": 11,
+    "totalStudents": 251,
+    "completedStudents": 147,
+    "averageCompletionRate": 58.6,
+    "averageSatisfaction": 88
+  },
+  {
+    "institutionName": "비트교육센터",
+    "totalRevenue": 2728226519.190882,
+    "totalCourses": 27,
+    "totalStudents": 379,
+    "completedStudents": 313,
+    "averageCompletionRate": 82.6,
+    "averageSatisfaction": 87.3
+  },
+  {
+    "institutionName": "DW아카데미학원",
+    "totalRevenue": 2678943994.3583922,
+    "totalCourses": 19,
+    "totalStudents": 385,
+    "completedStudents": 205,
+    "averageCompletionRate": 53.2,
+    "averageSatisfaction": 84.2
+  },
+  {
+    "institutionName": "중앙HTA IT교육원",
+    "totalRevenue": 2525614351.9730234,
+    "totalCourses": 20,
+    "totalStudents": 338,
+    "completedStudents": 278,
+    "averageCompletionRate": 82.2,
+    "averageSatisfaction": 85.1
+  },
+  {
+    "institutionName": "영진직업전문학교",
+    "totalRevenue": 2484597979.3398266,
+    "totalCourses": 25,
+    "totalStudents": 391,
+    "completedStudents": 294,
+    "averageCompletionRate": 75.2,
+    "averageSatisfaction": 93.4
+  },
+  {
+    "institutionName": "연세IT미래교육원(구.연세직업전문학교)",
+    "totalRevenue": 2475915244.1359243,
+    "totalCourses": 24,
+    "totalStudents": 322,
+    "completedStudents": 194,
+    "averageCompletionRate": 60.2,
+    "averageSatisfaction": 85.2
+  },
+  {
+    "institutionName": "한국품질재단 평생교육시설",
+    "totalRevenue": 2472926311.686401,
+    "totalCourses": 17,
+    "totalStudents": 334,
+    "completedStudents": 276,
+    "averageCompletionRate": 82.6,
+    "averageSatisfaction": 87.4
+  },
+  {
+    "institutionName": "케이아이씨캠퍼스학원",
+    "totalRevenue": 2363958120.118818,
+    "totalCourses": 18,
+    "totalStudents": 374,
+    "completedStudents": 303,
+    "averageCompletionRate": 81,
+    "averageSatisfaction": 82.1
+  },
+  {
+    "institutionName": "대우능력개발원",
+    "totalRevenue": 2134798417.9945939,
+    "totalCourses": 15,
+    "totalStudents": 285,
+    "completedStudents": 83,
+    "averageCompletionRate": 29.1,
+    "averageSatisfaction": 90.7
+  },
+  {
+    "institutionName": "연희직업전문학교(주)",
+    "totalRevenue": 2078704738.2595224,
+    "totalCourses": 19,
+    "totalStudents": 317,
+    "completedStudents": 238,
+    "averageCompletionRate": 75.1,
+    "averageSatisfaction": 87.2
+  },
+  {
+    "institutionName": "메가스터디",
+    "totalRevenue": 2044339933.777287,
+    "totalCourses": 23,
+    "totalStudents": 294,
+    "completedStudents": 139,
+    "averageCompletionRate": 47.3,
+    "averageSatisfaction": 80.1
+  },
+  {
+    "institutionName": "휴먼IT교육센터_국비지원무료교육",
+    "totalRevenue": 2035100679.1517994,
+    "totalCourses": 18,
+    "totalStudents": 316,
+    "completedStudents": 198,
+    "averageCompletionRate": 62.7,
+    "averageSatisfaction": 78.7
+  },
+  {
+    "institutionName": "경북대학교산학협력단",
+    "totalRevenue": 1832283057.421796,
+    "totalCourses": 9,
+    "totalStudents": 240,
+    "completedStudents": 147,
+    "averageCompletionRate": 61.3,
+    "averageSatisfaction": 88.4
+  },
+  {
+    "institutionName": "대한상공회의소 경기인력개발원",
+    "totalRevenue": 1827077096.2978969,
+    "totalCourses": 8,
+    "totalStudents": 181,
+    "completedStudents": 109,
+    "averageCompletionRate": 60.2,
+    "averageSatisfaction": 82.5
+  },
+  {
+    "institutionName": "(주)글로벌아카데미(구.글로벌직업전문학교)",
+    "totalRevenue": 1799260953.1361878,
+    "totalCourses": 19,
+    "totalStudents": 310,
+    "completedStudents": 198,
+    "averageCompletionRate": 63.9,
+    "averageSatisfaction": 87.6
+  },
+  {
+    "institutionName": "한국IT교육원",
+    "totalRevenue": 1756513694.2416413,
+    "totalCourses": 22,
+    "totalStudents": 262,
+    "completedStudents": 117,
+    "averageCompletionRate": 44.7,
+    "averageSatisfaction": 79
+  },
+  {
+    "institutionName": "부산예일직업전문학교",
+    "totalRevenue": 1750394916.6071613,
+    "totalCourses": 15,
+    "totalStudents": 226,
+    "completedStudents": 159,
+    "averageCompletionRate": 70.4,
+    "averageSatisfaction": 91
+  },
+  {
+    "institutionName": "모블교육센터평생교육원",
+    "totalRevenue": 1725588446.9377756,
+    "totalCourses": 16,
+    "totalStudents": 266,
+    "completedStudents": 214,
+    "averageCompletionRate": 80.5,
+    "averageSatisfaction": 88.7
+  },
+  {
+    "institutionName": "한경아카데미",
+    "totalRevenue": 1640320690.0792663,
+    "totalCourses": 4,
+    "totalStudents": 116,
+    "completedStudents": 93,
+    "averageCompletionRate": 80.2,
+    "averageSatisfaction": 76.5
+  },
+  {
+    "institutionName": "미래융합교육원",
+    "totalRevenue": 1606346737.1262078,
+    "totalCourses": 11,
+    "totalStudents": 197,
+    "completedStudents": 158,
+    "averageCompletionRate": 80.2,
+    "averageSatisfaction": 91.2
+  },
+  {
+    "institutionName": "구트아카데미학원",
+    "totalRevenue": 1591230666.7573042,
+    "totalCourses": 17,
+    "totalStudents": 216,
+    "completedStudents": 159,
+    "averageCompletionRate": 73.6,
+    "averageSatisfaction": 81.2
+  },
+  {
+    "institutionName": "(주)LG CNS Learning&Development담당(I)",
+    "totalRevenue": 1590128876.3678079,
+    "totalCourses": 2,
+    "totalStudents": 109,
+    "completedStudents": 48,
+    "averageCompletionRate": 44,
+    "averageSatisfaction": 87.8
+  },
+  {
+    "institutionName": "대한상공회의소부산인력개발원",
+    "totalRevenue": 1523769025.0580354,
+    "totalCourses": 9,
+    "totalStudents": 164,
+    "completedStudents": 107,
+    "averageCompletionRate": 65.2,
+    "averageSatisfaction": 88
+  },
+  {
+    "institutionName": "한울직업전문학교",
+    "totalRevenue": 1502007866.804854,
+    "totalCourses": 20,
+    "totalStudents": 220,
+    "completedStudents": 167,
+    "averageCompletionRate": 75.9,
+    "averageSatisfaction": 90.8
+  },
+  {
+    "institutionName": "글로벌산업기술교육원",
+    "totalRevenue": 1472380681.9457552,
+    "totalCourses": 16,
+    "totalStudents": 185,
+    "completedStudents": 138,
+    "averageCompletionRate": 74.6,
+    "averageSatisfaction": 96.9
+  },
+  {
+    "institutionName": "봄아카데미학원",
+    "totalRevenue": 1437816550.001521,
+    "totalCourses": 12,
+    "totalStudents": 208,
+    "completedStudents": 157,
+    "averageCompletionRate": 75.5,
+    "averageSatisfaction": 73.7
+  },
+  {
+    "institutionName": "(주)케이지에듀원 아이티뱅크노량진학원",
+    "totalRevenue": 1431356835.136478,
+    "totalCourses": 12,
+    "totalStudents": 207,
+    "completedStudents": 132,
+    "averageCompletionRate": 63.8,
+    "averageSatisfaction": 80.2
+  },
+  {
+    "institutionName": "방송정보국제교육원",
+    "totalRevenue": 1426838067.1818104,
+    "totalCourses": 16,
+    "totalStudents": 231,
+    "completedStudents": 184,
+    "averageCompletionRate": 79.7,
+    "averageSatisfaction": 83.6
+  },
+  {
+    "institutionName": "(주)휴먼교육센터",
+    "totalRevenue": 1357601601.6060808,
+    "totalCourses": 10,
+    "totalStudents": 183,
+    "completedStudents": 92,
+    "averageCompletionRate": 50.3,
+    "averageSatisfaction": 88.8
+  },
+  {
+    "institutionName": "주식회사  하이테커",
+    "totalRevenue": 1353647436.8228588,
+    "totalCourses": 10,
+    "totalStudents": 318,
+    "completedStudents": 255,
+    "averageCompletionRate": 80.2,
+    "averageSatisfaction": 79.7
+  },
+  {
+    "institutionName": "주식회사원티드랩",
+    "totalRevenue": 1328441887.7864172,
+    "totalCourses": 3,
+    "totalStudents": 93,
+    "completedStudents": 55,
+    "averageCompletionRate": 59.1,
+    "averageSatisfaction": 91.9
+  },
+  {
+    "institutionName": "(주)우리인재개발원",
+    "totalRevenue": 1297947381.672361,
+    "totalCourses": 12,
+    "totalStudents": 208,
+    "completedStudents": 144,
+    "averageCompletionRate": 69.2,
+    "averageSatisfaction": 91.2
+  },
+  {
+    "institutionName": "인천일보아카데미",
+    "totalRevenue": 1287627207.5839934,
+    "totalCourses": 8,
+    "totalStudents": 193,
+    "completedStudents": 146,
+    "averageCompletionRate": 75.6,
+    "averageSatisfaction": 85.8
+  },
+  {
+    "institutionName": "한국직업전문학교",
+    "totalRevenue": 1267564371.8752782,
+    "totalCourses": 22,
+    "totalStudents": 187,
+    "completedStudents": 144,
+    "averageCompletionRate": 77,
+    "averageSatisfaction": 77.9
+  },
+  {
+    "institutionName": "(주)원주문화방송",
+    "totalRevenue": 1237096059.9666076,
+    "totalCourses": 4,
+    "totalStudents": 84,
+    "completedStudents": 49,
+    "averageCompletionRate": 58.3,
+    "averageSatisfaction": 68.4
+  },
+  {
+    "institutionName": "대한상공회의소인천인력개발원",
+    "totalRevenue": 1225652484.8700264,
+    "totalCourses": 5,
+    "totalStudents": 110,
+    "completedStudents": 66,
+    "averageCompletionRate": 60,
+    "averageSatisfaction": 90.2
+  },
+  {
+    "institutionName": "어소트락평생교육원",
+    "totalRevenue": 1151663844.026893,
+    "totalCourses": 6,
+    "totalStudents": 140,
+    "completedStudents": 61,
+    "averageCompletionRate": 43.6,
+    "averageSatisfaction": 91.1
+  },
+  {
+    "institutionName": "한국소프트웨어산업협회",
+    "totalRevenue": 1139055922.5068228,
+    "totalCourses": 7,
+    "totalStudents": 113,
+    "completedStudents": 97,
+    "averageCompletionRate": 85.8,
+    "averageSatisfaction": 84.5
+  },
+  {
+    "institutionName": "(주)엠아이티능력개발원",
+    "totalRevenue": 1086775906.7953842,
+    "totalCourses": 12,
+    "totalStudents": 156,
+    "completedStudents": 116,
+    "averageCompletionRate": 74.4,
+    "averageSatisfaction": 82.9
+  },
+  {
+    "institutionName": "서울IT아카데미 홍대",
+    "totalRevenue": 1086362203.7862432,
+    "totalCourses": 8,
+    "totalStudents": 160,
+    "completedStudents": 114,
+    "averageCompletionRate": 71.3,
+    "averageSatisfaction": 91.1
+  },
+  {
+    "institutionName": "삼성중공업(주)거제조선소",
+    "totalRevenue": 1080228108.493208,
+    "totalCourses": 3,
+    "totalStudents": 80,
+    "completedStudents": 75,
+    "averageCompletionRate": 93.8,
+    "averageSatisfaction": 81.9
+  },
+  {
+    "institutionName": "한양대학교 산학협력단",
+    "totalRevenue": 1053595749.0655205,
+    "totalCourses": 3,
+    "totalStudents": 71,
+    "completedStudents": 65,
+    "averageCompletionRate": 91.5,
+    "averageSatisfaction": 71.4
+  },
+  {
+    "institutionName": "휴먼IT교육센터_내일배움카드교육",
+    "totalRevenue": 1041636718.0037699,
+    "totalCourses": 11,
+    "totalStudents": 172,
+    "completedStudents": 102,
+    "averageCompletionRate": 59.3,
+    "averageSatisfaction": 87
+  },
+  {
+    "institutionName": "부산IT아카데미",
+    "totalRevenue": 1019065685.1807446,
+    "totalCourses": 8,
+    "totalStudents": 152,
+    "completedStudents": 128,
+    "averageCompletionRate": 84.2,
+    "averageSatisfaction": 87.2
+  },
+  {
+    "institutionName": "(주)세종교육",
+    "totalRevenue": 1017573296.9823579,
+    "totalCourses": 12,
+    "totalStudents": 142,
+    "completedStudents": 79,
+    "averageCompletionRate": 55.6,
+    "averageSatisfaction": 76.1
+  },
+  {
+    "institutionName": "선문대학교 산학협력단",
+    "totalRevenue": 1000314720.9801617,
+    "totalCourses": 10,
+    "totalStudents": 173,
+    "completedStudents": 149,
+    "averageCompletionRate": 86.1,
+    "averageSatisfaction": 81.2
+  },
+  {
+    "institutionName": "(사)한국기술사업화진흥협회 대구평생교육원",
+    "totalRevenue": 948029669.4970964,
+    "totalCourses": 10,
+    "totalStudents": 172,
+    "completedStudents": 90,
+    "averageCompletionRate": 52.3,
+    "averageSatisfaction": 94.8
+  },
+  {
+    "institutionName": "4세대아카데미컴퓨터학원",
+    "totalRevenue": 897233844.6924274,
+    "totalCourses": 9,
+    "totalStudents": 133,
+    "completedStudents": 96,
+    "averageCompletionRate": 72.2,
+    "averageSatisfaction": 95
+  },
+  {
+    "institutionName": "(주)에스비에스에이앤티",
+    "totalRevenue": 841320482.6151187,
+    "totalCourses": 2,
+    "totalStudents": 59,
+    "completedStudents": 25,
+    "averageCompletionRate": 42.4,
+    "averageSatisfaction": 95.4
+  },
+  {
+    "institutionName": "(사)한국무역협회무역아카데미",
+    "totalRevenue": 840458278.6866502,
+    "totalCourses": 4,
+    "totalStudents": 106,
+    "completedStudents": 67,
+    "averageCompletionRate": 63.2,
+    "averageSatisfaction": 82.9
+  },
+  {
+    "institutionName": "대신IT평생교육원",
+    "totalRevenue": 816221345.525036,
+    "totalCourses": 7,
+    "totalStudents": 113,
+    "completedStudents": 68,
+    "averageCompletionRate": 60.2,
+    "averageSatisfaction": 76.1
+  },
+  {
+    "institutionName": "한국생산성본부",
+    "totalRevenue": 806384304.2592889,
+    "totalCourses": 5,
+    "totalStudents": 100,
+    "completedStudents": 1,
+    "averageCompletionRate": 1,
+    "averageSatisfaction": 0
+  },
+  {
+    "institutionName": "메가존클라우드 아이티평생교육원",
+    "totalRevenue": 805513145.8953811,
+    "totalCourses": 3,
+    "totalStudents": 57,
+    "completedStudents": 49,
+    "averageCompletionRate": 86,
+    "averageSatisfaction": 83.5
+  },
+  {
+    "institutionName": "라인컴퓨터아트학원",
+    "totalRevenue": 796091106.0454214,
+    "totalCourses": 19,
+    "totalStudents": 116,
+    "completedStudents": 46,
+    "averageCompletionRate": 39.7,
+    "averageSatisfaction": 95.9
+  },
+  {
+    "institutionName": "에이치아카데미 D&D교육센터",
+    "totalRevenue": 792120487.3200278,
+    "totalCourses": 6,
+    "totalStudents": 114,
+    "completedStudents": 16,
+    "averageCompletionRate": 14,
+    "averageSatisfaction": 73.2
+  },
+  {
+    "institutionName": "국제인재개발원",
+    "totalRevenue": 772969264.7254022,
+    "totalCourses": 11,
+    "totalStudents": 112,
+    "completedStudents": 81,
+    "averageCompletionRate": 72.3,
+    "averageSatisfaction": 87.2
+  },
+  {
+    "institutionName": "우리컴퓨터아카데미",
+    "totalRevenue": 769078372.4169985,
+    "totalCourses": 12,
+    "totalStudents": 107,
+    "completedStudents": 82,
+    "averageCompletionRate": 76.6,
+    "averageSatisfaction": 72.5
+  },
+  {
+    "institutionName": "부산IT교육센터",
+    "totalRevenue": 768458178.6831129,
+    "totalCourses": 7,
+    "totalStudents": 103,
+    "completedStudents": 56,
+    "averageCompletionRate": 54.4,
+    "averageSatisfaction": 92.4
+  },
+  {
+    "institutionName": "건국대학교산학협력단",
+    "totalRevenue": 732921690.6291,
+    "totalCourses": 2,
+    "totalStudents": 78,
+    "completedStudents": 69,
+    "averageCompletionRate": 88.5,
+    "averageSatisfaction": 62.2
+  },
+  {
+    "institutionName": "전주문화방송(주)",
+    "totalRevenue": 700363179.2750232,
+    "totalCourses": 4,
+    "totalStudents": 76,
+    "completedStudents": 46,
+    "averageCompletionRate": 60.5,
+    "averageSatisfaction": 88
+  },
+  {
+    "institutionName": "청주대학교산학협력단",
+    "totalRevenue": 693203800.6354765,
+    "totalCourses": 4,
+    "totalStudents": 54,
+    "completedStudents": 14,
+    "averageCompletionRate": 25.9,
+    "averageSatisfaction": 58.2
+  },
+  {
+    "institutionName": "렛유인에듀이공계핵심인재양성평생교육원",
+    "totalRevenue": 684909282.9206821,
+    "totalCourses": 8,
+    "totalStudents": 188,
+    "completedStudents": 118,
+    "averageCompletionRate": 62.8,
+    "averageSatisfaction": 92.2
+  },
+  {
+    "institutionName": "The국제직업전문학교",
+    "totalRevenue": 634335082.8460495,
+    "totalCourses": 10,
+    "totalStudents": 107,
+    "completedStudents": 74,
+    "averageCompletionRate": 69.2,
+    "averageSatisfaction": 89.2
+  },
+  {
+    "institutionName": "(주)예담직업전문학교",
+    "totalRevenue": 630151577.6817253,
+    "totalCourses": 5,
+    "totalStudents": 97,
+    "completedStudents": 19,
+    "averageCompletionRate": 19.6,
+    "averageSatisfaction": 98.3
+  },
+  {
+    "institutionName": "(재)한국직업능력교육원(구.열린직업전문학교)",
+    "totalRevenue": 612191149.8452816,
+    "totalCourses": 8,
+    "totalStudents": 106,
+    "completedStudents": 83,
+    "averageCompletionRate": 78.3,
+    "averageSatisfaction": 86.7
+  },
+  {
+    "institutionName": "한국경영인증원",
+    "totalRevenue": 609526324.3604754,
+    "totalCourses": 7,
+    "totalStudents": 71,
+    "completedStudents": 59,
+    "averageCompletionRate": 83.1,
+    "averageSatisfaction": 96.6
+  },
+  {
+    "institutionName": "한국직업능력교육원(구.열린드림기술교육원)",
+    "totalRevenue": 583870240.7599661,
+    "totalCourses": 4,
+    "totalStudents": 86,
+    "completedStudents": 52,
+    "averageCompletionRate": 60.5,
+    "averageSatisfaction": 90.4
+  },
+  {
+    "institutionName": "케이비에스미디어주식회사",
+    "totalRevenue": 569184000,
+    "totalCourses": 2,
+    "totalStudents": 40,
+    "completedStudents": 0,
+    "averageCompletionRate": 0,
+    "averageSatisfaction": 0
+  },
+  {
+    "institutionName": "주식회사 로켓부스트",
+    "totalRevenue": 495246964.68213034,
+    "totalCourses": 6,
+    "totalStudents": 50,
+    "completedStudents": 24,
+    "averageCompletionRate": 48,
+    "averageSatisfaction": 91.4
+  },
+  {
+    "institutionName": "광운대학교",
+    "totalRevenue": 494296332.8091147,
+    "totalCourses": 8,
+    "totalStudents": 122,
+    "completedStudents": 105,
+    "averageCompletionRate": 86.1,
+    "averageSatisfaction": 88.7
+  },
+  {
+    "institutionName": "에이아이아카데미학원",
+    "totalRevenue": 487170866.05625546,
+    "totalCourses": 6,
+    "totalStudents": 72,
+    "completedStudents": 55,
+    "averageCompletionRate": 76.4,
+    "averageSatisfaction": 95.1
+  },
+  {
+    "institutionName": "두드림컴퓨터아카데미",
+    "totalRevenue": 473377130.2731347,
+    "totalCourses": 5,
+    "totalStudents": 76,
+    "completedStudents": 51,
+    "averageCompletionRate": 67.1,
+    "averageSatisfaction": 84
+  },
+  {
+    "institutionName": "홍익대학교세종캠퍼스산학협력단",
+    "totalRevenue": 466757810.41006815,
+    "totalCourses": 3,
+    "totalStudents": 66,
+    "completedStudents": 59,
+    "averageCompletionRate": 89.4,
+    "averageSatisfaction": 82.8
+  },
+  {
+    "institutionName": "한남대학교",
+    "totalRevenue": 455525264.68699205,
+    "totalCourses": 4,
+    "totalStudents": 65,
+    "completedStudents": 57,
+    "averageCompletionRate": 87.7,
+    "averageSatisfaction": 66
+  },
+  {
+    "institutionName": "강원대학교산학협력단",
+    "totalRevenue": 449843439.9676284,
+    "totalCourses": 4,
+    "totalStudents": 75,
+    "completedStudents": 58,
+    "averageCompletionRate": 77.3,
+    "averageSatisfaction": 79.4
+  },
+  {
+    "institutionName": "(주)누리마루학원",
+    "totalRevenue": 425359155.4923131,
+    "totalCourses": 3,
+    "totalStudents": 59,
+    "completedStudents": 53,
+    "averageCompletionRate": 89.8,
+    "averageSatisfaction": 95.8
+  },
+  {
+    "institutionName": "케이지에듀원아이티뱅크강남학원",
+    "totalRevenue": 398104724.4835556,
+    "totalCourses": 3,
+    "totalStudents": 58,
+    "completedStudents": 39,
+    "averageCompletionRate": 67.2,
+    "averageSatisfaction": 70.7
+  },
+  {
+    "institutionName": "수원대학교",
+    "totalRevenue": 380926433.692636,
+    "totalCourses": 2,
+    "totalStudents": 32,
+    "completedStudents": 25,
+    "averageCompletionRate": 78.1,
+    "averageSatisfaction": 77.7
+  },
+  {
+    "institutionName": "삼정회계법인",
+    "totalRevenue": 361739052.38244486,
+    "totalCourses": 4,
+    "totalStudents": 43,
+    "completedStudents": 1,
+    "averageCompletionRate": 2.3,
+    "averageSatisfaction": 0
+  },
+  {
+    "institutionName": "삼성국민취업아카데미(주)",
+    "totalRevenue": 360175183.54980326,
+    "totalCourses": 5,
+    "totalStudents": 66,
+    "completedStudents": 6,
+    "averageCompletionRate": 9.1,
+    "averageSatisfaction": 72.5
+  },
+  {
+    "institutionName": "광주 데이터사이언스 아카데미(SES)",
+    "totalRevenue": 358999663.348098,
+    "totalCourses": 3,
+    "totalStudents": 50,
+    "completedStudents": 37,
+    "averageCompletionRate": 74,
+    "averageSatisfaction": 74.4
+  },
+  {
+    "institutionName": "오라클자바교육학원",
+    "totalRevenue": 352257854.2692483,
+    "totalCourses": 6,
+    "totalStudents": 49,
+    "completedStudents": 16,
+    "averageCompletionRate": 32.7,
+    "averageSatisfaction": 85.7
+  },
+  {
+    "institutionName": "한국기술교육직업전문학교",
+    "totalRevenue": 323819611.03585714,
+    "totalCourses": 4,
+    "totalStudents": 46,
+    "completedStudents": 16,
+    "averageCompletionRate": 34.8,
+    "averageSatisfaction": 92.4
+  },
+  {
+    "institutionName": "백석대학교",
+    "totalRevenue": 318041881.7386215,
+    "totalCourses": 3,
+    "totalStudents": 68,
+    "completedStudents": 63,
+    "averageCompletionRate": 92.6,
+    "averageSatisfaction": 86.8
+  },
+  {
+    "institutionName": "부산대학교",
+    "totalRevenue": 303972099.9475585,
+    "totalCourses": 2,
+    "totalStudents": 50,
+    "completedStudents": 40,
+    "averageCompletionRate": 80,
+    "averageSatisfaction": 80.3
+  },
+  {
+    "institutionName": "한가람IT전문교육센터",
+    "totalRevenue": 288576163.1233851,
+    "totalCourses": 7,
+    "totalStudents": 43,
+    "completedStudents": 35,
+    "averageCompletionRate": 81.4,
+    "averageSatisfaction": 82.9
+  },
+  {
+    "institutionName": "(학)순천향대학",
+    "totalRevenue": 277612189.6081729,
+    "totalCourses": 1,
+    "totalStudents": 21,
+    "completedStudents": 20,
+    "averageCompletionRate": 95.2,
+    "averageSatisfaction": 89.9
+  },
+  {
+    "institutionName": "한국기술교육대학교",
+    "totalRevenue": 259921836.80185604,
+    "totalCourses": 8,
+    "totalStudents": 113,
+    "completedStudents": 75,
+    "averageCompletionRate": 66.4,
+    "averageSatisfaction": 86.2
+  },
+  {
+    "institutionName": "한양대학교에리카산학협력단",
+    "totalRevenue": 236249084.50706324,
+    "totalCourses": 3,
+    "totalStudents": 36,
+    "completedStudents": 18,
+    "averageCompletionRate": 50,
+    "averageSatisfaction": 54
+  },
+  {
+    "institutionName": "사단법인중소기업기술혁신협회충북지회",
+    "totalRevenue": 236008935.5894897,
+    "totalCourses": 4,
+    "totalStudents": 59,
+    "completedStudents": 32,
+    "averageCompletionRate": 54.2,
+    "averageSatisfaction": 68
+  },
+  {
+    "institutionName": "원광대학교산학협력단",
+    "totalRevenue": 233868282.08840275,
+    "totalCourses": 3,
+    "totalStudents": 49,
+    "completedStudents": 23,
+    "averageCompletionRate": 46.9,
+    "averageSatisfaction": 85.9
+  },
+  {
+    "institutionName": "한성대학교산학협력단",
+    "totalRevenue": 211210873.21236032,
+    "totalCourses": 3,
+    "totalStudents": 28,
+    "completedStudents": 23,
+    "averageCompletionRate": 82.1,
+    "averageSatisfaction": 82.5
+  },
+  {
+    "institutionName": "(재)한국아이티교육재단 한국IT직업전문학교",
+    "totalRevenue": 209746560.4836637,
+    "totalCourses": 2,
+    "totalStudents": 32,
+    "completedStudents": 17,
+    "averageCompletionRate": 53.1,
+    "averageSatisfaction": 84.2
+  },
+  {
+    "institutionName": "인천대학교산학협력단",
+    "totalRevenue": 196717436.72181088,
+    "totalCourses": 2,
+    "totalStudents": 49,
+    "completedStudents": 47,
+    "averageCompletionRate": 95.9,
+    "averageSatisfaction": 85.4
+  },
+  {
+    "institutionName": "(주)더존비즈온",
+    "totalRevenue": 195148800,
+    "totalCourses": 1,
+    "totalStudents": 16,
+    "completedStudents": 0,
+    "averageCompletionRate": 0,
+    "averageSatisfaction": 0
+  },
+  {
+    "institutionName": "고려대학교세종캠퍼스(직장)",
+    "totalRevenue": 181129686.54354915,
+    "totalCourses": 2,
+    "totalStudents": 31,
+    "completedStudents": 22,
+    "averageCompletionRate": 71,
+    "averageSatisfaction": 70.9
+  },
+  {
+    "institutionName": "(주)휴넷",
+    "totalRevenue": 179300400.89933008,
+    "totalCourses": 2,
+    "totalStudents": 27,
+    "completedStudents": 23,
+    "averageCompletionRate": 85.2,
+    "averageSatisfaction": 87.5
+  },
+  {
+    "institutionName": "부산기술직업전문학교",
+    "totalRevenue": 178225806.8740243,
+    "totalCourses": 3,
+    "totalStudents": 25,
+    "completedStudents": 20,
+    "averageCompletionRate": 80,
+    "averageSatisfaction": 99.2
+  },
+  {
+    "institutionName": "건양대학교",
+    "totalRevenue": 173022528,
+    "totalCourses": 1,
+    "totalStudents": 16,
+    "completedStudents": 8,
+    "averageCompletionRate": 50,
+    "averageSatisfaction": 58.9
+  },
+  {
+    "institutionName": "베스핀글로벌주식회사",
+    "totalRevenue": 167069233.47828507,
+    "totalCourses": 1,
+    "totalStudents": 21,
+    "completedStudents": 1,
+    "averageCompletionRate": 4.8,
+    "averageSatisfaction": 0
+  },
+  {
+    "institutionName": "삼육대학교산학협력단",
+    "totalRevenue": 165064284,
+    "totalCourses": 1,
+    "totalStudents": 23,
+    "completedStudents": 0,
+    "averageCompletionRate": 0,
+    "averageSatisfaction": 0
+  },
+  {
+    "institutionName": "광주국제직업전문학교",
+    "totalRevenue": 164855043.30770737,
+    "totalCourses": 1,
+    "totalStudents": 20,
+    "completedStudents": 16,
+    "averageCompletionRate": 80,
+    "averageSatisfaction": 97.3
+  },
+  {
+    "institutionName": "중부대학교",
+    "totalRevenue": 161919222.13867426,
+    "totalCourses": 2,
+    "totalStudents": 22,
+    "completedStudents": 21,
+    "averageCompletionRate": 95.5,
+    "averageSatisfaction": 85
+  },
+  {
+    "institutionName": "KD아카데미컴퓨터학원 김포점",
+    "totalRevenue": 146712556.80546382,
+    "totalCourses": 1,
+    "totalStudents": 20,
+    "completedStudents": 0,
+    "averageCompletionRate": 0,
+    "averageSatisfaction": 94.9
+  },
+  {
+    "institutionName": "윤성컴퓨터디자인DX아카데미",
+    "totalRevenue": 146446662.29754287,
+    "totalCourses": 2,
+    "totalStudents": 20,
+    "completedStudents": 7,
+    "averageCompletionRate": 35,
+    "averageSatisfaction": 100
+  },
+  {
+    "institutionName": "동성인재개발교육원",
+    "totalRevenue": 142292707.26460746,
+    "totalCourses": 2,
+    "totalStudents": 19,
+    "completedStudents": 14,
+    "averageCompletionRate": 73.7,
+    "averageSatisfaction": 93.4
+  },
+  {
+    "institutionName": "연세IT미래교육원",
+    "totalRevenue": 137397692.9540034,
+    "totalCourses": 1,
+    "totalStudents": 18,
+    "completedStudents": 0,
+    "averageCompletionRate": 0,
+    "averageSatisfaction": 87.8
+  },
+  {
+    "institutionName": "재단법인울산정보산업진흥원",
+    "totalRevenue": 119809571.60562943,
+    "totalCourses": 2,
+    "totalStudents": 18,
+    "completedStudents": 11,
+    "averageCompletionRate": 61.1,
+    "averageSatisfaction": 89.6
+  },
+  {
+    "institutionName": "엠아이티능력개발원",
+    "totalRevenue": 119439380.92886026,
+    "totalCourses": 1,
+    "totalStudents": 17,
+    "completedStudents": 12,
+    "averageCompletionRate": 70.6,
+    "averageSatisfaction": 85.7
+  },
+  {
+    "institutionName": "재단법인대구디지털혁신진흥원",
+    "totalRevenue": 114324265.6230996,
+    "totalCourses": 4,
+    "totalStudents": 44,
+    "completedStudents": 26,
+    "averageCompletionRate": 59.1,
+    "averageSatisfaction": 91
+  },
+  {
+    "institutionName": "윤성컴퓨터디자인아카데미",
+    "totalRevenue": 109034976.6075922,
+    "totalCourses": 1,
+    "totalStudents": 14,
+    "completedStudents": 12,
+    "averageCompletionRate": 85.7,
+    "averageSatisfaction": 90.5
+  },
+  {
+    "institutionName": "러닝스푼즈학원",
+    "totalRevenue": 102556272.26698543,
+    "totalCourses": 1,
+    "totalStudents": 19,
+    "completedStudents": 10,
+    "averageCompletionRate": 52.6,
+    "averageSatisfaction": 100
+  },
+  {
+    "institutionName": "경영기술개발원교육센터주식회사",
+    "totalRevenue": 102121873,
+    "totalCourses": 1,
+    "totalStudents": 17,
+    "completedStudents": 0,
+    "averageCompletionRate": 0,
+    "averageSatisfaction": 0
+  },
+  {
+    "institutionName": "두드림IT교육원",
+    "totalRevenue": 95472164.7520858,
+    "totalCourses": 1,
+    "totalStudents": 13,
+    "completedStudents": 0,
+    "averageCompletionRate": 0,
+    "averageSatisfaction": 92.2
+  },
+  {
+    "institutionName": "양산직업학교",
+    "totalRevenue": 94031713.37946531,
+    "totalCourses": 1,
+    "totalStudents": 11,
+    "completedStudents": 7,
+    "averageCompletionRate": 63.6,
+    "averageSatisfaction": 89.8
+  },
+  {
+    "institutionName": "(주)KD아카데미컴퓨터학원 하남미사점",
+    "totalRevenue": 89400437.49618801,
+    "totalCourses": 1,
+    "totalStudents": 13,
+    "completedStudents": 0,
+    "averageCompletionRate": 0,
+    "averageSatisfaction": 88.7
+  },
+  {
+    "institutionName": "유원대학교",
+    "totalRevenue": 89310144,
+    "totalCourses": 1,
+    "totalStudents": 14,
+    "completedStudents": 0,
+    "averageCompletionRate": 0,
+    "averageSatisfaction": 0
+  },
+  {
+    "institutionName": "한국아이티전문학원",
+    "totalRevenue": 83216065.98942488,
+    "totalCourses": 2,
+    "totalStudents": 16,
+    "completedStudents": 9,
+    "averageCompletionRate": 56.3,
+    "averageSatisfaction": 88.9
+  },
+  {
+    "institutionName": "광주IT(아이티)학원",
+    "totalRevenue": 82930848,
+    "totalCourses": 1,
+    "totalStudents": 13,
+    "completedStudents": 0,
+    "averageCompletionRate": 0,
+    "averageSatisfaction": 0
+  },
+  {
+    "institutionName": "(주)KD아카데미",
+    "totalRevenue": 82930848,
+    "totalCourses": 1,
+    "totalStudents": 13,
+    "completedStudents": 0,
+    "averageCompletionRate": 0,
+    "averageSatisfaction": 0
+  },
+  {
+    "institutionName": "국제직업전문학교",
+    "totalRevenue": 78146376,
+    "totalCourses": 1,
+    "totalStudents": 12,
+    "completedStudents": 0,
+    "averageCompletionRate": 0,
+    "averageSatisfaction": 0
+  },
+  {
+    "institutionName": "영남인재교육원",
+    "totalRevenue": 74575521.81459501,
+    "totalCourses": 1,
+    "totalStudents": 9,
+    "completedStudents": 8,
+    "averageCompletionRate": 88.9,
+    "averageSatisfaction": 82.1
+  },
+  {
+    "institutionName": "예원예술대학교 산학협력단(양주캠퍼스)",
+    "totalRevenue": 74352031.57451679,
+    "totalCourses": 2,
+    "totalStudents": 38,
+    "completedStudents": 16,
+    "averageCompletionRate": 42.1,
+    "averageSatisfaction": 81.5
+  },
+  {
+    "institutionName": "영남기술직업전문학교",
+    "totalRevenue": 72400255.36670409,
+    "totalCourses": 2,
+    "totalStudents": 10,
+    "completedStudents": 7,
+    "averageCompletionRate": 70,
+    "averageSatisfaction": 83.4
+  },
+  {
+    "institutionName": "신한양직업전문학교",
+    "totalRevenue": 64410530.61658316,
+    "totalCourses": 1,
+    "totalStudents": 9,
+    "completedStudents": 7,
+    "averageCompletionRate": 77.8,
+    "averageSatisfaction": 85
+  },
+  {
+    "institutionName": "(주)KD아카데미컴퓨터학원 구리남양주점",
+    "totalRevenue": 63792960,
+    "totalCourses": 1,
+    "totalStudents": 10,
+    "completedStudents": 0,
+    "averageCompletionRate": 0,
+    "averageSatisfaction": 0
+  },
+  {
+    "institutionName": "국립부경대학교",
+    "totalRevenue": 57413664,
+    "totalCourses": 1,
+    "totalStudents": 9,
+    "completedStudents": 0,
+    "averageCompletionRate": 0,
+    "averageSatisfaction": 0
+  },
+  {
+    "institutionName": "한국소프트웨어교육원",
+    "totalRevenue": 56294788.63529211,
+    "totalCourses": 2,
+    "totalStudents": 9,
+    "completedStudents": 8,
+    "averageCompletionRate": 88.9,
+    "averageSatisfaction": 78.6
+  },
+  {
+    "institutionName": "양정인력개발센터",
+    "totalRevenue": 55047137.200241,
+    "totalCourses": 1,
+    "totalStudents": 8,
+    "completedStudents": 6,
+    "averageCompletionRate": 75,
+    "averageSatisfaction": 97.6
+  },
+  {
+    "institutionName": "국립순천대학교산학협력단",
+    "totalRevenue": 52442515.0087263,
+    "totalCourses": 1,
+    "totalStudents": 20,
+    "completedStudents": 0,
+    "averageCompletionRate": 0,
+    "averageSatisfaction": 100
+  },
+  {
+    "institutionName": "메가HRD센터평생교육시설",
+    "totalRevenue": 51140656,
+    "totalCourses": 1,
+    "totalStudents": 8,
+    "completedStudents": 0,
+    "averageCompletionRate": 0,
+    "averageSatisfaction": 0
+  },
+  {
+    "institutionName": "목포국제직업전문학교",
+    "totalRevenue": 49573563.86292873,
+    "totalCourses": 1,
+    "totalStudents": 7,
+    "completedStudents": 5,
+    "averageCompletionRate": 71.4,
+    "averageSatisfaction": 91.4
+  },
+  {
+    "institutionName": "국립경국대학교 산학협력단",
+    "totalRevenue": 49439544,
+    "totalCourses": 1,
+    "totalStudents": 12,
+    "completedStudents": 0,
+    "averageCompletionRate": 0,
+    "averageSatisfaction": 0
+  },
+  {
+    "institutionName": "은곡직업전문학교",
+    "totalRevenue": 48152457.5,
+    "totalCourses": 1,
+    "totalStudents": 7,
+    "completedStudents": 7,
+    "averageCompletionRate": 100,
+    "averageSatisfaction": 67.3
+  },
+  {
+    "institutionName": "전남대학교산학협력단",
+    "totalRevenue": 47324993.62587045,
+    "totalCourses": 6,
+    "totalStudents": 20,
+    "completedStudents": 15,
+    "averageCompletionRate": 75,
+    "averageSatisfaction": 86.4
+  },
+  {
+    "institutionName": "중앙직업전문학교",
+    "totalRevenue": 45626668.90395967,
+    "totalCourses": 1,
+    "totalStudents": 9,
+    "completedStudents": 3,
+    "averageCompletionRate": 33.3,
+    "averageSatisfaction": 100
+  },
+  {
+    "institutionName": "고양산업진흥원",
+    "totalRevenue": 42354232.868741624,
+    "totalCourses": 1,
+    "totalStudents": 7,
+    "completedStudents": 6,
+    "averageCompletionRate": 85.7,
+    "averageSatisfaction": 85.7
+  },
+  {
+    "institutionName": "재단법인 국제인재능력개발원",
+    "totalRevenue": 41959060,
+    "totalCourses": 1,
+    "totalStudents": 5,
+    "completedStudents": 5,
+    "averageCompletionRate": 100,
+    "averageSatisfaction": 77.1
+  },
+  {
+    "institutionName": "순천대학교산학협력단",
+    "totalRevenue": 36709760.50610841,
+    "totalCourses": 1,
+    "totalStudents": 14,
+    "completedStudents": 6,
+    "averageCompletionRate": 42.9,
+    "averageSatisfaction": 100
+  },
+  {
+    "institutionName": "광주과학기술원",
+    "totalRevenue": 27146238.690728933,
+    "totalCourses": 3,
+    "totalStudents": 15,
+    "completedStudents": 3,
+    "averageCompletionRate": 20,
+    "averageSatisfaction": 75.1
+  },
+  {
+    "institutionName": "세한대학교당진산학협력단",
+    "totalRevenue": 11679408,
+    "totalCourses": 2,
+    "totalStudents": 3,
+    "completedStudents": 3,
+    "averageCompletionRate": 100,
+    "averageSatisfaction": 66.7
+  },
+  {
+    "institutionName": "에스엘아카데미학원",
+    "totalRevenue": 0,
+    "totalCourses": 1,
+    "totalStudents": 0,
+    "completedStudents": 0,
+    "averageCompletionRate": 0,
+    "averageSatisfaction": 0
+  },
+  {
+    "institutionName": "한컴아카데미(분당)",
+    "totalRevenue": 0,
+    "totalCourses": 2,
+    "totalStudents": 0,
+    "completedStudents": 0,
+    "averageCompletionRate": 0,
+    "averageSatisfaction": 0
+  },
+  {
+    "institutionName": "한국능력개발직업전문학교",
+    "totalRevenue": 0,
+    "totalCourses": 2,
+    "totalStudents": 0,
+    "completedStudents": 0,
+    "averageCompletionRate": 0,
+    "averageSatisfaction": 0
+  },
+  {
+    "institutionName": "투썬캠퍼스 분당센터",
+    "totalRevenue": 0,
+    "totalCourses": 4,
+    "totalStudents": 0,
+    "completedStudents": 0,
+    "averageCompletionRate": 0,
+    "averageSatisfaction": 0
+  },
+  {
+    "institutionName": "한국휴렛팩커드(유)교육센터",
+    "totalRevenue": 0,
+    "totalCourses": 2,
+    "totalStudents": 0,
+    "completedStudents": 0,
+    "averageCompletionRate": 0,
+    "averageSatisfaction": 0
+  }
+]

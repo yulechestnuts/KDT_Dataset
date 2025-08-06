@@ -866,7 +866,6 @@ export default function InstitutionAnalysis() {
     </div>
   );
 }
-
 // Custom Tick 컴포넌트
 const CustomTick = (props: any) => {
   const { x, y, payload, index } = props;
@@ -890,3 +889,4 @@ const CustomTick = (props: any) => {
     </g>
   );
 };
+
