@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { loadDataFromGithub, preprocessData, applyRevenueAdjustment, calculateCompletionRate } from "@/utils/data-utils";
-import { CourseData, RawCourseData, InstitutionStat, calculateInstitutionStats, aggregateCoursesByCourseNameForInstitution, AggregatedCourseData, csvParseOptions, aggregateCoursesByCourseIdWithLatestInfo, getIndividualInstitutionsInGroup, calculateInstitutionDetailedRevenue } from "@/lib/data-utils";
+import { CourseData, RawCourseData, InstitutionStat, calculateInstitutionStats, aggregateCoursesByCourseNameForInstitution, AggregatedCourseData, csvParseOptions, aggregateCoursesByCourseIdWithLatestInfo, getIndividualInstitutionsInGroup, calculateInstitutionDetailedRevenue, getPreferredEmploymentCount } from "@/lib/data-utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -82,6 +82,10 @@ function getInstitutionYearlyStats({
     const completionRate = entryForEndedThisYear > 0 ? (graduatedThisYear / entryForEndedThisYear) * 100 : 0;
     const completionRateStr = `${completionRate.toFixed(1)}% (${graduatedThisYear}/${entryForEndedThisYear})`;
 
+    const employedThisYear = endedThisYearWithGraduates.reduce((sum, c) => sum + getPreferredEmploymentCount(c), 0);
+    const employmentRate = graduatedThisYear > 0 ? (employedThisYear / graduatedThisYear) * 100 : 0;
+    const employmentRateStr = `${employmentRate.toFixed(1)}% (${employedThisYear}/${graduatedThisYear})`;
+
     // 훈련생 수 표기: 올해 입과생 + (작년 입과, 올해 종료 과정의 입과생)
     const startedThisYear = filtered.filter(c => new Date(c.과정시작일).getFullYear() === year);
     const entryThisYear = startedThisYear.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
@@ -126,6 +130,7 @@ function getInstitutionYearlyStats({
       operatedCourseCount,
       openedCourseCount: openCountStr,
       completionRate: completionRateStr,
+      employmentRate: employmentRateStr,
       avgSatisfaction,
       x: entryThisYear,
       y: prevYearEntryEndedThisYear,
@@ -140,12 +145,14 @@ function getInstitutionYearlyStats({
   if (year === undefined && month === 'all') {
     const totalStudents = finalFilteredRows.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
     const totalGraduates = finalFilteredRows.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+    const totalEmployed = finalFilteredRows.reduce((sum, c) => sum + getPreferredEmploymentCount(c), 0);
     const totalCourses = finalFilteredRows.length;
     const uniqueCourseNames = new Set(finalFilteredRows.map(c => c.과정명));
     const validRows = finalFilteredRows.filter(c => (c['수강신청 인원'] ?? 0) > 0 && (c['수료인원'] ?? 0) > 0);
     const validStudents = validRows.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
     const validGraduates = validRows.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
     const completionRate = validStudents > 0 ? (validGraduates / validStudents) * 100 : 0;
+    const employmentRate = validGraduates > 0 ? (totalEmployed / validGraduates) * 100 : 0;
     // 평균 만족도 계산
     const validSatisfaction = validRows.filter(c => c.만족도 && c.만족도 > 0);
     const totalWeighted = validSatisfaction.reduce((sum, c) => sum + (c.만족도 ?? 0) * (c['수료인원'] ?? 0), 0);
@@ -158,6 +165,7 @@ function getInstitutionYearlyStats({
       operatedCourseCount: uniqueCourseNames.size,
       openedCourseCount: formatNumber(totalCourses),
       completionRate: completionRate === 0 ? '-' : `${completionRate.toFixed(1)}%`,
+      employmentRate: employmentRate === 0 ? '-' : `${employmentRate.toFixed(1)}%`,
       avgSatisfaction,
       x: totalStudents,
       y: 0,
@@ -170,12 +178,14 @@ function getInstitutionYearlyStats({
 
   const totalStudents = finalFilteredRows.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
   const totalGraduates = finalFilteredRows.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+  const totalEmployed = finalFilteredRows.reduce((sum, c) => sum + getPreferredEmploymentCount(c), 0);
   const totalCourses = finalFilteredRows.length;
   const uniqueCourseNames = new Set(finalFilteredRows.map(c => c.과정명));
   const validRows = finalFilteredRows.filter(c => (c['수강신청 인원'] ?? 0) > 0 && (c['수료인원'] ?? 0) > 0);
   const validStudents = validRows.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
   const validGraduates = validRows.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
   const completionRate = validStudents > 0 ? (validGraduates / validStudents) * 100 : 0;
+  const employmentRate = validGraduates > 0 ? (totalEmployed / validGraduates) * 100 : 0;
 
   // x(y) 표기법을 따르지 않는 경우 (연도+월 선택 시)
   if (year !== undefined && month !== 'all') {
@@ -186,6 +196,7 @@ function getInstitutionYearlyStats({
       operatedCourseCount: uniqueCourseNames.size,
       openedCourseCount: `${totalCourses}`,
       completionRate: completionRate === 0 ? '-' : `${completionRate.toFixed(1)}%`,
+      employmentRate: employmentRate === 0 ? '-' : `${employmentRate.toFixed(1)}%`,
       x: totalStudents,
       y: 0,
       xg: totalGraduates,
@@ -217,6 +228,8 @@ function getInstitutionYearlyStats({
   const validStudentsForCompletion = validRowsForCompletion.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
   const validGraduatesForCompletion = validRowsForCompletion.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
   const completionRateForYear = validStudentsForCompletion > 0 ? (validGraduatesForCompletion / validStudentsForCompletion) * 100 : 0;
+  const totalEmployedForYear = validRowsForCompletion.reduce((sum, c) => sum + getPreferredEmploymentCount(c), 0);
+  const employmentRateForYear = validGraduatesForCompletion > 0 ? (totalEmployedForYear / validGraduatesForCompletion) * 100 : 0;
 
   // 평균 만족도 계산
   const validSatisfaction = [...startRows, ...endRows].filter(c => c.만족도 && c.만족도 > 0);
@@ -231,6 +244,7 @@ function getInstitutionYearlyStats({
     operatedCourseCount, // 운영 과정 수
     openedCourseCount: openStartSum > 0 && openEndSum > 0 ? `${openStartSum}<br/>(${openEndSum})` : openStartSum > 0 ? `${openStartSum}` : openEndSum > 0 ? `(${openEndSum})` : '', // 개강 회차수: 올해 개강 (작년 개강/올해 종료)
     completionRate: completionRateForYear === 0 ? '-' : `${completionRateForYear.toFixed(1)}%`,
+    employmentRate: employmentRateForYear === 0 ? '-' : `${employmentRateForYear.toFixed(1)}%`,
     avgSatisfaction,
     x: startSum,
     y: endSum,
@@ -396,8 +410,7 @@ export default function InstitutionAnalysis() {
     setIsGroupModalOpen(true);
   };
 
-  return (
-    <div className="p-6">
+  return (<div className="p-6">
       <h1 className="text-2xl font-bold mb-6">훈련기관별 분석</h1>
 
       {/* 연도 선택 */}
@@ -542,6 +555,7 @@ export default function InstitutionAnalysis() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">훈련생 수</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">수료인원</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">수료율</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">취업율</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">평균 만족도</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">상세</th>
               </tr>
@@ -559,8 +573,8 @@ export default function InstitutionAnalysis() {
                           )}
                         </div>
                       </div>
-                    </div>
-                  </td>
+                      </div>
+                    </td>
                   <td className="px-6 py-4 whitespace-nowrap">{formatRevenue(stat.totalRevenue)}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {(() => {
@@ -636,6 +650,20 @@ export default function InstitutionAnalysis() {
                       year: selectedYear === 'all' ? undefined : selectedYear,
                       month: selectedMonth // 월 파라미터 추가
                     });
+                    return stats.employmentRate;
+                  })()}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">{(() => {
+                    const filteredRows = originalData.filter((c) => {
+                      if (filterType === 'leading') return c.isLeadingCompanyCourse;
+                      if (filterType === 'tech') return !c.isLeadingCompanyCourse;
+                      return true;
+                    });
+                    const stats = getInstitutionYearlyStats({
+                      rows: filteredRows,
+                      institutionName: stat.institutionName,
+                      year: selectedYear === 'all' ? undefined : selectedYear,
+                      month: selectedMonth // 월 파라미터 추가
+                    });
                     return (typeof stats.avgSatisfaction === 'number' && !isNaN(stats.avgSatisfaction)) ? stats.avgSatisfaction.toFixed(1) : '-';
                   })()}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -698,7 +726,7 @@ export default function InstitutionAnalysis() {
           </DialogHeader>
           <div className="p-6">
             {/* 통계 요약 */}
-            <div className="grid grid-cols-5 gap-4 mb-6"> {/* 컬럼 수 원복 */}
+            <div className="grid grid-cols-6 gap-4 mb-6"> {/* 컬럼 수 원복 */}
               {/* 상세보기 모달 상단 요약 카드 표기 부분 */}
               {(() => {
                 const filteredRows = originalData.filter((c) => {
@@ -734,6 +762,10 @@ export default function InstitutionAnalysis() {
                       <div className="text-sm text-gray-500">평균 수료율</div>
                       <div className="text-lg font-semibold">{stats.completionRate}</div>
                     </div>
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="text-sm text-gray-500">평균 취업율</div>
+                      <div className="text-lg font-semibold">{stats.employmentRate}</div>
+                    </div>
                   </>
                 );
               })()}
@@ -747,6 +779,7 @@ export default function InstitutionAnalysis() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">훈련생 수</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">수료인원</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">수료율</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">취업율</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">매출액</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">만족도</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">개강 회차수</th>
@@ -760,6 +793,7 @@ export default function InstitutionAnalysis() {
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.studentsStr}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.graduatesStr}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.평균수료율.toFixed(1)}% ({course.총수료인원}/{course.총수강신청인원})</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.평균취업율.toFixed(1)}% ({course.총취업인원}/{course.총수료인원})</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatRevenue(course.총누적매출)}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.평균만족도.toFixed(1)}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.openCountStr}</td>
@@ -808,6 +842,7 @@ export default function InstitutionAnalysis() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">훈련생 수</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">수료인원</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">수료율</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">취업율</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">평균 만족도</th>
                   </tr>
                 </thead>
@@ -845,6 +880,7 @@ export default function InstitutionAnalysis() {
                         }
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{institution.completionRate.toFixed(1)}%</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{institution.employmentRate.toFixed(1)}%</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{institution.avgSatisfaction.toFixed(1)}</td>
                     </tr>
                   ))}
@@ -863,8 +899,7 @@ export default function InstitutionAnalysis() {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
-  );
+    </div>);
 }
 // Custom Tick 컴포넌트
 const CustomTick = (props: any) => {
@@ -889,4 +924,3 @@ const CustomTick = (props: any) => {
     </g>
   );
 };
-

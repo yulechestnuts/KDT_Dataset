@@ -98,6 +98,7 @@ export interface AggregatedCourseData {
   '훈련과정 ID'?: string; // 훈련과정 ID 추가
   총수강신청인원: number;
   총수료인원: number;
+  총취업인원: number;
   총누적매출: number;
   최소과정시작일: string;
   최대과정종료일: string;
@@ -106,6 +107,7 @@ export interface AggregatedCourseData {
   총훈련생수: number;
   평균만족도: number;
   평균수료율: number;
+  평균취업율: number;
   graduatesStr?: string; // Add graduatesStr
 }
 
@@ -132,12 +134,24 @@ export interface InstitutionStat {
   totalCourses: number;
   totalStudents: number;
   completedStudents: number;
+  totalEmployed: number;
   completionRate: number;
+  employmentRate: number;
   avgSatisfaction: number;
   courses: CourseData[];
   // 이전 연도 시작 과정 정보 추가
   prevYearStudents: number;
   prevYearCompletedStudents: number;
+}
+
+// 취업인원 선택 규칙: 6개월 > 3개월 > 전체
+export function getPreferredEmploymentCount(course: CourseData): number {
+  const sixMonth = (course['취업인원 (6개월)'] as number | undefined) ?? 0;
+  const threeMonth = (course['취업인원 (3개월)'] as number | undefined) ?? 0;
+  const overall = (course['취업인원'] as number | undefined) ?? 0;
+  if (sixMonth > 0) return sixMonth;
+  if (threeMonth > 0) return threeMonth;
+  return overall;
 }
 
 export interface CompletionRateDetails {
@@ -203,7 +217,7 @@ export const parseNumber = (value: any): number => {
   // 문자열인 경우 정리 후 변환
   if (typeof value === 'string') {
     // 쉼표, 공백, 특수문자 제거
-    const cleaned = value.replace(/[,\s%원]/g, '');
+    const cleaned = value.replace(/[, %원]/g, '');
     
     // 빈 문자열이거나 숫자가 아닌 특수 문자만 있는 경우
     if (cleaned === '' || cleaned === '-' || cleaned === 'N/A') {
@@ -228,7 +242,7 @@ export const parsePercentage = (value: any): number => {
   }
   
   if (typeof value === 'string') {
-    const cleaned = value.replace(/[%\s]/g, '');
+    const cleaned = value.replace(/[% ]/g, '');
     if (cleaned === '' || cleaned === '-' || cleaned === 'N/A') {
       return 0;
     }
@@ -748,6 +762,7 @@ export const calculateInstitutionStats = (data: CourseData[], year?: number): In
     });
     const totalStudents = validForCount.reduce((sum, course) => sum + (course['수강신청 인원'] ?? 0), 0);
     const completedStudents = validForCount.reduce((sum, course) => sum + (course['수료인원'] ?? 0), 0);
+    const totalEmployed = validForCount.reduce((sum, course) => sum + getPreferredEmploymentCount(course), 0);
     const totalCourses = validForCount.length;
     // 수료인원이 0명인 과정은 제외하고 계산
     const validCompletion = detailed.courses.filter(course => {
@@ -758,6 +773,10 @@ export const calculateInstitutionStats = (data: CourseData[], year?: number): In
     const totalValidStudents = validCompletion.reduce((sum, course) => sum + (course['수강신청 인원'] ?? 0), 0);
     const totalValidGraduates = validCompletion.reduce((sum, course) => sum + (course['수료인원'] ?? 0), 0);
     const completionRate = totalValidStudents > 0 ? (totalValidGraduates / totalValidStudents) * 100 : 0;
+
+    const totalValidEmployed = validCompletion.reduce((sum, course) => sum + getPreferredEmploymentCount(course), 0);
+    const employmentRate = totalValidGraduates > 0 ? (totalValidEmployed / totalValidGraduates) * 100 : 0;
+
     // 평균 만족도: 0이 아닌 과정, 수료인원 1명 이상, 파트너기관이 대체한 운영기관은 제외
     const validSatisfaction = detailed.courses.filter(course => {
       const isLeadingWithPartner = course.isLeadingCompanyCourse && course.leadingCompanyPartnerInstitution;
@@ -800,7 +819,9 @@ export const calculateInstitutionStats = (data: CourseData[], year?: number): In
       totalCourses: typeof totalCourses === 'number' && !isNaN(totalCourses) ? totalCourses : 0,
       totalStudents: typeof totalStudents === 'number' && !isNaN(totalStudents) ? totalStudents : 0,
       completedStudents: typeof completedStudents === 'number' && !isNaN(completedStudents) ? completedStudents : 0,
+      totalEmployed: typeof totalEmployed === 'number' && !isNaN(totalEmployed) ? totalEmployed : 0,
       completionRate: typeof completionRate === 'number' && !isNaN(completionRate) ? completionRate : 0,
+      employmentRate: typeof employmentRate === 'number' && !isNaN(employmentRate) ? employmentRate : 0,
       avgSatisfaction: typeof avgSatisfaction === 'number' && !isNaN(avgSatisfaction) ? avgSatisfaction : 0,
       courses: detailed.courses,
       prevYearStudents: typeof prevYearStudents === 'number' && !isNaN(prevYearStudents) ? prevYearStudents : 0,
@@ -910,6 +931,7 @@ export const aggregateCoursesByCourseNameForInstitution = (
         과정명: key,
         총수강신청인원: 0,
         총수료인원: 0,
+        총취업인원: 0,
         총누적매출: 0,
         최소과정시작일: course.과정시작일,
         최대과정종료일: course.과정종료일,
@@ -918,6 +940,7 @@ export const aggregateCoursesByCourseNameForInstitution = (
         총훈련생수: 0,
         평균만족도: 0,
         평균수료율: 0, // 초기화
+        평균취업율: 0,
       });
     }
 
@@ -954,11 +977,13 @@ export const aggregateCoursesByCourseNameForInstitution = (
       (course.누적매출 ?? 0);
     agg.총누적매출 += revenueForSum;
     agg.총훈련생수 += course['수강신청 인원'];
+    agg.총취업인원 += getPreferredEmploymentCount(course);
     agg.원천과정수 += 1;
 
     // 최종 평균 계산
     agg.평균만족도 = internal._satWeight > 0 ? internal._satSum / internal._satWeight : 0;
     agg.평균수료율 = internal._completionWeight > 0 ? (internal._completionSum / internal._completionEnrollmentSum) * 100 : 0;
+    agg.평균취업율 = agg.총수료인원 > 0 ? (agg.총취업인원 / agg.총수료인원) * 100 : 0;
 
     // 훈련 유형
     if (course.훈련유형 && !agg.훈련유형들.includes(course.훈련유형)) {
@@ -1146,6 +1171,7 @@ export const aggregateCoursesByCourseNameActualRevenue = (
         '훈련과정 ID': course['훈련과정 ID'], // 훈련과정 ID 추가
         총수강신청인원: 0,
         총수료인원: 0,
+        총취업인원: 0,
         총누적매출: 0,
         최소과정시작일: course.과정시작일,
         최대과정종료일: course.과정종료일,
@@ -1154,6 +1180,7 @@ export const aggregateCoursesByCourseNameActualRevenue = (
         총훈련생수: 0,
         평균만족도: 0,
         평균수료율: 0, // 초기화
+        평균취업율: 0,
       });
     }
 
@@ -1190,11 +1217,13 @@ export const aggregateCoursesByCourseNameActualRevenue = (
       (course.누적매출 ?? 0);
     agg.총누적매출 += revenueForSum;
     agg.총훈련생수 += course['수강신청 인원'];
+    agg.총취업인원 += getPreferredEmploymentCount(course);
     agg.원천과정수 += 1;
 
     // 최종 평균 계산
     agg.평균만족도 = internal._satWeight > 0 ? internal._satSum / internal._satWeight : 0;
     agg.평균수료율 = internal._completionWeight > 0 ? (internal._completionSum / internal._completionEnrollmentSum) * 100 : 0;
+    agg.평균취업율 = agg.총수료인원 > 0 ? (agg.총취업인원 / agg.총수료인원) * 100 : 0;
 
     // 훈련 유형
     if (course.훈련유형 && !agg.훈련유형들.includes(course.훈련유형)) {
@@ -1437,6 +1466,7 @@ export const aggregateCoursesByCourseName = (courses: CourseData[]): AggregatedC
         '훈련과정 ID': course['훈련과정 ID'], // 훈련과정 ID 추가
         총수강신청인원: 0,
         총수료인원: 0,
+        총취업인원: 0,
         총누적매출: 0,
         최소과정시작일: course.과정시작일,
         최대과정종료일: course.과정종료일,
@@ -1445,6 +1475,7 @@ export const aggregateCoursesByCourseName = (courses: CourseData[]): AggregatedC
         총훈련생수: 0,
         평균만족도: 0,
         평균수료율: 0, // 초기화
+        평균취업율: 0,
       });
     }
     const aggregatedCourse = aggregatedMap.get(key)!;
@@ -1591,6 +1622,10 @@ export function aggregateCoursesByCourseIdWithLatestInfo(courses: CourseData[], 
     const graduatesInYear = year ? group.filter(c => new Date(c.과정시작일).getFullYear() === year && new Date(c.과정종료일).getFullYear() === year).reduce((sum, c) => sum + (c.수료인원 || 0), 0) : group.reduce((sum, c) => sum + (c.수료인원 || 0), 0);
     const graduatesFromPrev = year ? group.filter(c => new Date(c.과정시작일).getFullYear() < year && new Date(c.과정종료일).getFullYear() === year).reduce((sum, c) => sum + (c.수료인원 || 0), 0) : 0;
     const totalGraduates = graduatesInYear + graduatesFromPrev;
+
+    const employedInYear = year ? group.filter(c => new Date(c.과정시작일).getFullYear() === year).reduce((sum, c) => sum + getPreferredEmploymentCount(c), 0) : group.reduce((sum, c) => sum + getPreferredEmploymentCount(c), 0);
+    const employedFromPrev = year ? group.filter(c => new Date(c.과정시작일).getFullYear() < year && new Date(c.과정종료일).getFullYear() === year).reduce((sum, c) => sum + getPreferredEmploymentCount(c), 0) : 0;
+    const totalEmployed = employedInYear + employedFromPrev;
     
     let studentsStr = studentsFromPrev > 0 ? `${studentsInYear}(${studentsFromPrev})` : `${studentsInYear}`;
     let graduatesStr = graduatesFromPrev > 0 ? `${graduatesInYear}(${graduatesFromPrev})` : `${graduatesInYear}`; // Add graduatesStr
@@ -1606,11 +1641,14 @@ export function aggregateCoursesByCourseIdWithLatestInfo(courses: CourseData[], 
         openCountStr = `${openInYear}`;
       }
     }
-    // ① 표시용 분자/분모(수료율에 실제 사용한 값)
+    // ① 표시용 분자/분모(수료율 및 취업율에 실제 사용한 값)
     let displayStudentsForCompletion = totalStudents;
     let displayGraduatesForCompletion = totalGraduates;
+    // 취업율 표기에 사용할 취업인원(연도/전체 기준에 맞춘 값)
+    let displayEmployedForEmployment = totalEmployed;
 
     let averageCompletionRate = 0;
+    let averageEmploymentRate = 0;
     if (year) {
       const validCoursesForCompletion = group.filter(c => {
         const courseEndYear = new Date(c.과정종료일).getFullYear();
@@ -1621,26 +1659,34 @@ export function aggregateCoursesByCourseIdWithLatestInfo(courses: CourseData[], 
       if (validCoursesForCompletion.length > 0) {
         const validStudents = validCoursesForCompletion.reduce((sum, c) => sum + (c['수강신청 인원'] || 0), 0);
         const validGraduates = validCoursesForCompletion.reduce((sum, c) => sum + (c.수료인원 || 0), 0);
+        const validEmployed = validCoursesForCompletion.reduce((sum, c) => sum + getPreferredEmploymentCount(c), 0);
         averageCompletionRate = validStudents > 0 ? (validGraduates / validStudents) * 100 : 0;
         displayStudentsForCompletion = validStudents;
         displayGraduatesForCompletion = validGraduates;
+        averageEmploymentRate = validGraduates > 0 ? (validEmployed / validGraduates) * 100 : 0;
+        displayEmployedForEmployment = validEmployed;
       }
     } else {
       const validCourses = group.filter(c => (c.수료인원 ?? 0) > 0 && (c['수강신청 인원'] ?? 0) > 0);
       if (validCourses.length > 0) {
         const validStudents = validCourses.reduce((sum, c) => sum + (c['수강신청 인원'] || 0), 0);
         const validGraduates = validCourses.reduce((sum, c) => sum + (c.수료인원 || 0), 0);
+        const validEmployed = validCourses.reduce((sum, c) => sum + getPreferredEmploymentCount(c), 0);
         averageCompletionRate = validStudents > 0 ? (validGraduates / validStudents) * 100 : 0;
         displayStudentsForCompletion = validStudents;
         displayGraduatesForCompletion = validGraduates;
+        averageEmploymentRate = validGraduates > 0 ? (validEmployed / validGraduates) * 100 : 0;
+        displayEmployedForEmployment = validEmployed;
       }
     }
+    // 평균취업율은 위에서 계산된 기준(연도/전체)에 맞춘 값 사용
     
     result.push({
       과정명: latest.과정명,
       '훈련과정 ID': courseId,
       총수강신청인원: displayStudentsForCompletion,
       총수료인원: displayGraduatesForCompletion,
+      총취업인원: displayEmployedForEmployment,
       총누적매출: totalRevenue,
       최소과정시작일: group.reduce((min, c) => new Date(c.과정시작일) < new Date(min) ? c.과정시작일 : min, group[0].과정시작일),
       최대과정종료일: group.reduce((max, c) => new Date(c.과정종료일) > new Date(max) ? c.과정종료일 : max, group[0].과정종료일),
@@ -1649,6 +1695,7 @@ export function aggregateCoursesByCourseIdWithLatestInfo(courses: CourseData[], 
       총훈련생수: totalStudents,
       평균만족도: latest.만족도,
       평균수료율: averageCompletionRate,
+      평균취업율: averageEmploymentRate,
       studentsStr,
       graduatesStr: graduatesFromPrev > 0 ? `${graduatesInYear}(${graduatesFromPrev})` : `${graduatesInYear}`, // Add graduatesStr
       openCountStr,
@@ -1940,6 +1987,10 @@ export const getIndividualInstitutionsInGroup = (
     });
     
     const avgSatisfaction = totalWeight > 0 ? totalWeighted / totalWeight : 0;
+
+    // 취업인원 합계 및 취업율(수료 대비)
+    const totalEmployed = institutionCourses.reduce((sum, c) => sum + getPreferredEmploymentCount(c), 0);
+    const employmentRate = totalValidGraduates > 0 ? (totalEmployed / totalValidGraduates) * 100 : 0;
     
     // 이전 연도 시작 과정 정보 계산 (파트너기관이 대체한 경우 파트너기관 기준으로 계산)
     let prevYearStudents = 0;
@@ -1981,7 +2032,9 @@ export const getIndividualInstitutionsInGroup = (
       totalCourses: typeof totalCourses === 'number' && !isNaN(totalCourses) ? totalCourses : 0,
       totalStudents: typeof totalStudents === 'number' && !isNaN(totalStudents) ? totalStudents : 0,
       completedStudents: typeof completedStudents === 'number' && !isNaN(completedStudents) ? completedStudents : 0,
+      totalEmployed: typeof totalEmployed === 'number' && !isNaN(totalEmployed) ? totalEmployed : 0,
       completionRate: typeof completionRate === 'number' && !isNaN(completionRate) ? completionRate : 0,
+      employmentRate: typeof employmentRate === 'number' && !isNaN(employmentRate) ? employmentRate : 0,
       avgSatisfaction: typeof avgSatisfaction === 'number' && !isNaN(avgSatisfaction) ? avgSatisfaction : 0,
       courses: institutionCourses,
       prevYearStudents: typeof prevYearStudents === 'number' && !isNaN(prevYearStudents) ? prevYearStudents : 0,
