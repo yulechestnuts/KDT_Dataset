@@ -726,7 +726,7 @@ export default function InstitutionAnalysis() {
           </DialogHeader>
           <div className="p-6">
             {/* 통계 요약 */}
-            <div className="grid grid-cols-6 gap-4 mb-6"> {/* 컬럼 수 원복 */}
+            <div className="grid grid-cols-6 lg:grid-cols-9 gap-4 mb-6">
               {/* 상세보기 모달 상단 요약 카드 표기 부분 */}
               {(() => {
                 const filteredRows = originalData.filter((c) => {
@@ -740,6 +740,14 @@ export default function InstitutionAnalysis() {
                   year: selectedYear === 'all' ? undefined : selectedYear,
                   month: selectedMonth // 월 파라미터 추가
                 });
+                const totals = (() => {
+                  const revenueSum = selectedInstitutionCourses.reduce((sum: number, c: any) => sum + (c.총누적매출 ?? 0), 0);
+                  // 헤더의 평균 모집률은 x(y)에서 x 기준: 과정 집계의 연도정원/연도훈련생수 합으로 계산
+                  const capacitySum = selectedInstitutionCourses.reduce((sum: number, c: any) => sum + (c.연도정원 ?? 0), 0);
+                  const enrolledStartOnly = selectedInstitutionCourses.reduce((sum: number, c: any) => sum + (c.연도훈련생수 ?? 0), 0);
+                  const avgRecruitRate = capacitySum > 0 ? (enrolledStartOnly / capacitySum) * 100 : 0;
+                  return { revenueSum, capacitySum, enrolledStartOnly, avgRecruitRate };
+                })();
                 return (
                   <>
                     <div className="bg-gray-50 p-4 rounded-lg">
@@ -749,6 +757,14 @@ export default function InstitutionAnalysis() {
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <div className="text-sm text-gray-500">{selectedYear === 'all' ? '전체 개강 회차수' : `${selectedYear}년 개강 회차수`}</div>
                       <div className="text-lg font-semibold">{stats.openedCourseCount}</div>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="text-sm text-gray-500">합계 정원</div>
+                      <div className="text-lg font-semibold">{formatNumber(totals.capacitySum)}</div>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="text-sm text-gray-500">평균 모집률</div>
+                      <div className="text-lg font-semibold">{totals.capacitySum > 0 ? `${totals.avgRecruitRate.toFixed(1)}% (${formatNumber(totals.enrolledStartOnly)}/${formatNumber(totals.capacitySum)})` : '-'}</div>
                     </div>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <div className="text-sm text-gray-500">훈련생 수</div>
@@ -766,6 +782,10 @@ export default function InstitutionAnalysis() {
                       <div className="text-sm text-gray-500">평균 취업율</div>
                       <div className="text-lg font-semibold">{stats.employmentRate}</div>
                     </div>
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="text-sm text-gray-500">합계 매출액</div>
+                      <div className="text-lg font-semibold">{formatRevenue(totals.revenueSum)}</div>
+                    </div>
                   </>
                 );
               })()}
@@ -776,6 +796,7 @@ export default function InstitutionAnalysis() {
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[25%]">과정명</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">훈련유형</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[12%]">모집률</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">훈련생 수</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">수료인원</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">수료율</th>
@@ -790,6 +811,16 @@ export default function InstitutionAnalysis() {
                     <tr key={course['훈련과정 ID']} className="hover:bg-gray-50">
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{course.과정명}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.훈련유형들?.join(', ') || '-'}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+                        {(() => {
+                          const isYearSelected = selectedYear !== 'all';
+                          const quota = isYearSelected ? (course.연도정원 ?? 0) : (course.총정원 ?? 0);
+                          const enrolled = isYearSelected ? (course.연도훈련생수 ?? 0) : (course.총훈련생수 ?? 0);
+                          if (!quota || quota === 0) return '-';
+                          const rate = (enrolled / quota) * 100;
+                          return `${rate.toFixed(1)}% (${formatNumber(enrolled)}/${formatNumber(quota)})`;
+                        })()}
+                      </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.studentsStr}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.graduatesStr}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.평균수료율.toFixed(1)}% ({course.총수료인원}/{course.총수강신청인원})</td>

@@ -109,6 +109,9 @@ export interface AggregatedCourseData {
   평균수료율: number;
   평균취업율: number;
   graduatesStr?: string; // Add graduatesStr
+  총정원?: number; // 모집률 계산용 정원 합계
+  연도정원?: number; // x(y)에서 x에 해당하는 정원 합계
+  연도훈련생수?: number; // x(y)에서 x에 해당하는 훈련생 수
 }
 
 export interface YearlyStats {
@@ -1619,6 +1622,23 @@ export function aggregateCoursesByCourseIdWithLatestInfo(courses: CourseData[], 
     const studentsFromPrev = year ? group.filter(c => new Date(c.과정시작일).getFullYear() < year && new Date(c.과정종료일).getFullYear() === year).reduce((sum, c) => sum + (c['수강신청 인원'] || 0), 0) : 0;
     const totalStudents = studentsInYear + studentsFromPrev;
 
+    // 정원 합계 (연도 기준 표기 방식과 동일하게 계산)
+    const capacityInYear = year
+      ? group
+          .filter(c => new Date(c.과정시작일).getFullYear() === year)
+          .reduce((sum, c) => sum + (c.정원 || 0), 0)
+      : group.reduce((sum, c) => sum + (c.정원 || 0), 0);
+    const capacityFromPrev = year
+      ? group
+          .filter(
+            c =>
+              new Date(c.과정시작일).getFullYear() < year &&
+              new Date(c.과정종료일).getFullYear() === year,
+          )
+          .reduce((sum, c) => sum + (c.정원 || 0), 0)
+      : 0;
+    const totalCapacity = capacityInYear + capacityFromPrev;
+
     const graduatesInYear = year ? group.filter(c => new Date(c.과정시작일).getFullYear() === year && new Date(c.과정종료일).getFullYear() === year).reduce((sum, c) => sum + (c.수료인원 || 0), 0) : group.reduce((sum, c) => sum + (c.수료인원 || 0), 0);
     const graduatesFromPrev = year ? group.filter(c => new Date(c.과정시작일).getFullYear() < year && new Date(c.과정종료일).getFullYear() === year).reduce((sum, c) => sum + (c.수료인원 || 0), 0) : 0;
     const totalGraduates = graduatesInYear + graduatesFromPrev;
@@ -1665,6 +1685,13 @@ export function aggregateCoursesByCourseIdWithLatestInfo(courses: CourseData[], 
         displayGraduatesForCompletion = validGraduates;
         averageEmploymentRate = validGraduates > 0 ? (validEmployed / validGraduates) * 100 : 0;
         displayEmployedForEmployment = validEmployed;
+      } else {
+        // 해당 연도에 유효한(수료인원>0) 과정이 없으면 취업 관련 수치는 0으로 고정
+        averageCompletionRate = 0;
+        averageEmploymentRate = 0;
+        displayStudentsForCompletion = 0;
+        displayGraduatesForCompletion = 0;
+        displayEmployedForEmployment = 0;
       }
     } else {
       const validCourses = group.filter(c => (c.수료인원 ?? 0) > 0 && (c['수강신청 인원'] ?? 0) > 0);
@@ -1699,6 +1726,9 @@ export function aggregateCoursesByCourseIdWithLatestInfo(courses: CourseData[], 
       studentsStr,
       graduatesStr: graduatesFromPrev > 0 ? `${graduatesInYear}(${graduatesFromPrev})` : `${graduatesInYear}`, // Add graduatesStr
       openCountStr,
+      총정원: totalCapacity,
+      연도정원: capacityInYear,
+      연도훈련생수: studentsInYear,
     });
   });
   return result.sort((a, b) => b.총누적매출 - a.총누적매출);
