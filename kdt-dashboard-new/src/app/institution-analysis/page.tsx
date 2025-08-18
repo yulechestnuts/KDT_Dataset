@@ -157,7 +157,7 @@ function getInstitutionYearlyStats({
     operatedCourseCount = uniqueCourseNamesForYear.size;
     openedCourseCount = openStartSum > 0 && openOngoingSum > 0 ? `${openStartSum}<br/>(${openOngoingSum})` : openStartSum > 0 ? `${openStartSum}` : openOngoingSum > 0 ? `(${openOngoingSum})` : '';
 
-    // 수료율 계산 - 해당 연도에 종료된 과정들만 고려
+    // 수료율 계산 - 해당 연도에 종료된 과정들만 고려 (수료인원이 0명인 과정은 제외)
     const validRowsForCompletion = [...startedThisYear.filter(c => new Date(c.과정종료일).getFullYear() === year), ...prevYearStartedEndedThisYear].filter(c => (c['수강신청 인원'] ?? 0) > 0 && (c['수료인원'] ?? 0) > 0);
     const validStudentsForCompletion = validRowsForCompletion.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
     const validGraduatesForCompletion = validRowsForCompletion.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
@@ -165,7 +165,7 @@ function getInstitutionYearlyStats({
     const totalEmployedForYear = validRowsForCompletion.reduce((sum, c) => sum + getPreferredEmploymentCount(c), 0);
     employmentRate = validGraduatesForCompletion > 0 ? `${((totalEmployedForYear / validGraduatesForCompletion) * 100).toFixed(1)}%` : '-';
 
-    const validSatisfaction = [...startedThisYear, ...endedThisYear].filter(c => c.만족도 && c.만족도 > 0);
+    const validSatisfaction = [...startedThisYear.filter(c => new Date(c.과정종료일).getFullYear() === year), ...prevYearStartedEndedThisYear].filter(c => (c['수료인원'] ?? 0) > 0 && c.만족도 && c.만족도 > 0);
     const totalWeighted = validSatisfaction.reduce((sum, c) => sum + (c.만족도 ?? 0) * (c['수료인원'] ?? 0), 0);
     const totalWeight = validSatisfaction.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
     avgSatisfaction = totalWeight > 0 ? totalWeighted / totalWeight : 0;
