@@ -117,23 +117,23 @@ function getInstitutionYearlyStats({
     const startedThisYear = filteredByInstitution.filter(c => new Date(c.과정시작일).getFullYear() === year);
     // 해당 연도에 종료된 과정들
     const endedThisYear = filteredByInstitution.filter(c => new Date(c.과정종료일).getFullYear() === year);
-    // 이전 연도에 시작하여 해당 연도에 진행 중인 과정들 (아직 종료되지 않음)
-    const prevYearStartedOngoingThisYear = filteredByInstitution.filter(c => {
-      const startDate = new Date(c.과정시작일);
-      const endDate = new Date(c.과정종료일);
-      return startDate.getFullYear() < year && endDate.getFullYear() > year;
-    });
     // 이전 연도에 시작하여 해당 연도에 종료된 과정들
     const prevYearStartedEndedThisYear = endedThisYear.filter(c => new Date(c.과정시작일).getFullYear() < year);
+    // 이전 연도에 시작하여 해당 연도에도 운영(진행)된 모든 과정들 (해당 연도 종료 포함)
+    const prevYearStartedActiveThisYear = filteredByInstitution.filter(c => {
+      const startDate = new Date(c.과정시작일);
+      const endDate = new Date(c.과정종료일);
+      return startDate.getFullYear() < year && endDate.getFullYear() >= year;
+    });
 
     // 훈련생 수 계산: 해당 연도에 진행 중인 모든 과정의 수강신청 인원
     const entryThisYear = startedThisYear.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
-    const prevYearEntryOngoingThisYear = prevYearStartedOngoingThisYear.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
-    studentStr = prevYearEntryOngoingThisYear > 0
-      ? `${formatNumber(entryThisYear)}(${formatNumber(prevYearEntryOngoingThisYear)})`
+    const prevYearEntryActiveThisYear = prevYearStartedActiveThisYear.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
+    studentStr = prevYearEntryActiveThisYear > 0
+      ? `${formatNumber(entryThisYear)}(${formatNumber(prevYearEntryActiveThisYear)})`
       : `${formatNumber(entryThisYear)}`;
     x = entryThisYear;
-    y = prevYearEntryOngoingThisYear;
+    y = prevYearEntryActiveThisYear;
 
     // 수료인원 계산 - 해당 연도에 종료된 과정의 수료인원
     const gradThisYear = startedThisYear.filter(c => new Date(c.과정종료일).getFullYear() === year).reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
@@ -144,18 +144,18 @@ function getInstitutionYearlyStats({
     xg = gradThisYear;
     yg = gradPrevYearEndedThisYear;
 
-    // 개강 회차수 계산: 해당 연도에 진행 중인 모든 과정
+    // 개강 회차수 계산: 해당 연도에 운영된 모든 과정 (전년도 시작하여 당해 종료 포함)
     const openStartSum = startedThisYear.length;
-    const openOngoingSum = prevYearStartedOngoingThisYear.length;
-    openCountStr = openOngoingSum > 0
-      ? `${openStartSum}(${openOngoingSum})`
+    const openPrevYearActiveSum = prevYearStartedActiveThisYear.length;
+    openCountStr = openPrevYearActiveSum > 0
+      ? `${openStartSum}(${openPrevYearActiveSum})`
       : `${openStartSum}`;
     xc = openStartSum;
-    yc = openOngoingSum;
+    yc = openPrevYearActiveSum;
 
-    const uniqueCourseNamesForYear = new Set([...startedThisYear, ...prevYearStartedOngoingThisYear, ...endedThisYear].map(c => c.과정명));
+    const uniqueCourseNamesForYear = new Set([...startedThisYear, ...prevYearStartedActiveThisYear, ...endedThisYear].map(c => c.과정명));
     operatedCourseCount = uniqueCourseNamesForYear.size;
-    openedCourseCount = openStartSum > 0 && openOngoingSum > 0 ? `${openStartSum}<br/>(${openOngoingSum})` : openStartSum > 0 ? `${openStartSum}` : openOngoingSum > 0 ? `(${openOngoingSum})` : '';
+    openedCourseCount = openStartSum > 0 && openPrevYearActiveSum > 0 ? `${openStartSum}<br/>(${openPrevYearActiveSum})` : openStartSum > 0 ? `${openStartSum}` : openPrevYearActiveSum > 0 ? `(${openPrevYearActiveSum})` : '';
 
     // 수료율 계산 - 해당 연도에 종료된 과정들만 고려 (수료인원이 0명인 과정은 제외)
     const validRowsForCompletion = [...startedThisYear.filter(c => new Date(c.과정종료일).getFullYear() === year), ...prevYearStartedEndedThisYear].filter(c => (c['수강신청 인원'] ?? 0) > 0 && (c['수료인원'] ?? 0) > 0);
@@ -552,7 +552,7 @@ export default function InstitutionAnalysis() {
                         year: selectedYear === 'all' ? undefined : selectedYear,
                         month: selectedMonth // 월 파라미터 추가
                       });
-                      return <span dangerouslySetInnerHTML={{__html: stats.openCountStr}} />;
+                      return stats.openCountStr;
                     })()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -568,7 +568,7 @@ export default function InstitutionAnalysis() {
                         year: selectedYear === 'all' ? undefined : selectedYear,
                         month: selectedMonth // 월 파라미터 추가
                       });
-                      return <span dangerouslySetInnerHTML={{__html: stats.studentStr}} />;
+                      return stats.studentStr;
                     })()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -584,7 +584,7 @@ export default function InstitutionAnalysis() {
                         year: selectedYear === 'all' ? undefined : selectedYear,
                         month: selectedMonth // 월 파라미터 추가
                       });
-                      return <span dangerouslySetInnerHTML={{__html: stats.graduateStr}} />;
+                      return stats.graduateStr;
                     })()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">{(() => {
@@ -720,7 +720,13 @@ export default function InstitutionAnalysis() {
                   <>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <div className="text-sm text-gray-500">운영 중인 과정 수</div>
-                      <div className="text-lg font-semibold">{stats.operatedCourseCount}</div>
+                      <div className="text-lg font-semibold">{(() => {
+                        if (selectedYear === 'all') return stats.operatedCourseCount;
+                        // X(Y): 해당 연도 개강 고유 과정 수(X) + 전년도 개강해 올해도 진행 중인 고유 과정 수(Y)
+                        const openedCourseCountX = stats.xc ?? 0;
+                        const openedCourseCountY = stats.yc ?? 0;
+                        return openedCourseCountY > 0 ? `${openedCourseCountX}(${openedCourseCountY})` : `${openedCourseCountX}`;
+                      })()}</div>
                     </div>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <div className="text-sm text-gray-500">{selectedYear === 'all' ? '전체 개강 회차수' : `${selectedYear}년 개강 회차수`}</div>
@@ -728,7 +734,12 @@ export default function InstitutionAnalysis() {
                     </div>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <div className="text-sm text-gray-500">합계 정원</div>
-                      <div className="text-lg font-semibold">{formatNumber(totals.capacitySum)}</div>
+                      <div className="text-lg font-semibold">{(() => {
+                        if (selectedYear === 'all') return formatNumber(totals.capacitySum);
+                        const capacityX = selectedInstitutionCourses.reduce((sum: number, c: any) => sum + (c.연도정원 ?? 0), 0);
+                        const capacityY = selectedInstitutionCourses.reduce((sum: number, c: any) => sum + (c.과거년도정원 ?? 0), 0);
+                        return capacityY > 0 ? `${formatNumber(capacityX)}(${formatNumber(capacityY)})` : `${formatNumber(capacityX)}`;
+                      })()}</div>
                     </div>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <div className="text-sm text-gray-500">평균 모집률</div>

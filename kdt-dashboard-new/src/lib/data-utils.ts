@@ -115,6 +115,7 @@ export interface AggregatedCourseData {
   openCountStr?: string; // Add openCountStr
   총정원?: number; // 모집률 계산용 정원 합계
   연도정원?: number; // x(y)에서 x에 해당하는 정원 합계
+  과거년도정원?: number; // x(y)에서 y에 해당하는 정원 합계
   연도훈련생수?: number; // x(y)에서 x에 해당하는 훈련생 수
   개강회차수?: number; // 개강회차수 (X)
   과거년도개강회차수?: number; // 과거년도 개강회차수 (Y)
@@ -1191,14 +1192,13 @@ export const aggregateCoursesByCourseIdWithLatestInfo = (
 
     // 연도별 정원 및 훈련생 수 (모집률 계산용)
     if (year !== undefined) {
-      const courseStartDate = new Date(course.과정시작일);
-      const courseEndDate = new Date(course.과정종료일);
-      
-      // 해당 연도에 진행 중인 모든 과정의 정원과 훈련생 수
-      if (courseStartDate.getFullYear() === year || 
-          (courseStartDate.getFullYear() < year && courseEndDate.getFullYear() >= year)) {
-        agg.연도정원 = (agg.연도정원 ?? 0) + (course.정원 ?? 0) * studentShare;
-        agg.연도훈련생수 = (agg.연도훈련생수 ?? 0) + (course['수강신청 인원'] ?? 0) * studentShare;
+      const isCurrentYearStart = new Date(course.과정시작일).getFullYear() === year;
+      const isPrevYearStartAndOngoing = new Date(course.과정시작일).getFullYear() < year && new Date(course.과정종료일).getFullYear() >= year;
+      if (isCurrentYearStart) {
+        agg.연도정원 = (agg.연도정원 ?? 0) + (course.정원 ?? 0) * studentShare; // X
+        agg.연도훈련생수 = (agg.연도훈련생수 ?? 0) + (course['수강신청 인원'] ?? 0) * studentShare; // X
+      } else if (isPrevYearStartAndOngoing) {
+        agg.과거년도정원 = (agg.과거년도정원 ?? 0) + (course.정원 ?? 0) * studentShare; // Y
       }
     }
 
