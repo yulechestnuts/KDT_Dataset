@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { loadDataFromGithub, preprocessData, applyRevenueAdjustment, calculateCompletionRate } from "@/utils/data-utils";
-import { CourseData, RawCourseData, InstitutionStat, calculateInstitutionStats, aggregateCoursesByCourseNameForInstitution, AggregatedCourseData, csvParseOptions, aggregateCoursesByCourseIdWithLatestInfo, getIndividualInstitutionsInGroup, calculateInstitutionDetailedRevenue, getPreferredEmploymentCount } from "@/lib/data-utils";
+import { loadDataFromGithub, preprocessData, applyRevenueAdjustment } from "@/utils/data-utils";
+import { CourseData, RawCourseData, InstitutionStat, calculateCompletionRate, calculateInstitutionStats, AggregatedCourseData, csvParseOptions, aggregateCoursesByCourseIdWithLatestInfo, getIndividualInstitutionsInGroup, calculateInstitutionDetailedRevenue, getPreferredEmploymentCount } from "@/lib/data-utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -43,7 +43,7 @@ function getInstitutionYearlyStats({
   year: number | undefined;
   month: number | 'all'; // 월 타입 추가
 }) {
-  const filtered = rows.filter(c => {
+  const filteredByInstitution = rows.filter(c => {
     const isLeadingWithPartner = c.isLeadingCompanyCourse && c.leadingCompanyPartnerInstitution;
     if (
       isLeadingWithPartner &&
@@ -53,205 +53,168 @@ function getInstitutionYearlyStats({
     return c.훈련기관 === institutionName || c.파트너기관 === institutionName;
   });
 
-  let finalFilteredRows = filtered;
+  let studentStr: string = '';
+  let graduateStr: string = '';
+  let openCountStr: string = '';
+  let operatedCourseCount: number = 0;
+  let openedCourseCount: string | number = 0;
+  let completionRate: string = '-';
+  let employmentRate: string = '-';
+  let avgSatisfaction: number = 0;
+  let x: number = 0;
+  let y: number = 0;
+  let xg: number = 0;
+  let yg: number = 0;
+  let xc: number = 0;
+  let yc: number = 0;
 
-  // 연도와 월이 모두 선택된 경우 해당 연도/월에 시작된 과정만 필터링
+  let coursesToConsider: CourseData[] = [];
+
   if (year !== undefined && month !== 'all') {
-    finalFilteredRows = filtered.filter(c => {
+    // 연도와 월이 모두 선택된 경우: 해당 연도/월에 시작된 과정만 필터링
+    coursesToConsider = filteredByInstitution.filter(c => {
       const startDate = new Date(c.과정시작일);
       return startDate.getFullYear() === year && (startDate.getMonth() + 1) === month;
     });
-  } else if (year !== undefined) {
-    // 연도만 선택된 경우 해당 연도에 시작된 과정과 이전 연도에 시작하여 해당 연도에 종료된 과정 포함
-    finalFilteredRows = filtered.filter(c => {
-      const startDate = new Date(c.과정시작일);
-      const endDate = new Date(c.과정종료일);
-      return startDate.getFullYear() === year || (startDate.getFullYear() < year && endDate.getFullYear() === year);
-    });
 
-    // === 수료율 계산 방식 변경 ===
-    // 1. 해당 연도에 종료된 과정만 필터링
-    const endedThisYear = filtered.filter(c => new Date(c.과정종료일).getFullYear() === year);
-    // 1-1. 수료인원이 1명 이상인 과정만 필터링
-    const endedThisYearWithGraduates = endedThisYear.filter(c => (c['수료인원'] ?? 0) > 0);
-    // 2. 분모: 해당 연도에 종료된 과정(수료인원 1명 이상)의 입과생
-    const entryForEndedThisYear = endedThisYearWithGraduates.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
-    // 3. 분자: 해당 연도에 종료된 과정(수료인원 1명 이상)의 수료인원
-    const graduatedThisYear = endedThisYearWithGraduates.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
-    // 4. 수료율
-    const completionRate = entryForEndedThisYear > 0 ? (graduatedThisYear / entryForEndedThisYear) * 100 : 0;
-    const completionRateStr = `${completionRate.toFixed(1)}% (${graduatedThisYear}/${entryForEndedThisYear})`;
-
-    const employedThisYear = endedThisYearWithGraduates.reduce((sum, c) => sum + getPreferredEmploymentCount(c), 0);
-    const employmentRate = graduatedThisYear > 0 ? (employedThisYear / graduatedThisYear) * 100 : 0;
-    const employmentRateStr = `${employmentRate.toFixed(1)}% (${employedThisYear}/${graduatedThisYear})`;
-
-    // 훈련생 수 표기: 올해 입과생 + (작년 입과, 올해 종료 과정의 입과생)
-    const startedThisYear = filtered.filter(c => new Date(c.과정시작일).getFullYear() === year);
-    const entryThisYear = startedThisYear.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
-    const prevYearEntryEndedThisYear = endedThisYear
-      .filter(c => new Date(c.과정시작일).getFullYear() < year)
-      .reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
-    const entryStr = prevYearEntryEndedThisYear > 0
-      ? `${formatNumber(entryThisYear)}(${formatNumber(prevYearEntryEndedThisYear)})`
-      : `${formatNumber(entryThisYear)}`;
-
-    // 수료인원 표기: 올해 시작, 올해 종료 과정의 수료인원 + (작년 입과, 올해 종료 과정의 수료인원)
-    const gradThisYear = startedThisYear.filter(c => new Date(c.과정종료일).getFullYear() === year).reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
-    const gradPrevYearEndedThisYear = endedThisYear
-      .filter(c => new Date(c.과정시작일).getFullYear() < year)
-      .reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
-    const gradStr = gradPrevYearEndedThisYear > 0
-      ? `${formatNumber(gradThisYear)}(${formatNumber(gradPrevYearEndedThisYear)})`
-      : `${formatNumber(gradThisYear)}`;
-
-    // 개강 회차수 표기: 올해 시작 + (작년 시작, 올해 종료)
-    const openStartSum = startedThisYear.length;
-    const openEndSum = endedThisYear.filter(c => new Date(c.과정시작일).getFullYear() < year).length;
-    const openCountStr = openEndSum > 0
-      ? `${openStartSum}(${openEndSum})`
-      : `${openStartSum}`;
-
-    // 운영중인 과정 수: 해당 연도에 운영된 고유한 과정명 수
-    const uniqueCourseNamesForYear = new Set([...startedThisYear, ...endedThisYear].map(c => c.과정명));
-    const operatedCourseCount = uniqueCourseNamesForYear.size;
-    const openedCourseCount = openStartSum + openEndSum;
-
-    // 평균 만족도 계산 (올해 종료 과정 기준)
-    const validSatisfaction = endedThisYear.filter(c => c.만족도 && c.만족도 > 0);
-    const totalWeighted = validSatisfaction.reduce((sum, c) => sum + (c.만족도 ?? 0) * (c['수료인원'] ?? 0), 0);
-    const totalWeight = validSatisfaction.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
-    const avgSatisfaction = totalWeight > 0 ? totalWeighted / totalWeight : 0;
-
-    return {
-      studentStr: entryStr,
-      graduateStr: gradStr,
-      openCountStr: openCountStr,
-      operatedCourseCount,
-      openedCourseCount: openCountStr,
-      completionRate: completionRateStr,
-      employmentRate: employmentRateStr,
-      avgSatisfaction,
-      x: entryThisYear,
-      y: prevYearEntryEndedThisYear,
-      xg: gradThisYear,
-      yg: gradPrevYearEndedThisYear,
-      xc: openStartSum,
-      yc: openEndSum
-    };
-  }
-
-  // 전체 연도 + 전체 월일 때는 전체 합계만 표기 (x(y) 표기 대신)
-  if (year === undefined && month === 'all') {
-    const totalStudents = finalFilteredRows.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
-    const totalGraduates = finalFilteredRows.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
-    const totalEmployed = finalFilteredRows.reduce((sum, c) => sum + getPreferredEmploymentCount(c), 0);
-    const totalCourses = finalFilteredRows.length;
-    const uniqueCourseNames = new Set(finalFilteredRows.map(c => c.과정명));
-    const validRows = finalFilteredRows.filter(c => (c['수강신청 인원'] ?? 0) > 0 && (c['수료인원'] ?? 0) > 0);
+    const totalStudents = coursesToConsider.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
+    const totalGraduates = coursesToConsider.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+    const totalCourses = coursesToConsider.length;
+    const uniqueCourseNames = new Set(coursesToConsider.map(c => c.과정명));
+    const validRows = coursesToConsider.filter(c => (c['수강신청 인원'] ?? 0) > 0 && (c['수료인원'] ?? 0) > 0);
     const validStudents = validRows.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
     const validGraduates = validRows.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
-    const completionRate = validStudents > 0 ? (validGraduates / validStudents) * 100 : 0;
-    const employmentRate = validGraduates > 0 ? (totalEmployed / validGraduates) * 100 : 0;
-    // 평균 만족도 계산
+    const totalEmployed = coursesToConsider.reduce((sum, c) => sum + getPreferredEmploymentCount(c), 0);
+
+    completionRate = validStudents > 0 ? `${((validGraduates / validStudents) * 100).toFixed(1)}%` : '-';
+    employmentRate = validGraduates > 0 ? `${((totalEmployed / totalGraduates) * 100).toFixed(1)}%` : '-';
+
+    const validSatisfaction = coursesToConsider.filter(c => c.만족도 && c.만족도 > 0);
+    const totalWeighted = validSatisfaction.reduce((sum, c) => sum + (c.만족도 ?? 0) * (c['수료인원'] ?? 0), 0);
+    const totalWeight = validSatisfaction.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+    avgSatisfaction = totalWeight > 0 ? totalWeighted / totalWeight : 0;
+
+    studentStr = formatNumber(totalStudents);
+    graduateStr = formatNumber(totalGraduates);
+    openCountStr = `${totalCourses}`;
+    operatedCourseCount = uniqueCourseNames.size;
+    openedCourseCount = `${totalCourses}`;
+    x = totalStudents;
+    xg = totalGraduates;
+    xc = totalCourses;
+
+  } else if (year !== undefined) {
+    // 연도만 선택된 경우: 해당 연도에 진행 중인 모든 과정과 해당 연도에 종료된 과정 포함
+    coursesToConsider = filteredByInstitution.filter(c => {
+      const startDate = new Date(c.과정시작일);
+      const endDate = new Date(c.과정종료일);
+      return startDate.getFullYear() === year || 
+             (startDate.getFullYear() < year && endDate.getFullYear() >= year) ||
+             endDate.getFullYear() === year;
+    });
+
+    // 해당 연도에 시작된 과정들
+    const startedThisYear = filteredByInstitution.filter(c => new Date(c.과정시작일).getFullYear() === year);
+    // 해당 연도에 종료된 과정들
+    const endedThisYear = filteredByInstitution.filter(c => new Date(c.과정종료일).getFullYear() === year);
+    // 이전 연도에 시작하여 해당 연도에 진행 중인 과정들 (아직 종료되지 않음)
+    const prevYearStartedOngoingThisYear = filteredByInstitution.filter(c => {
+      const startDate = new Date(c.과정시작일);
+      const endDate = new Date(c.과정종료일);
+      return startDate.getFullYear() < year && endDate.getFullYear() > year;
+    });
+    // 이전 연도에 시작하여 해당 연도에 종료된 과정들
+    const prevYearStartedEndedThisYear = endedThisYear.filter(c => new Date(c.과정시작일).getFullYear() < year);
+
+    // 훈련생 수 계산: 해당 연도에 진행 중인 모든 과정의 수강신청 인원
+    const entryThisYear = startedThisYear.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
+    const prevYearEntryOngoingThisYear = prevYearStartedOngoingThisYear.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
+    studentStr = prevYearEntryOngoingThisYear > 0
+      ? `${formatNumber(entryThisYear)}(${formatNumber(prevYearEntryOngoingThisYear)})`
+      : `${formatNumber(entryThisYear)}`;
+    x = entryThisYear;
+    y = prevYearEntryOngoingThisYear;
+
+    // 수료인원 계산 - 해당 연도에 종료된 과정의 수료인원
+    const gradThisYear = startedThisYear.filter(c => new Date(c.과정종료일).getFullYear() === year).reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+    const gradPrevYearEndedThisYear = prevYearStartedEndedThisYear.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+    graduateStr = gradPrevYearEndedThisYear > 0
+      ? `${formatNumber(gradThisYear)}(${formatNumber(gradPrevYearEndedThisYear)})`
+      : `${formatNumber(gradThisYear)}`;
+    xg = gradThisYear;
+    yg = gradPrevYearEndedThisYear;
+
+    // 개강 회차수 계산: 해당 연도에 진행 중인 모든 과정
+    const openStartSum = startedThisYear.length;
+    const openOngoingSum = prevYearStartedOngoingThisYear.length;
+    openCountStr = openOngoingSum > 0
+      ? `${openStartSum}(${openOngoingSum})`
+      : `${openStartSum}`;
+    xc = openStartSum;
+    yc = openOngoingSum;
+
+    const uniqueCourseNamesForYear = new Set([...startedThisYear, ...prevYearStartedOngoingThisYear, ...endedThisYear].map(c => c.과정명));
+    operatedCourseCount = uniqueCourseNamesForYear.size;
+    openedCourseCount = openStartSum > 0 && openOngoingSum > 0 ? `${openStartSum}<br/>(${openOngoingSum})` : openStartSum > 0 ? `${openStartSum}` : openOngoingSum > 0 ? `(${openOngoingSum})` : '';
+
+    // 수료율 계산 - 해당 연도에 종료된 과정들만 고려
+    const validRowsForCompletion = [...startedThisYear.filter(c => new Date(c.과정종료일).getFullYear() === year), ...prevYearStartedEndedThisYear].filter(c => (c['수강신청 인원'] ?? 0) > 0 && (c['수료인원'] ?? 0) > 0);
+    const validStudentsForCompletion = validRowsForCompletion.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
+    const validGraduatesForCompletion = validRowsForCompletion.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+    completionRate = validStudentsForCompletion > 0 ? `${((validGraduatesForCompletion / validStudentsForCompletion) * 100).toFixed(1)}%` : '-';
+    const totalEmployedForYear = validRowsForCompletion.reduce((sum, c) => sum + getPreferredEmploymentCount(c), 0);
+    employmentRate = validGraduatesForCompletion > 0 ? `${((totalEmployedForYear / validGraduatesForCompletion) * 100).toFixed(1)}%` : '-';
+
+    const validSatisfaction = [...startedThisYear, ...endedThisYear].filter(c => c.만족도 && c.만족도 > 0);
+    const totalWeighted = validSatisfaction.reduce((sum, c) => sum + (c.만족도 ?? 0) * (c['수료인원'] ?? 0), 0);
+    const totalWeight = validSatisfaction.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+    avgSatisfaction = totalWeight > 0 ? totalWeighted / totalWeight : 0;
+
+  } else { // year === undefined && month === 'all' (전체 연도 + 전체 월)
+    coursesToConsider = filteredByInstitution;
+
+    const totalStudents = coursesToConsider.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
+    const totalGraduates = coursesToConsider.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+    const totalCourses = coursesToConsider.length;
+    const uniqueCourseNames = new Set(coursesToConsider.map(c => c.과정명));
+    const validRows = coursesToConsider.filter(c => (c['수강신청 인원'] ?? 0) > 0 && (c['수료인원'] ?? 0) > 0);
+    const validStudents = validRows.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
+    const validGraduates = validRows.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
+    const totalEmployed = coursesToConsider.reduce((sum, c) => sum + getPreferredEmploymentCount(c), 0);
+
+    completionRate = validStudents > 0 ? `${((validGraduates / validStudents) * 100).toFixed(1)}%` : '-';
+    employmentRate = validGraduates > 0 ? `${((totalEmployed / validGraduates) * 100).toFixed(1)}%` : '-';
+
     const validSatisfaction = validRows.filter(c => c.만족도 && c.만족도 > 0);
     const totalWeighted = validSatisfaction.reduce((sum, c) => sum + (c.만족도 ?? 0) * (c['수료인원'] ?? 0), 0);
     const totalWeight = validSatisfaction.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
-    const avgSatisfaction = totalWeight > 0 ? totalWeighted / totalWeight : 0;
-    return {
-      studentStr: formatNumber(totalStudents),
-      graduateStr: formatNumber(totalGraduates),
-      openCountStr: formatNumber(totalCourses),
-      operatedCourseCount: uniqueCourseNames.size,
-      openedCourseCount: formatNumber(totalCourses),
-      completionRate: completionRate === 0 ? '-' : `${completionRate.toFixed(1)}%`,
-      employmentRate: employmentRate === 0 ? '-' : `${employmentRate.toFixed(1)}%`,
-      avgSatisfaction,
-      x: totalStudents,
-      y: 0,
-      xg: totalGraduates,
-      yg: 0,
-      xc: totalCourses,
-      yc: 0
-    };
+    avgSatisfaction = totalWeight > 0 ? totalWeighted / totalWeight : 0;
+
+    studentStr = formatNumber(totalStudents);
+    graduateStr = formatNumber(totalGraduates);
+    openCountStr = formatNumber(totalCourses);
+    operatedCourseCount = uniqueCourseNames.size;
+    openedCourseCount = formatNumber(totalCourses);
+    x = totalStudents;
+    xg = totalGraduates;
+    xc = totalCourses;
   }
-
-  const totalStudents = finalFilteredRows.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
-  const totalGraduates = finalFilteredRows.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
-  const totalEmployed = finalFilteredRows.reduce((sum, c) => sum + getPreferredEmploymentCount(c), 0);
-  const totalCourses = finalFilteredRows.length;
-  const uniqueCourseNames = new Set(finalFilteredRows.map(c => c.과정명));
-  const validRows = finalFilteredRows.filter(c => (c['수강신청 인원'] ?? 0) > 0 && (c['수료인원'] ?? 0) > 0);
-  const validStudents = validRows.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
-  const validGraduates = validRows.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
-  const completionRate = validStudents > 0 ? (validGraduates / validStudents) * 100 : 0;
-  const employmentRate = validGraduates > 0 ? (totalEmployed / validGraduates) * 100 : 0;
-
-  // x(y) 표기법을 따르지 않는 경우 (연도+월 선택 시)
-  if (year !== undefined && month !== 'all') {
-    return {
-      studentStr: `${formatNumber(totalStudents)}`,
-      graduateStr: `${formatNumber(totalGraduates)}`,
-      openCountStr: `${totalCourses}`,
-      operatedCourseCount: uniqueCourseNames.size,
-      openedCourseCount: `${totalCourses}`,
-      completionRate: completionRate === 0 ? '-' : `${completionRate.toFixed(1)}%`,
-      employmentRate: employmentRate === 0 ? '-' : `${employmentRate.toFixed(1)}%`,
-      x: totalStudents,
-      y: 0,
-      xg: totalGraduates,
-      yg: 0,
-      xc: totalCourses,
-      yc: 0
-    };
-  }
-
-  // 기존 x(y) 표기법 로직 (연도만 선택되거나 전체 기간일 때)
-  const startRows = filtered.filter(c => new Date(c.과정시작일).getFullYear() === year);
-  const endRows = filtered.filter(c => new Date(c.과정시작일).getFullYear() !== year && new Date(c.과정종료일).getFullYear() === year);
-  const startSum = startRows.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
-  const endSum = endRows.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
-  const gradStartSum = startRows.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
-  const gradEndSum = endRows.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
-  const openStartSum = startRows.length;
-  const openEndSum = endRows.length;
-
-  const studentStr = startSum > 0 && endSum > 0 ? `${formatNumber(startSum)}(${formatNumber(endSum)})` : startSum > 0 ? `${formatNumber(startSum)}` : endSum > 0 ? `(${formatNumber(endSum)})` : '';
-  const graduateStr = gradStartSum > 0 && gradEndSum > 0 ? `${formatNumber(gradStartSum)}(${formatNumber(gradEndSum)})` : gradStartSum > 0 ? `${formatNumber(gradStartSum)}` : gradEndSum > 0 ? `(${formatNumber(gradEndSum)})` : '';
-  const openCountStr = openStartSum > 0 && openEndSum > 0 ? `${openStartSum}(${openEndSum})` : openStartSum > 0 ? `${openStartSum}` : openEndSum > 0 ? `(${openEndSum})` : '';
-
-  // 운영중인 과정 수: 해당 연도에 운영된 고유한 과정명 수
-  const uniqueCourseNamesForYear = new Set([...startRows, ...endRows].map(c => c.과정명));
-  const operatedCourseCount = uniqueCourseNamesForYear.size;
-  const openedCourseCount = openStartSum + openEndSum; // 개강 과정 수: 올해 개강 + 작년 개강/올해 종료 (회차 수)
-  const validRowsForCompletion = [...startRows, ...endRows].filter(c => (c['수강신청 인원'] ?? 0) > 0 && (c['수료인원'] ?? 0) > 0);
-  const validStudentsForCompletion = validRowsForCompletion.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
-  const validGraduatesForCompletion = validRowsForCompletion.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
-  const completionRateForYear = validStudentsForCompletion > 0 ? (validGraduatesForCompletion / validStudentsForCompletion) * 100 : 0;
-  const totalEmployedForYear = validRowsForCompletion.reduce((sum, c) => sum + getPreferredEmploymentCount(c), 0);
-  const employmentRateForYear = validGraduatesForCompletion > 0 ? (totalEmployedForYear / validGraduatesForCompletion) * 100 : 0;
-
-  // 평균 만족도 계산
-  const validSatisfaction = [...startRows, ...endRows].filter(c => c.만족도 && c.만족도 > 0);
-  const totalWeighted = validSatisfaction.reduce((sum, c) => sum + (c.만족도 ?? 0) * (c['수료인원'] ?? 0), 0);
-  const totalWeight = validSatisfaction.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
-  const avgSatisfaction = totalWeight > 0 ? totalWeighted / totalWeight : 0;
 
   return {
     studentStr,
     graduateStr,
     openCountStr, // x<br/>(y) 표기
     operatedCourseCount, // 운영 과정 수
-    openedCourseCount: openStartSum > 0 && openEndSum > 0 ? `${openStartSum}<br/>(${openEndSum})` : openStartSum > 0 ? `${openStartSum}` : openEndSum > 0 ? `(${openEndSum})` : '', // 개강 회차수: 올해 개강 (작년 개강/올해 종료)
-    completionRate: completionRateForYear === 0 ? '-' : `${completionRateForYear.toFixed(1)}%`,
-    employmentRate: employmentRateForYear === 0 ? '-' : `${employmentRateForYear.toFixed(1)}%`,
+    openedCourseCount: openedCourseCount, // 개강 회차수: 올해 개강 (작년 개강/올해 종료)
+    completionRate,
+    employmentRate,
     avgSatisfaction,
-    x: startSum,
-    y: endSum,
-    xg: gradStartSum,
-    yg: gradEndSum,
-    xc: openStartSum,
-    yc: openEndSum
+    x,
+    y,
+    xg,
+    yg,
+    xc,
+    yc
   };
 }
 
@@ -373,7 +336,7 @@ export default function InstitutionAnalysis() {
     // aggregateCoursesByCourseIdWithLatestInfo 함수에 연도 정보와 기관명 전달
     const aggregated = aggregateCoursesByCourseIdWithLatestInfo(detailedStats.courses, yearForCalculation, institutionName);
     
-    setSelectedInstitutionCourses(aggregated as any);
+    setSelectedInstitutionCourses(aggregated);
     setSelectedInstitutionRawCourses(detailedStats.courses);
     setIsModalOpen(true);
   };
@@ -736,7 +699,7 @@ export default function InstitutionAnalysis() {
               {(() => {
                 const filteredRows = originalData.filter((c) => {
                   if (filterType === 'leading') return c.훈련유형?.includes('선도기업형 훈련');
-                  if (filterType === 'tech') return !c.훈련유형?.includes('선도기업형 훈련');
+                  if (filterType === 'tech') return !c.훈련유형?.includes('신기술 훈련');
                   return true;
                 });
                 const stats = getInstitutionYearlyStats({
@@ -828,8 +791,42 @@ export default function InstitutionAnalysis() {
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.studentsStr}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.graduatesStr}</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.평균수료율.toFixed(1)}% ({course.총수료인원}/{course.총수강신청인원})</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.평균취업율.toFixed(1)}% ({course.총취업인원}/{course.총수료인원})</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+                        {(() => {
+                          if (selectedYear !== 'all') {
+                            // 종료 회차만 대상으로 수료율 계산
+                            const gradCur = course.현재년도수료인원 ?? 0;
+                            const gradPrev = course.과거년도수료인원 ?? 0;
+                            const denCur = course.현재년도수료과정_수강신청인원 ?? 0;
+                            const denPrev = course.과거년도수료과정_수강신청인원 ?? 0;
+                            const totalGrad = gradCur + gradPrev;
+                            const totalDen = denCur + denPrev;
+                            if (totalDen > 0) {
+                              const rate = (totalGrad / totalDen) * 100;
+                              return `${rate.toFixed(1)}% (${totalGrad}/${totalDen})`;
+                            }
+                          }
+                          return `${course.평균수료율.toFixed(1)}% (${course.총수료인원}/${course.총수강신청인원})`;
+                        })()}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+                        {(() => {
+                          if (selectedYear !== 'all') {
+                            // 종료 회차만 대상으로 취업율 계산
+                            const gradCur = course.현재년도수료인원 ?? 0;
+                            const gradPrev = course.과거년도수료인원 ?? 0;
+                            const empCur = course.현재년도취업인원 ?? 0;
+                            const empPrev = course.과거년도취업인원 ?? 0;
+                            const totalGrad = gradCur + gradPrev;
+                            const totalEmp = empCur + empPrev;
+                            if (totalGrad > 0) {
+                              const rate = (totalEmp / totalGrad) * 100;
+                              return `${rate.toFixed(1)}% (${totalEmp}/${totalGrad})`;
+                            }
+                          }
+                          return `${course.평균취업율.toFixed(1)}% (${course.총취업인원}/${course.총수료인원})`;
+                        })()}
+                      </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatRevenue(course.총누적매출)}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.평균만족도.toFixed(1)}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.openCountStr}</td>
@@ -892,27 +889,27 @@ export default function InstitutionAnalysis() {
                         {institution.institutionName}
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatRevenue(institution.totalRevenue)}</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatNumber(institution.totalCourses)}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{institution.totalCourses}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
                         {selectedYear !== 'all' && selectedMonth === 'all' && institution.prevYearStudents > 0
                           ? (
                             <div>
-                              <div>{formatNumber(institution.totalStudents)}</div>
+                              <div>{institution.totalStudents}</div>
                               <div className="text-xs text-gray-500">({formatNumber(institution.prevYearStudents)})</div>
                             </div>
                           )
-                          : formatNumber(institution.totalStudents)
+                          : institution.totalStudents
                         }
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
                         {selectedYear !== 'all' && selectedMonth === 'all' && institution.prevYearCompletedStudents > 0
                           ? (
                             <div>
-                              <div>{formatNumber(institution.completedStudents)}</div>
+                              <div>{institution.completedStudents}</div>
                               <div className="text-xs text-gray-500">({formatNumber(institution.prevYearCompletedStudents)})</div>
                             </div>
                           )
-                          : formatNumber(institution.completedStudents)
+                          : institution.completedStudents
                         }
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{institution.completionRate.toFixed(1)}%</td>
