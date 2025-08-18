@@ -93,6 +93,50 @@ export const adjustYearlyRevenue = (course: CourseData, yearlyRevenue: number): 
   return yearlyRevenue * adjustmentFactor;
 };
 
+// === Helper: Compute course revenue with the same rules used in calculateInstitutionStats ===
+export const computeCourseRevenue = (
+  course: CourseData,
+  year?: number,
+): number => {
+  // If a specific year is requested, use only that year's revenue columns; otherwise sum all.
+  if (year) {
+    const yearlyKey = `${year}년` as keyof CourseData;
+    const adjKey = `조정_${year}년` as keyof CourseData;
+    let baseRevenue: number = (course[adjKey] as number) ?? (course[yearlyKey] as number) ?? 0;
+
+    // 수료율에 따른 추가 조정 (이미 조정된 경우 스킵)
+    const alreadyAdjusted = typeof course[adjKey] === 'number';
+    if (!alreadyAdjusted) {
+      baseRevenue *= calculateRevenueAdjustmentFactor(course['수료율'] ?? 0);
+    }
+    return baseRevenue;
+  }
+
+  const yearColumns = ['2021년', '2022년', '2023년', '2024년', '2025년', '2026년'] as const;
+  const adjustedCols = yearColumns.map(col => `조정_${col}`); // as keyof CourseData 제거
+
+  // 1) 조정된 연도별 매출의 합계 (누적매출로 대체)
+  let baseRevenue = adjustedCols.reduce((sum, key) => {
+    return sum + parseNumber(course[key as keyof CourseData]); // key를 CourseData의 유효한 키로 캐스팅
+  }, 0);
+  if (baseRevenue === 0) {
+    if (typeof course.조정_실매출대비 === 'number') {
+      baseRevenue = course.조정_실매출대비; // 오타 수정: 조정_실매매출대비 -> 조정_실매출대비
+    } else if (typeof course['실 매출 대비'] === 'number') {
+      baseRevenue = course['실 매출 대비'];
+    } else if (course.누적매출 !== undefined) {
+      baseRevenue = course.누적매출;
+    }
+  }
+
+  // 3) 수료율에 따른 보정 (이미 조정된 경우 스킵)
+  const alreadyAdjusted = Object.keys(course).some(k => k.startsWith('조정_'));
+  if (!alreadyAdjusted) {
+    baseRevenue *= calculateRevenueAdjustmentFactor(course['수료율'] ?? 0);
+  }
+  return baseRevenue;
+};
+
 export const calculateMonthlyStatistics = (
   data: CourseData[],
   year?: number | null
@@ -422,8 +466,8 @@ export function calculateCompletionRate(data: CourseData[], year?: number): numb
   return Number(completionRate.toFixed(1));
 }
 
-// 훈련기관 그룹화 함수 (Python의 group_institutions_advanced를 TypeScript로 변환)
-export const groupInstitutions = (data: CourseData[]): CourseData[] => {
+// 훈련기관 그룹화 헬퍼 함수 (단일 CourseData 객체 처리)
+export const groupInstitutionsAdvanced = (course: CourseData): string => {
   const institutionGroups: { [key: string]: string[] } = {
     '이젠아카데미': ['이젠', '이젠컴퓨터학원', '이젠아이티아카데미'],
     '그린컴퓨터아카데미': ['그린', '그린컴퓨터아카데미', '그린아카데미컴퓨터학원'],
@@ -440,39 +484,34 @@ export const groupInstitutions = (data: CourseData[]): CourseData[] => {
     'KH정보교육원': ['KH']
   };
 
-  const groupedNames: { [key: string]: string } = {}; // clean_name -> group_name 매핑
+  if (!course.훈련기관) return '알 수 없는 기관';
 
-  return data.map(course => {
-    if (!course.훈련기관) return course;
+  let cleanName = course.훈련기관.replace(/[^가-힣A-Za-z0-9\s()]/g, '');
+  cleanName = cleanName.replace(/\s+/g, ' ').trim().toUpperCase();
 
-    // 1. 훈련기관명 전처리 (특수문자 제거, 공백 정리, 대문자 변환)
-    let cleanName = course.훈련기관.replace(/[^가-힣A-Za-z0-9\s()]/g, '');
-    cleanName = cleanName.replace(/\s+/g, ' ').trim().toUpperCase();
-
-    let assignedGroup = false;
-    for (const groupName in institutionGroups) {
-      if (institutionGroups.hasOwnProperty(groupName)) {
-        const keywords = institutionGroups[groupName];
-        for (const keyword of keywords) {
-          if (cleanName.includes(keyword.toUpperCase())) {
-            groupedNames[cleanName] = groupName;
-            assignedGroup = true;
-            break;
-          }
+  for (const groupName in institutionGroups) {
+    if (institutionGroups.hasOwnProperty(groupName)) {
+      const keywords = institutionGroups[groupName];
+      for (const keyword of keywords) {
+        if (cleanName.includes(keyword.toUpperCase())) {
+          return groupName;
         }
       }
-      if (assignedGroup) {
-        break;
-      }
     }
+  }
+  return cleanName; // 그룹에 속하지 않으면 원래 기관명 유지
+};
 
-    if (!assignedGroup) {
-      groupedNames[cleanName] = cleanName; // 그룹에 속하지 않으면 원래 기관명 유지
-    }
-
+// 훈련기관 그룹화 함수 (CourseData[]를 처리)
+export const groupInstitutions = (data: CourseData[]): CourseData[] => {
+  return data.map(course => {
+    const originalInstitutionName = course.훈련기관; // 원본 기관명 보존
+    const groupedInstitutionName = groupInstitutionsAdvanced(course); // 새로 정의된 헬퍼 함수 사용
+    
     return {
       ...course,
-      훈련기관: groupedNames[cleanName] // 그룹화된 이름으로 업데이트
+      훈련기관: groupedInstitutionName, // 그룹화된 기관명으로 업데이트
+      원본훈련기관: originalInstitutionName // 원본 기관명 보존
     };
   });
 };
@@ -558,4 +597,69 @@ export const calculateInstitutionStats = (data: CourseData[]): InstitutionStats[
 
   // 매출 기준으로 내림차순 정렬
   return result.sort((a, b) => b.totalRevenue - a.totalRevenue);
+};
+
+export const getTopInstitutionByMonth = (
+  data: CourseData[],
+  year: number,
+  month: number
+): { month: string; institutionName: string; totalRevenue: number }[] => {
+  const monthlyRevenueMap = new Map<string, Map<string, number>>(); // month -> institutionName -> revenue
+
+  data.forEach(course => {
+    const courseStartDate = new Date(course.과정시작일);
+    const courseStartYear = courseStartDate.getFullYear();
+    const courseStartMonth = courseStartDate.getMonth() + 1;
+
+    // 요청된 연도와 월에 시작된 과정만 고려
+    if (courseStartYear === year && courseStartMonth === month) {
+      const institutionName = course.훈련기관;
+      if (!institutionName) return;
+
+      const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+
+      if (!monthlyRevenueMap.has(monthKey)) {
+        monthlyRevenueMap.set(monthKey, new Map<string, number>());
+      }
+      const institutionRevenueMap = monthlyRevenueMap.get(monthKey)!;
+
+      // 해당 과정의 총 매출액을 가져옴 (조정된 누적매출 또는 누적매출 사용)
+      const courseRevenue = course.조정_누적매출 ?? course.누적매출 ?? 0;
+
+      institutionRevenueMap.set(
+        institutionName,
+        (institutionRevenueMap.get(institutionName) || 0) + courseRevenue
+      );
+    }
+  });
+
+  const topInstitutions: { month: string; institutionName: string; totalRevenue: number }[] = [];
+
+  monthlyRevenueMap.forEach((institutionRevenueMap, monthKey) => {
+    let topInstitutionName = '';
+    let maxRevenue = 0;
+
+    institutionRevenueMap.forEach((revenue, institutionName) => {
+      if (revenue > maxRevenue) {
+        maxRevenue = revenue;
+        topInstitutionName = institutionName;
+      }
+    });
+
+    if (topInstitutionName) {
+      topInstitutions.push({
+        month: monthKey,
+        institutionName: topInstitutionName,
+        totalRevenue: maxRevenue,
+      });
+    }
+  });
+
+  // 월별로 정렬
+  return topInstitutions.sort((a, b) => {
+    const [aYear, aMonth] = a.month.split('-').map(Number);
+    const [bYear, bMonth] = b.month.split('-').map(Number);
+    if (aYear !== bYear) return aYear - bYear;
+    return aMonth - bMonth;
+  });
 };

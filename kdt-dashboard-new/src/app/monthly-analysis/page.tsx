@@ -2,7 +2,8 @@
 
 import React from 'react';
 import { useEffect, useState } from 'react';
-import { calculateMonthlyStatistics, calculateCompletionRate, applyRevenueAdjustment, computeCourseRevenue } from "@/lib/data-utils";
+import { calculateMonthlyStatistics, calculateCompletionRate } from "@/lib/data-utils";
+import { applyRevenueAdjustment, computeCourseRevenue } from "@/utils/data-utils";
 import { loadDataFromGithub, preprocessData } from "@/utils/data-loader";
 import { CourseData } from "@/lib/data-utils";
 import { MonthlyStats } from "@/lib/data-utils";

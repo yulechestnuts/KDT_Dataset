@@ -1,36 +1,34 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# KDT Sales Dashboard (Next.js)
 
-## Getting Started
+This is a web application built with [Next.js](https://nextjs.org) that serves as a dashboard for visualizing K-Digital Training (KDT) program data. It uses a modern tech stack including React, TypeScript, and Tailwind CSS.
 
-First, run the development server:
+## 📂 Project Structure
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- **`src/app/page.tsx`**: The main page of the dashboard. This is the primary view that users will see.
+- **`src/components/`**: Contains the reusable React components.
+    - **`ui/`**: Holds generic, base UI components like `card.tsx`.
+    - **`dashboard/`**: Holds components specifically designed for this dashboard, such as `summary-card.tsx` for displaying key metrics.
+- **`src/lib/`**: Contains utility functions. `utils.ts` includes a helper for managing CSS classes.
+- **`package.json`**: Lists the project's dependencies (like Next.js, React, Tailwind CSS) and defines the scripts to run, build, and lint the application.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🎯 Purpose of this Folder
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+This application is intended to be the primary frontend for interacting with the KDT dataset. Unlike the Python-based Streamlit dashboards, this Next.js app is designed to be a standalone, production-ready web application that can be deployed to hosting services like Vercel.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 📈 Current Status
 
-## Learn More
+The project is in its **initial development phase**.
 
-To learn more about Next.js, take a look at the following resources:
+- A basic page layout exists.
+- A reusable `SummaryCard` component has been created to display key performance indicators (KPIs).
+- The main page currently shows a single summary card with **hardcoded placeholder data**.
+- There is no real data fetching or backend integration yet.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 💡 Next Steps & Suggested Improvements
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1.  **Clean Up Boilerplate**: The main page (`src/app/page.tsx`) still contains a lot of the default example code and links from `create-next-app`. This should be removed to build the actual dashboard interface.
+2.  **Implement Data Fetching**: The components need to be connected to a data source. This could involve:
+    - Creating an API endpoint (e.g., in Next.js API routes) that reads from the JSON or CSV files.
+    - Fetching data directly from a database or a dedicated backend service.
+3.  **Build the Dashboard Layout**: A proper dashboard layout should be designed and implemented, likely using a CSS grid to arrange multiple summary cards, charts, and data tables.
+4.  **Update This README**: This file should be kept up-to-date with the project's status, and a "How to Run" section should be maintained with the correct commands (`npm run dev`).

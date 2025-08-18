@@ -307,11 +307,11 @@ export default function InstitutionAnalysisClient({ initialInstitutionStats, ava
     // 유형 필터링
     if (filterType === 'leading') {
       currentFilteredStats = currentFilteredStats.filter((stat) =>
-        stat.courses.some((c) => c.isLeadingCompanyCourse)
+        stat.courses.some((c) => c.훈련유형?.includes('선도기업형 훈련'))
       );
     } else if (filterType === 'tech') {
       currentFilteredStats = currentFilteredStats.filter((stat) =>
-        stat.courses.some((c) => isNewTechCourse(c))
+        stat.courses.some((c) => !c.훈련유형?.includes('선도기업형 훈련'))
       );
     }
 
@@ -377,9 +377,9 @@ export default function InstitutionAnalysisClient({ initialInstitutionStats, ava
     let filteredOriginalData = originalData;
     
     if (filterType === 'leading') {
-      filteredOriginalData = filteredOriginalData.filter((c) => c.isLeadingCompanyCourse);
+      filteredOriginalData = filteredOriginalData.filter((c) => c.훈련유형?.includes('선도기업형 훈련'));
     } else if (filterType === 'tech') {
-      filteredOriginalData = filteredOriginalData.filter(isNewTechCourse);
+      filteredOriginalData = filteredOriginalData.filter((c) => !c.훈련유형?.includes('선도기업형 훈련'));
     }
     
     if (selectedMonth !== 'all') {
@@ -390,7 +390,7 @@ export default function InstitutionAnalysisClient({ initialInstitutionStats, ava
     }
     
     const yearForCalculation = selectedYear === 'all' ? undefined : selectedYear;
-    const detailedStats = calculateInstitutionDetailedRevenue(originalData, institutionName, yearForCalculation);
+    const detailedStats = calculateInstitutionDetailedRevenue(filteredOriginalData, institutionName, yearForCalculation);
     
     const aggregated = aggregateCoursesByCourseIdWithLatestInfo(detailedStats.courses, yearForCalculation, institutionName);
     
@@ -405,9 +405,9 @@ export default function InstitutionAnalysisClient({ initialInstitutionStats, ava
     let filteredOriginalData = originalData;
     
     if (filterType === 'leading') {
-      filteredOriginalData = filteredOriginalData.filter((c) => c.isLeadingCompanyCourse);
+      filteredOriginalData = filteredOriginalData.filter((c) => c.훈련유형?.includes('선도기업형 훈련'));
     } else if (filterType === 'tech') {
-      filteredOriginalData = filteredOriginalData.filter(isNewTechCourse);
+      filteredOriginalData = filteredOriginalData.filter((c) => !c.훈련유형?.includes('선도기업형 훈련'));
     }
     
     if (selectedMonth !== 'all') {
@@ -418,7 +418,7 @@ export default function InstitutionAnalysisClient({ initialInstitutionStats, ava
     }
     
     const individualStats = getIndividualInstitutionsInGroup(
-      filteredOriginalData,
+      filteredOriginalData, // 필터링된 데이터 전달
       groupName,
       selectedYear === 'all' ? undefined : selectedYear
     );
@@ -594,8 +594,8 @@ export default function InstitutionAnalysisClient({ initialInstitutionStats, ava
                   <td className="px-6 py-4 whitespace-nowrap">
                     {(() => {
                       const filteredRows = originalData.filter((c) => {
-                        if (filterType === 'leading') return c.isLeadingCompanyCourse;
-                        if (filterType === 'tech') return !c.isLeadingCompanyCourse;
+                        if (filterType === 'leading') return c.훈련유형?.includes('선도기업형 훈련');
+                        if (filterType === 'tech') return !c.훈련유형?.includes('선도기업형 훈련');
                         return true;
                       });
                       const stats = getInstitutionYearlyStats({
@@ -610,8 +610,8 @@ export default function InstitutionAnalysisClient({ initialInstitutionStats, ava
                   <td className="px-6 py-4 whitespace-nowrap">
                     {(() => {
                       const filteredRows = originalData.filter((c) => {
-                        if (filterType === 'leading') return c.isLeadingCompanyCourse;
-                        if (filterType === 'tech') return !c.isLeadingCompanyCourse;
+                        if (filterType === 'leading') return c.훈련유형?.includes('선도기업형 훈련');
+                        if (filterType === 'tech') return !c.훈련유형?.includes('선도기업형 훈련');
                         return true;
                       });
                       const stats = getInstitutionYearlyStats({
@@ -626,8 +626,8 @@ export default function InstitutionAnalysisClient({ initialInstitutionStats, ava
                   <td className="px-6 py-4 whitespace-nowrap">
                     {(() => {
                       const filteredRows = originalData.filter((c) => {
-                        if (filterType === 'leading') return c.isLeadingCompanyCourse;
-                        if (filterType === 'tech') return !c.isLeadingCompanyCourse;
+                        if (filterType === 'leading') return c.훈련유형?.includes('선도기업형 훈련');
+                        if (filterType === 'tech') return !c.훈련유형?.includes('선도기업형 훈련');
                         return true;
                       });
                       const stats = getInstitutionYearlyStats({
@@ -641,10 +641,10 @@ export default function InstitutionAnalysisClient({ initialInstitutionStats, ava
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">{(() => {
                     const filteredRows = originalData.filter((c) => {
-                      if (filterType === 'leading') return c.isLeadingCompanyCourse;
-                      if (filterType === 'tech') return !c.isLeadingCompanyCourse;
+                      if (filterType === 'leading') return c.훈련유형?.includes('선도기업형 훈련');
+                      if (filterType === 'tech') return !c.훈련유형?.includes('선도기업형 훈련');
                       return true;
-                    });
+                      });
                     const stats = getInstitutionYearlyStats({
                       rows: filteredRows,
                       institutionName: stat.institutionName,
@@ -655,10 +655,10 @@ export default function InstitutionAnalysisClient({ initialInstitutionStats, ava
                   })()}</td>
                   <td className="px-6 py-4 whitespace-nowrap">{(() => {
                     const filteredRows = originalData.filter((c) => {
-                      if (filterType === 'leading') return c.isLeadingCompanyCourse;
-                      if (filterType === 'tech') return !c.isLeadingCompanyCourse;
+                      if (filterType === 'leading') return c.훈련유형?.includes('선도기업형 훈련');
+                      if (filterType === 'tech') return !c.훈련유형?.includes('선도기업형 훈련');
                       return true;
-                    });
+                      });
                     const stats = getInstitutionYearlyStats({
                       rows: filteredRows,
                       institutionName: stat.institutionName,
@@ -669,10 +669,10 @@ export default function InstitutionAnalysisClient({ initialInstitutionStats, ava
                   })()}</td>
                   <td className="px-6 py-4 whitespace-nowrap">{(() => {
                     const filteredRows = originalData.filter((c) => {
-                      if (filterType === 'leading') return c.isLeadingCompanyCourse;
-                      if (filterType === 'tech') return !c.isLeadingCompanyCourse;
+                      if (filterType === 'leading') return c.훈련유형?.includes('선도기업형 훈련');
+                      if (filterType === 'tech') return !c.훈련유형?.includes('선도기업형 훈련');
                       return true;
-                    });
+                      });
                     const stats = getInstitutionYearlyStats({
                       rows: filteredRows,
                       institutionName: stat.institutionName,
@@ -732,10 +732,15 @@ export default function InstitutionAnalysisClient({ initialInstitutionStats, ava
           <DialogHeader className="p-6 border-b">
             <DialogTitle className="text-lg font-medium leading-6 text-gray-900">
               {selectedInstitutionName} - 훈련과정 상세
+              {filterType === 'leading' && ' (선도기업 과정)'}
+              {filterType === 'tech' && ' (신기술 과정)'}
               {selectedYear !== 'all' && ` (${selectedYear}년)`}
             </DialogTitle>
             <DialogDescription>
-              선택된 훈련기관의 {selectedYear === 'all' ? '모든' : `${selectedYear}년`} 훈련과정 목록입니다. (매출액 기준 내림차순 정렬)
+              선택된 훈련기관의 {selectedYear === 'all' ? '모든' : `${selectedYear}년`} 훈련과정 목록입니다.
+              {filterType === 'leading' && ' (선도기업 과정만)'}
+              {filterType === 'tech' && ' (신기술 과정만)'}
+              (매출액 기준 내림차순 정렬)
             </DialogDescription>
           </DialogHeader>
           <div className="p-6">
@@ -743,8 +748,8 @@ export default function InstitutionAnalysisClient({ initialInstitutionStats, ava
             <div className="grid grid-cols-6 lg:grid-cols-9 gap-4 mb-6">
               {(() => {
                 const filteredRows = originalData.filter((c) => {
-                  if (filterType === 'leading') return c.isLeadingCompanyCourse;
-                  if (filterType === 'tech') return !c.isLeadingCompanyCourse;
+                  if (filterType === 'leading') return c.훈련유형?.includes('선도기업형 훈련');
+                  if (filterType === 'tech') return !c.훈련유형?.includes('선도기업형 훈련');
                   return true;
                 });
                 const stats = getInstitutionYearlyStats({
