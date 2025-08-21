@@ -1,5 +1,6 @@
 import { formatNumber } from "@/utils/formatters"; // formatNumber import 추가
 
+
 // 데이터 파싱 및 변환 유틸리티
 
 export interface RawCourseData {
@@ -1277,6 +1278,102 @@ export const aggregateCoursesByCourseIdWithLatestInfo = (
 };
 
 // 그룹화된 기관명에 속하는 개별 기관들을 반환하는 함수
+export const aggregateCoursesByCourseNameForNcs = (
+  courses: CourseData[],
+  ncsName: string,
+  year?: number
+): AggregatedCourseData[] => {
+  // NCS명과 연도로 필터링
+  const filtered = courses.filter(course => 
+    (course.NCS명 || '기타') === ncsName && 
+    (year ? new Date(course.과정시작일).getFullYear() === year : true)
+  );
+
+  const map = new Map<string, AggregatedCourseData>();
+
+  filtered.forEach(course => {
+    const courseKey = course.과정명;
+
+    if (!map.has(courseKey)) {
+      map.set(courseKey, {
+        과정명: course.과정명,
+        '훈련과정 ID': course['훈련과정 ID'],
+        총수강신청인원: 0,
+        총수료인원: 0,
+        총취업인원: 0,
+        총누적매출: 0,
+        최소과정시작일: course.과정시작일,
+        최대과정종료일: course.과정종료일,
+        훈련유형들: [],
+        원천과정수: 0,
+        총훈련생수: 0,
+        평균만족도: 0,
+        평균수료율: 0,
+        평균취업율: 0
+      });
+    }
+
+    const agg = map.get(courseKey)!;
+
+    // 매출 집계
+    const courseRevenue = computeCourseRevenue(course);
+    agg.총누적매출 += courseRevenue;
+
+    // 학생수, 수료인원, 취업인원, 과정수 등 집계
+    agg.총수강신청인원 += course['수강신청 인원'] ?? 0;
+    agg.총수료인원 += course['수료인원'] ?? 0;
+    agg.총취업인원 += getPreferredEmploymentCount(course);
+    agg.원천과정수 += 1;
+    agg.총훈련생수 += course['수강신청 인원'] ?? 0;
+
+    // 훈련 유형
+    if (course.훈련유형 && !agg.훈련유형들.includes(course.훈련유형)) {
+      agg.훈련유형들.push(course.훈련유형);
+    }
+
+    // 날짜 업데이트
+    if (new Date(course.과정시작일) < new Date(agg.최소과정시작일)) {
+      agg.최소과정시작일 = course.과정시작일;
+    }
+    if (new Date(course.과정종료일) > new Date(agg.최대과정종료일)) {
+      agg.최대과정종료일 = course.과정종료일;
+    }
+
+    // 평균값 계산을 위한 임시 데이터 저장
+    const internal = agg as any;
+    if (internal._completionEnrollmentSum === undefined) {
+      internal._completionEnrollmentSum = 0;
+      internal._completionSum = 0;
+      internal._completionWeight = 0;
+      internal._satSum = 0;
+      internal._satWeight = 0;
+    }
+
+    if ((course['수료인원'] ?? 0) > 0 && (course['수강신청 인원'] ?? 0) > 0) {
+      internal._completionEnrollmentSum += course['수강신청 인원'] ?? 0;
+      internal._completionSum += course['수료인원'] ?? 0;
+      internal._completionWeight += 1;
+    }
+
+    if ((course['수료인원'] ?? 0) > 0 && course.만족도 && course.만족도 > 0) {
+      internal._satSum += course.만족도;
+      internal._satWeight += 1;
+    }
+  });
+
+  // 최종 평균 계산
+  map.forEach(agg => {
+    const internal = agg as any;
+    agg.평균만족도 = internal._satWeight > 0 ? internal._satSum / internal._satWeight : 0;
+    agg.평균수료율 = internal._completionEnrollmentSum > 0 
+      ? (internal._completionSum / internal._completionEnrollmentSum) * 100 
+      : 0;
+    agg.평균취업율 = agg.총수료인원 > 0 ? (agg.총취업인원 / agg.총수료인원) * 100 : 0;
+  });
+
+  return Array.from(map.values()).sort((a, b) => b.총누적매출 - a.총누적매출);
+};
+
 export const getIndividualInstitutionsInGroup = (
   data: CourseData[],
   groupName: string,

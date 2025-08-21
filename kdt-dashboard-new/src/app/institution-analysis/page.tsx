@@ -196,6 +196,12 @@ function getInstitutionYearlyStats({
     const totalEmployed = coursesToConsider.reduce((sum, c) => sum + getPreferredEmploymentCount(c), 0);
 
     // 수료율 계산
+    const validRowsForCompletion = coursesToConsider.filter(c => {
+      const endDate = new Date(c.과정종료일);
+      // 종료된 과정 중에서 수료인원이 있는 과정만 포함
+      return (endDate.getFullYear() === 2025) && (c['수료인원'] ?? 0) > 0 && (c['수강신청 인원'] ?? 0) > 0;
+    });
+
     const yearEndedValidStudents = validRowsForCompletion.reduce((sum, c) => sum + (c['수강신청 인원'] ?? 0), 0);
     const yearEndedValidGraduates = validRowsForCompletion.reduce((sum, c) => sum + (c['수료인원'] ?? 0), 0);
     completionRate = yearEndedValidStudents > 0 
