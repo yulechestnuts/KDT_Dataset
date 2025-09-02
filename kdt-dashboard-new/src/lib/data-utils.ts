@@ -1217,8 +1217,8 @@ export const aggregateCoursesByCourseIdWithLatestInfo = (
       }
     }
 
-    // 수료/취업 집계: 해당 연도에 종료된 과정만 (수료인원이 0명인 과정은 제외)
-    if (isCurrentYearEnd && (course['수료인원'] ?? 0) > 0) {
+    // 수료/취업 집계: 해당 연도에 종료된 과정만
+    if (isCurrentYearEnd) {
       if (isCurrentYearStart) {
         // 수료인원
         agg.현재년도수료인원 = (agg.현재년도수료인원 ?? 0) + (course['수료인원'] ?? 0) * studentShare;
@@ -1282,8 +1282,8 @@ export const aggregateCoursesByCourseIdWithLatestInfo = (
       }
     }
 
-    // 만족도는 해당 연도에 종료된 과정들만 고려 (수료인원이 0명인 과정은 제외)
-    if (isCurrentYearEnd && (course['수료인원'] ?? 0) > 0 && course.만족도 && course.만족도 > 0) {
+    // 만족도는 해당 연도에 종료된 과정들만 고려
+    if (isCurrentYearEnd && course.만족도 && course.만족도 > 0) {
       internal._satSum += (course.만족도 ?? 0) * studentShare;
       internal._satWeight += studentShare > 0 ? 1 : 0;
     }
