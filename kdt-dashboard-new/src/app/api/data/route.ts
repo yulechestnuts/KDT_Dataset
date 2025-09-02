@@ -30,3 +30,5 @@ export async function GET() {
     return new NextResponse('Error fetching data', { status: 500 });
   }
 }
+
+// 제발 되면 좋겠다.
