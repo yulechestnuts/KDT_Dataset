@@ -324,15 +324,29 @@ export const classifyTrainingType = (course: RawCourseData): string => {
 function parseNumberWithParen(str: any) {
   if (typeof str === 'number') return { value: str, display: String(str), paren: null };
   if (typeof str !== 'string') return { value: 0, display: '', paren: null };
+  
+  // 빈 문자열이나 null/undefined 처리
+  if (!str || str.trim() === '') return { value: 0, display: '', paren: null };
+  
+  // "x(y)" 형식 매칭
   const match = str.match(/^(\d+)(?:\((\d+)\))?$/);
   if (match) {
+    const mainValue = parseInt(match[1], 10);
+    const parenValue = match[2] ? parseInt(match[2], 10) : null;
     return {
-      value: parseInt(match[1], 10),
+      value: mainValue,
       display: str,
-      paren: match[2] ? parseInt(match[2], 10) : null
+      paren: parenValue
     };
   }
-  return { value: parseNumber(str), display: str, paren: null };
+  
+  // 일반 숫자 문자열 처리
+  const parsed = parseNumber(str);
+  return { 
+    value: parsed, 
+    display: parsed > 0 ? String(parsed) : '', 
+    paren: null 
+  };
 }
 
 // 훈련기관 그룹화 헬퍼 함수 (단일 CourseData 객체 처리)
@@ -350,6 +364,7 @@ export const groupInstitutionsAdvanced = (course: CourseData): string => {
     '한국ICT인재개발원': ['ICT'],
     'MBC아카데미 컴퓨터 교육센터': ['MBC아카데미', '(MBC)'],
     '쌍용아카데미': ['쌍용'],
+    '이스트소프트': ['이스트소프트', '(주)이스트소프트'],
     'KH정보교육원': ['KH']
   };
 
@@ -449,10 +464,10 @@ export const transformRawDataToCourseData = (rawData: any): CourseData => {
     훈련비: parseNumber(rawData.훈련비 || rawData['훈련비']),
     정원: parseNumber(rawData.정원 || rawData['정원']),
     '수강신청 인원': parsedEnrollment.value,
-    수강신청_표시: parsedEnrollment.display,
+    수강신청_표시: parsedEnrollment.display || (parsedEnrollment.value > 0 ? String(parsedEnrollment.value) : ''),
     수강신청_괄호: parsedEnrollment.paren,
     '수료인원': parsedCompletion.value,
-    수료인원_표시: parsedCompletion.display,
+    수료인원_표시: parsedCompletion.display || (parsedCompletion.value > 0 ? String(parsedCompletion.value) : ''),
     수료인원_괄호: parsedCompletion.paren,
     수료율: parsePercentage(rawData.수료율 || rawData['수료율']),
     만족도: parsePercentage(rawData.만족도 || rawData['만족도']),
@@ -596,9 +611,17 @@ export function calculateCompletionRate(data: CourseData[], year?: number): numb
   }
 
   // 수료인원이 0인 과정과 수강신청 인원이 0인 과정 제외
-  const validData = filteredData.filter(course => 
-    course['수료인원'] > 0 && course['수강신청 인원'] > 0
-  );
+  // 추가로: 오늘 기준으로 과정이 3주 이상 지나지 않은 과정도 제외
+  const today = new Date();
+  const threeWeeksAgo = new Date(today.getTime() - (21 * 24 * 60 * 60 * 1000)); // 21일 전
+
+  const validData = filteredData.filter(course => {
+    const courseEndDate = new Date(course.과정종료일);
+    const hasValidCompletion = course['수료인원'] > 0 && course['수강신청 인원'] > 0;
+    const isOldEnough = courseEndDate <= threeWeeksAgo; // 과정이 3주 이상 지난 경우만 포함
+    
+    return hasValidCompletion && isOldEnough;
+  });
 
   if (validData.length === 0) {
     return 0;
@@ -629,9 +652,22 @@ export function calculateCompletionRateWithDetails(data: CourseData[], year?: nu
   }
 
   // 수료인원이 0인 과정과 수강신청 인원이 0인 과정 제외
-  const validData = filteredData.filter(course => 
-    course['수료인원'] > 0 && course['수강신청 인원'] > 0
-  );
+  // 추가로: 오늘 기준으로 과정이 3주 이상 지나지 않은 과정도 제외
+  const today = new Date();
+  const threeWeeksAgo = new Date(today.getTime() - (21 * 24 * 60 * 60 * 1000)); // 21일 전
+
+  const validData = filteredData.filter(course => {
+    const courseEndDate = new Date(course.과정종료일);
+    const hasValidCompletion = course['수료인원'] > 0 && course['수강신청 인원'] > 0;
+    const isOldEnough = courseEndDate <= threeWeeksAgo; // 과정이 3주 이상 지난 경우만 포함
+    
+    return hasValidCompletion && isOldEnough;
+  });
+
+  const excludedByDate = filteredData.filter(course => {
+    const courseEndDate = new Date(course.과정종료일);
+    return course['수료인원'] > 0 && course['수강신청 인원'] > 0 && courseEndDate > threeWeeksAgo;
+  }).length;
 
   const totalCompletion = validData.reduce((sum, course) => sum + course['수료인원'], 0);
   const totalEnrollment = validData.reduce((sum, course) => sum + course['수강신청 인원'], 0);
@@ -642,8 +678,8 @@ export function calculateCompletionRateWithDetails(data: CourseData[], year?: nu
     completionRate: Number(completionRate.toFixed(1)),
     totalCourses: data.length,
     validCourses: validData.length,
-    excludedByDate: 0, // 날짜 제외 로직 제거
-    excludedByZeroCompletion: data.length - validData.length,
+    excludedByDate: excludedByDate,
+    excludedByZeroCompletion: data.length - validData.length - excludedByDate,
     totalEnrollment,
     totalCompletion,
     details: {
@@ -944,11 +980,17 @@ export const calculateInstitutionStats = (data: CourseData[], year?: number): In
     // 수료율 계산 (수료인원이 0명인 과정은 제외하고 계산)
     let totalValidStudentsForCompletion = 0;
     let totalValidGraduatesForCompletion = 0;
+    
+    // 오늘 기준으로 과정이 3주 이상 지나지 않은 과정도 제외
+    const today = new Date();
+    const threeWeeksAgo = new Date(today.getTime() - (21 * 24 * 60 * 60 * 1000)); // 21일 전
+    
     detailed.courses.forEach((course: CourseData) => {
       const courseInstitutionGroup = groupInstitutionsAdvanced(course);
       const coursePartnerGroup = course.leadingCompanyPartnerInstitution ? groupInstitutionsAdvanced({ ...course, 훈련기관: course.leadingCompanyPartnerInstitution }) : undefined;
+      const courseEndDate = new Date(course.과정종료일);
 
-      if ((course.수료인원 ?? 0) > 0 && (course['수강신청 인원'] ?? 0) > 0) {
+      if ((course.수료인원 ?? 0) > 0 && (course['수강신청 인원'] ?? 0) > 0 && courseEndDate <= threeWeeksAgo) {
         if (course.isLeadingCompanyCourse && course.leadingCompanyPartnerInstitution) {
           if (coursePartnerGroup === institutionName) { // 타입 오류 해결을 위해 비교 로직은 그대로 유지
             totalValidStudentsForCompletion += course['수강신청 인원'] ?? 0;
@@ -1228,9 +1270,16 @@ export const aggregateCoursesByCourseIdWithLatestInfo = (
 
     // 수료율과 취업율은 해당 연도에 종료된 과정들만 고려
     if (isCurrentYearEnd && (course['수료인원'] ?? 0) > 0 && (course['수강신청 인원'] ?? 0) > 0) {
-      internal._completionEnrollmentSum += (course['수강신청 인원'] ?? 0) * studentShare;
-      internal._completionSum += (course['수료인원'] ?? 0) * studentShare;
-      internal._completionWeight += studentShare > 0 ? 1 : 0;
+      // 오늘 기준으로 과정이 3주 이상 지나지 않은 과정도 제외
+      const today = new Date();
+      const threeWeeksAgo = new Date(today.getTime() - (21 * 24 * 60 * 60 * 1000)); // 21일 전
+      const courseEndDate = new Date(course.과정종료일);
+      
+      if (courseEndDate <= threeWeeksAgo) {
+        internal._completionEnrollmentSum += (course['수강신청 인원'] ?? 0) * studentShare;
+        internal._completionSum += (course['수료인원'] ?? 0) * studentShare;
+        internal._completionWeight += studentShare > 0 ? 1 : 0;
+      }
     }
 
     // 만족도는 해당 연도에 종료된 과정들만 고려 (수료인원이 0명인 과정은 제외)
@@ -1251,22 +1300,25 @@ export const aggregateCoursesByCourseIdWithLatestInfo = (
     if (year !== undefined) {
       const currentYearStudents = agg.현재년도수강신청인원 ?? 0;
       const prevYearStudents = agg.과거년도수강신청인원 ?? 0;
-      agg.studentsStr = prevYearStudents > 0 
-        ? `${formatNumber(currentYearStudents)}(${formatNumber(prevYearStudents)})`
-        : formatNumber(currentYearStudents);
+      agg.studentsStr = formatNumber(currentYearStudents);
+      if (prevYearStudents > 0) {
+        agg.studentsStr += `(${formatNumber(prevYearStudents)})`;
+      }
       
       const currentYearGraduates = agg.현재년도수료인원 ?? 0;
       const prevYearGraduates = agg.과거년도수료인원 ?? 0;
-      agg.graduatesStr = prevYearGraduates > 0
-        ? `${formatNumber(currentYearGraduates)}(${formatNumber(prevYearGraduates)})`
-        : formatNumber(currentYearGraduates);
+      agg.graduatesStr = formatNumber(currentYearGraduates);
+      if (prevYearGraduates > 0) {
+        agg.graduatesStr += `(${formatNumber(prevYearGraduates)})`;
+      }
       
       // 개강 회차수도 연도별로 표시
       const currentYearCount = agg.개강회차수 ?? 0;
       const prevYearCount = agg.과거년도개강회차수 ?? 0;
-      agg.openCountStr = prevYearCount > 0
-        ? `${currentYearCount}(${prevYearCount})`
-        : `${currentYearCount}`;
+      agg.openCountStr = `${currentYearCount}`;
+      if (prevYearCount > 0) {
+        agg.openCountStr += `(${prevYearCount})`;
+      }
     } else {
       agg.studentsStr = formatNumber(agg.총수강신청인원);
       agg.graduatesStr = formatNumber(agg.총수료인원);
