@@ -714,7 +714,30 @@ export default function InstitutionAnalysis() {
                   const capacitySum = selectedInstitutionCourses.reduce((sum: number, c: any) => sum + (c.연도정원 ?? 0), 0);
                   const enrolledStartOnly = selectedInstitutionCourses.reduce((sum: number, c: any) => sum + (c.연도훈련생수 ?? 0), 0);
                   const avgRecruitRate = capacitySum > 0 ? (enrolledStartOnly / capacitySum) * 100 : 0;
-                  return { revenueSum, capacitySum, enrolledStartOnly, avgRecruitRate };
+                  
+                  // 평균 수료율/취업율은 '고유값' 단위 원시 코스 기준으로 재계산하여 괄호 표기 (a/b) 포함
+                  let raw = selectedInstitutionRawCourses as CourseData[];
+                  if (selectedYear !== 'all') {
+                    raw = raw.filter(rc => new Date(rc.과정종료일).getFullYear() === selectedYear);
+                  }
+                  // 수료율: 수료인원>0 && 수강신청 인원>0 인 고유값만 포함
+                  const completionIncluded = raw.filter(rc => (rc['수료인원'] ?? 0) > 0 && (rc['수강신청 인원'] ?? 0) > 0);
+                  const completionNumerator = completionIncluded.reduce((s, rc) => s + (rc['수료인원'] ?? 0), 0);
+                  const completionDenominator = completionIncluded.reduce((s, rc) => s + (rc['수강신청 인원'] ?? 0), 0);
+                  const avgCompletionRate = completionDenominator > 0 ? (completionNumerator / completionDenominator) * 100 : 0;
+                  
+                  // 취업율: 수료인원>0 && 취업인원이 숫자이며 >0 인 고유값만 포함
+                  const employmentIncluded = raw.filter(rc => {
+                    const grads = rc['수료인원'] ?? 0;
+                    const employed = getPreferredEmploymentCount(rc) ?? 0;
+                    const employedNum = typeof employed === 'number' && !isNaN(employed) ? employed : 0;
+                    return grads > 0 && employedNum > 0;
+                  });
+                  const employmentNumerator = employmentIncluded.reduce((s, rc) => s + (getPreferredEmploymentCount(rc) ?? 0), 0);
+                  const employmentDenominator = employmentIncluded.reduce((s, rc) => s + (rc['수료인원'] ?? 0), 0);
+                  const avgEmploymentRate = employmentDenominator > 0 ? (employmentNumerator / employmentDenominator) * 100 : 0;
+
+                  return { revenueSum, capacitySum, enrolledStartOnly, avgRecruitRate, avgCompletionRate, completionNumerator, completionDenominator, avgEmploymentRate, employmentNumerator, employmentDenominator };
                 })();
                 return (
                   <>
@@ -744,11 +767,11 @@ export default function InstitutionAnalysis() {
                     </div>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <div className="text-sm text-gray-500">평균 수료율</div>
-                      <div className="text-lg font-semibold">{stats.completionRate}</div>
+                      <div className="text-lg font-semibold">{totals.completionDenominator > 0 ? `${totals.avgCompletionRate.toFixed(1)}% (${formatNumber(totals.completionNumerator)}/${formatNumber(totals.completionDenominator)})` : '-'}</div>
                     </div>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <div className="text-sm text-gray-500">평균 취업율</div>
-                      <div className="text-lg font-semibold">{stats.employmentRate}</div>
+                      <div className="text-lg font-semibold">{totals.employmentDenominator > 0 ? `${totals.avgEmploymentRate.toFixed(1)}% (${formatNumber(totals.employmentNumerator)}/${formatNumber(totals.employmentDenominator)})` : '-'}</div>
                     </div>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <div className="text-sm text-gray-500">합계 매출액</div>
@@ -793,38 +816,47 @@ export default function InstitutionAnalysis() {
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.graduatesStr}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
                         {(() => {
+                          // 선택된 훈련과정의 원시 코스들 기반으로 재계산 (수료인원 0인 코스 제외)
+                          const courseId = course['훈련과정 ID'];
+                          let related = selectedInstitutionRawCourses.filter(rc => rc['훈련과정 ID'] === courseId);
                           if (selectedYear !== 'all') {
-                            // 종료 회차만 대상으로 수료율 계산
-                            const gradCur = course.현재년도수료인원 ?? 0;
-                            const gradPrev = course.과거년도수료인원 ?? 0;
-                            const denCur = course.현재년도수료과정_수강신청인원 ?? 0;
-                            const denPrev = course.과거년도수료과정_수강신청인원 ?? 0;
-                            const totalGrad = gradCur + gradPrev;
-                            const totalDen = denCur + denPrev;
-                            if (totalDen > 0) {
-                              const rate = (totalGrad / totalDen) * 100;
-                              return `${rate.toFixed(1)}% (${totalGrad}/${totalDen})`;
-                            }
+                            related = related.filter(rc => new Date(rc.과정종료일).getFullYear() === selectedYear);
                           }
+                          // 수료인원 0인 코스 제외
+                          const included = related.filter(rc => (rc['수료인원'] ?? 0) > 0 && (rc['수강신청 인원'] ?? 0) > 0);
+                          const sumGrad = included.reduce((s, rc) => s + (rc['수료인원'] ?? 0), 0);
+                          const sumEnroll = included.reduce((s, rc) => s + (rc['수강신청 인원'] ?? 0), 0);
+                          if (sumEnroll > 0) {
+                            const rate = (sumGrad / sumEnroll) * 100;
+                            return `${rate.toFixed(1)}% (${sumGrad}/${sumEnroll})`;
+                          }
+                          // 포함할 것이 없으면 기존 집계값 표시
                           return `${course.평균수료율.toFixed(1)}% (${course.총수료인원}/${course.총수강신청인원})`;
                         })()}
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
                         {(() => {
+                          // 선택된 훈련과정의 원시 코스들 기반으로 재계산 (취업인원 0 또는 비수치인 경우 제외)
+                          const courseId = course['훈련과정 ID'];
+                          let related = selectedInstitutionRawCourses.filter(rc => rc['훈련과정 ID'] === courseId);
                           if (selectedYear !== 'all') {
-                            // 종료 회차만 대상으로 취업율 계산
-                            const gradCur = course.현재년도수료인원 ?? 0;
-                            const gradPrev = course.과거년도수료인원 ?? 0;
-                            const empCur = course.현재년도취업인원 ?? 0;
-                            const empPrev = course.과거년도취업인원 ?? 0;
-                            const totalGrad = gradCur + gradPrev;
-                            const totalEmp = empCur + empPrev;
-                            if (totalGrad > 0) {
-                              const rate = (totalEmp / totalGrad) * 100;
-                              return `${rate.toFixed(1)}% (${totalEmp}/${totalGrad})`;
-                            }
+                            related = related.filter(rc => new Date(rc.과정종료일).getFullYear() === selectedYear);
                           }
-                          return `${course.평균취업율.toFixed(1)}% (${course.총취업인원}/${course.총수료인원})`;
+                          // 수료인원 > 0 이고, 취업인원 > 0 인 코스만 포함
+                          const included = related.filter(rc => {
+                            const grads = rc['수료인원'] ?? 0;
+                            const employed = getPreferredEmploymentCount(rc) ?? 0;
+                            const employedNum = typeof employed === 'number' && !isNaN(employed) ? employed : 0;
+                            return grads > 0 && employedNum > 0;
+                          });
+                          const sumEmp = included.reduce((s, rc) => s + (getPreferredEmploymentCount(rc) ?? 0), 0);
+                          const sumGrad = included.reduce((s, rc) => s + (rc['수료인원'] ?? 0), 0);
+                          if (sumGrad > 0) {
+                            const rate = (sumEmp / sumGrad) * 100;
+                            return `${rate.toFixed(1)}% (${sumEmp}/${sumGrad})`;
+                          }
+                          // 포함할 것이 없으면 0/0 표기
+                          return `0.0% (0/0)`;
                         })()}
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatRevenue(course.총누적매출)}</td>
