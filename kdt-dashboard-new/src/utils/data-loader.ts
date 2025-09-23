@@ -82,27 +82,46 @@ export const preprocessData = (data: any[]): any[] => {
     // 깊은 복사 방지, 새 객체 생성
     const course: any = { ...raw };
 
-    const yearColumns = ['2021년', '2022년', '2023년', '2024년', '2025년', '2026년'];
-    yearColumns.forEach(year => {
-      course[year] = safeParseNumber(course[year]);
+    // 원본 CSV는 연도 컬럼이 '2021' 형태일 수 있으므로, 'YYYY'와 'YYYY년' 모두 인식하여 정규화한다.
+    const yearPairs: Array<{ unified: string; variants: string[] }> = [
+      { unified: '2021년', variants: ['2021년', '2021'] },
+      { unified: '2022년', variants: ['2022년', '2022'] },
+      { unified: '2023년', variants: ['2023년', '2023'] },
+      { unified: '2024년', variants: ['2024년', '2024'] },
+      { unified: '2025년', variants: ['2025년', '2025'] },
+      { unified: '2026년', variants: ['2026년', '2026'] },
+    ];
+
+    // 정규화된 연도 키에 숫자 값 채우기
+    yearPairs.forEach(({ unified, variants }) => {
+      const rawVal = variants.map(k => course[k]).find(v => v !== undefined && v !== null && String(v).trim() !== '');
+      course[unified] = safeParseNumber(rawVal);
     });
 
-    // 주요 숫자 필드 정리
+    const yearColumns = yearPairs.map(p => p.unified);
+
+    // 주요 숫자 필드 정리 (공백/콤마 제거 포함)
     course['수강신청 인원'] = safeParseNumber(course['수강신청 인원']);
     course['수료인원'] = safeParseNumber(course['수료인원']);
     course['정원'] = safeParseNumber(course['정원']);
     course['훈련비'] = safeParseNumber(course['훈련비']);
 
-    // 누적·실제 매출 및 최소/최대 매출 계산
-    course.누적매출 = calculateTotalRevenue(course);
+    // 실 매출 대비 컬럼은 CSV에서 '실 매출 대비' 또는 공백이 포함된 '실 매출 대비 ' 로 올 수 있음
+    const actualRevenueRaw = course['실 매출 대비'] ?? course['실 매출 대비 '] ?? course['실매출대비'];
+    course['실 매출 대비'] = safeParseNumber(actualRevenueRaw);
+
+    // 최소/최대/누적 매출 계산 (연도별 합산 기준)
+    const revenues = yearColumns.map(year => safeParseNumber(course[year]));
+    const total = revenues.reduce((a, b) => a + b, 0);
+    course.누적매출 = total;
 
     const currentYear = new Date().getFullYear();
     course.실제매출 = calculateYearlyRevenue(course, currentYear);
 
-    const revenues = yearColumns.map(year => course[year]);
-    course.최소매출 = Math.min(...revenues);
-    course.최대매출 = Math.max(...revenues);
+    // 모든 값이 0인 경우를 대비하여 NaN 방지
+    course.최소매출 = revenues.length ? Math.min(...revenues) : 0;
+    course.최대매출 = revenues.length ? Math.max(...revenues) : 0;
 
     return course;
   });
-}; 
+};
