@@ -424,8 +424,11 @@ export const transformRawDataToCourseData = (rawData: any): CourseData => {
   // 연도별 매출을 합산하여 누적매출 계산
   let totalCumulativeRevenue = 0;
   const yearColumns: Array<keyof RawCourseData> = ['2021년', '2022년', '2023년', '2024년', '2025년', '2026년'];
+  // CSV에 '2021'처럼 '년'이 없는 헤더가 올 수 있으므로 두 변형 모두 인식
   yearColumns.forEach(yearCol => {
-    totalCumulativeRevenue += parseNumber(rawData[yearCol]);
+    const yearDigits = String(yearCol).replace('년', '');
+    const rawYearVal = (rawData as any)[yearCol] ?? (rawData as any)[yearDigits];
+    totalCumulativeRevenue += parseNumber(rawYearVal);
   });
 
   // 선도기업 과정 여부 판단 (파트너기관만 있어도 선도기업 과정으로 간주)
@@ -435,7 +438,8 @@ export const transformRawDataToCourseData = (rawData: any): CourseData => {
   // 조정된 연도별 매출 계산 (여기서는 원본 값을 복사, 최종 조정은 calculateInstitutionStats에서)
   const adjustedYearlyRevenues: { [key: string]: number } = {};
   yearColumns.forEach(yearCol => {
-    const originalRevenue = parseNumber(rawData[yearCol]);
+    const yearDigits = String(yearCol).replace('년', '');
+    const originalRevenue = parseNumber((rawData as any)[yearCol] ?? (rawData as any)[yearDigits]);
     adjustedYearlyRevenues[`조정_${yearCol}`] = originalRevenue; 
   });
 
@@ -484,17 +488,18 @@ export const transformRawDataToCourseData = (rawData: any): CourseData => {
     
     // 매출 관련 필드들
     누적매출: totalCumulativeRevenue,
-    '실 매출 대비': parsePercentage(rawData.실매출대비 || rawData['실 매출 대비']),
-    '매출 최대': parseNumber(rawData.매출최대 || rawData['매출 최대']),
-    '매출 최소': parseNumber(rawData.매출최소 || rawData['매출 최소']),
+    // '실 매출 대비'는 금액 컬럼이므로 parseNumber로 처리, 공백 포함 헤더 대응
+    '실 매출 대비': parseNumber((rawData as any).실매출대비 || (rawData as any)['실 매출 대비'] || (rawData as any)['실 매출 대비 ']),
+    '매출 최대': parseNumber((rawData as any).매출최대 || (rawData as any)['매출 최대']),
+    '매출 최소': parseNumber((rawData as any).매출최소 || (rawData as any)['매출 최소']),
     
-    // 연도별 매출 데이터 및 조정된 연도별 매출
-    '2021년': parseNumber(rawData['2021년']),
-    '2022년': parseNumber(rawData['2022년']),
-    '2023년': parseNumber(rawData['2023년']),
-    '2024년': parseNumber(rawData['2024년']),
-    '2025년': parseNumber(rawData['2025년']),
-    '2026년': parseNumber(rawData['2026년']),
+    // 연도별 매출 데이터 및 조정된 연도별 매출 ('2021' 변형도 인식)
+    '2021년': parseNumber((rawData as any)['2021년'] ?? (rawData as any)['2021']),
+    '2022년': parseNumber((rawData as any)['2022년'] ?? (rawData as any)['2022']),
+    '2023년': parseNumber((rawData as any)['2023년'] ?? (rawData as any)['2023']),
+    '2024년': parseNumber((rawData as any)['2024년'] ?? (rawData as any)['2024']),
+    '2025년': parseNumber((rawData as any)['2025년'] ?? (rawData as any)['2025']),
+    '2026년': parseNumber((rawData as any)['2026년'] ?? (rawData as any)['2026']),
     ...adjustedYearlyRevenues,
 
     월별매출: rawData.월별매출 && typeof rawData.월별매출 === 'object' ? rawData.월별매출 : {},
