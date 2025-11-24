@@ -4,7 +4,7 @@ export async function GET() {
   try {
     // Remote raw CSV on GitHub (latest dataset)
     const remoteUrl =
-      'https://raw.githubusercontent.com/yulechestnuts/KDT_Dataset/main/result_kdtdata_202509.csv';
+      'https://raw.githubusercontent.com/yulechestnuts/KDT_Dataset/main/result_kdtdata_202510.csv';
 
     const res = await fetch(remoteUrl, {
       // Bypass Next.js fetch caching so the client-side revalidation logic in data-loader can manage its own cache.
