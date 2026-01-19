@@ -318,13 +318,31 @@ export default function InstitutionAnalysisClient({ initialInstitutionStats, ava
     // 연도 및 월 필터링 (서버에서 이미 연도별로 계산된 통계를 사용)
     // 클라이언트에서는 selectedYear와 selectedMonth에 따라 initialInstitutionStats를 다시 필터링
     if (selectedYear !== 'all' || selectedMonth !== 'all') {
+      // 상세 보기와 동일한 기준으로 매출을 계산하기 위해, originalData에 동일한 필터를 선적용
+      let filteredOriginalForRevenue = originalData;
+      if (filterType === 'leading') {
+        filteredOriginalForRevenue = filteredOriginalForRevenue.filter((c) => c.훈련유형?.includes('선도기업형 훈련'));
+      } else if (filterType === 'tech') {
+        filteredOriginalForRevenue = filteredOriginalForRevenue.filter((c) => !c.훈련유형?.includes('선도기업형 훈련'));
+      }
+
+      if (selectedMonth !== 'all') {
+        filteredOriginalForRevenue = filteredOriginalForRevenue.filter(course => {
+          const courseStartDate = new Date(course.과정시작일);
+          if (selectedYear !== 'all') {
+            return courseStartDate.getFullYear() === selectedYear && (courseStartDate.getMonth() + 1) === selectedMonth;
+          }
+          return (courseStartDate.getMonth() + 1) === selectedMonth;
+        });
+      }
+
       currentFilteredStats = initialInstitutionStats.filter(stat => {
         // stat.courses는 해당 기관의 모든 과정 데이터를 포함하고 있음
         // 이 과정들을 다시 필터링하여 선택된 연도와 월에 해당하는 통계를 계산해야 함
         const filteredCoursesForStat = stat.courses.filter(course => {
           const courseStartDate = new Date(course.과정시작일);
           const courseEndDate = new Date(course.과정종료일);
-          
+
           let yearMatch = true;
           if (selectedYear !== 'all') {
             if (selectedMonth !== 'all') {
@@ -358,7 +376,7 @@ export default function InstitutionAnalysisClient({ initialInstitutionStats, ava
           : (selectedYear === 'all' ? undefined : selectedYear);
 
         const detailed = calculateInstitutionDetailedRevenue(
-          filteredCoursesForStat,
+          filteredOriginalForRevenue,
           stat.institutionName,
           revenueYearForCalculation
         );
@@ -391,7 +409,7 @@ export default function InstitutionAnalysisClient({ initialInstitutionStats, ava
     finalFiltered.sort((a, b) => b.totalRevenue - a.totalRevenue);
 
     setFilteredInstitutionStats(finalFiltered);
-  }, [selectedYear, filterType, selectedMonth, searchTerm, initialInstitutionStats]);
+  }, [selectedYear, filterType, selectedMonth, searchTerm, initialInstitutionStats, originalData]);
 
   const handleViewDetails = (institutionName: string) => {
     setSelectedInstitutionName(institutionName);
