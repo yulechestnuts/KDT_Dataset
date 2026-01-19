@@ -327,7 +327,11 @@ export default function InstitutionAnalysisClient({ initialInstitutionStats, ava
           
           let yearMatch = true;
           if (selectedYear !== 'all') {
-            yearMatch = courseStartDate.getFullYear() === selectedYear || (courseStartDate.getFullYear() < selectedYear && courseEndDate.getFullYear() === selectedYear);
+            if (selectedMonth !== 'all') {
+              yearMatch = courseStartDate.getFullYear() === selectedYear;
+            } else {
+              yearMatch = courseStartDate.getFullYear() === selectedYear || (courseStartDate.getFullYear() < selectedYear && courseEndDate.getFullYear() === selectedYear);
+            }
           }
 
           let monthMatch = true;
@@ -348,13 +352,31 @@ export default function InstitutionAnalysisClient({ initialInstitutionStats, ava
           month: selectedMonth
         });
 
-        // 기존 stat 객체를 업데이트 (매출액은 서버에서 계산된 값을 유지)
+        // 필터링된 과정 기준으로 매출액도 재계산
+        const revenueYearForCalculation = selectedMonth !== 'all'
+          ? undefined
+          : (selectedYear === 'all' ? undefined : selectedYear);
+
+        const detailed = calculateInstitutionDetailedRevenue(
+          filteredCoursesForStat,
+          stat.institutionName,
+          revenueYearForCalculation
+        );
+        const aggregatedForRevenue = aggregateCoursesByCourseIdWithLatestInfo(
+          detailed.courses,
+          revenueYearForCalculation,
+          stat.institutionName
+        );
+        const totalRevenue = aggregatedForRevenue.reduce((sum: number, c: any) => sum + (c.총누적매출 ?? 0), 0);
+
+        // 기존 stat 객체를 업데이트
         stat.totalCourses = reCalculatedStats.operatedCourseCount;
         stat.totalStudents = reCalculatedStats.x + reCalculatedStats.y;
         stat.completedStudents = reCalculatedStats.xg + reCalculatedStats.yg;
         stat.completionRate = parseFloat(reCalculatedStats.completionRate.replace('%', ''));
         stat.employmentRate = parseFloat(reCalculatedStats.employmentRate.replace('%', ''));
         stat.avgSatisfaction = reCalculatedStats.avgSatisfaction;
+        stat.totalRevenue = totalRevenue;
         
         return true; // 필터링된 과정이 있으면 포함
       });
@@ -385,11 +407,16 @@ export default function InstitutionAnalysisClient({ initialInstitutionStats, ava
     if (selectedMonth !== 'all') {
       filteredOriginalData = filteredOriginalData.filter(course => {
         const courseStartDate = new Date(course.과정시작일);
+        if (selectedYear !== 'all') {
+          return courseStartDate.getFullYear() === selectedYear && (courseStartDate.getMonth() + 1) === selectedMonth;
+        }
         return (courseStartDate.getMonth() + 1) === selectedMonth;
       });
     }
     
-    const yearForCalculation = selectedYear === 'all' ? undefined : selectedYear;
+    const yearForCalculation = selectedMonth !== 'all'
+      ? undefined
+      : (selectedYear === 'all' ? undefined : selectedYear);
     const detailedStats = calculateInstitutionDetailedRevenue(filteredOriginalData, institutionName, yearForCalculation);
     
     const aggregated = aggregateCoursesByCourseIdWithLatestInfo(detailedStats.courses, yearForCalculation, institutionName);
@@ -413,6 +440,9 @@ export default function InstitutionAnalysisClient({ initialInstitutionStats, ava
     if (selectedMonth !== 'all') {
       filteredOriginalData = filteredOriginalData.filter(course => {
         const courseStartDate = new Date(course.과정시작일);
+        if (selectedYear !== 'all') {
+          return courseStartDate.getFullYear() === selectedYear && (courseStartDate.getMonth() + 1) === selectedMonth;
+        }
         return (courseStartDate.getMonth() + 1) === selectedMonth;
       });
     }
