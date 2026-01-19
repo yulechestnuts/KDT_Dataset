@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { loadDataFromGithub, preprocessData, applyRevenueAdjustment } from "@/utils/data-utils";
-import { CourseData, RawCourseData, InstitutionStat, calculateCompletionRate, calculateInstitutionStats, AggregatedCourseData, csvParseOptions, aggregateCoursesByCourseIdWithLatestInfo, getIndividualInstitutionsInGroup, calculateInstitutionDetailedRevenue, getPreferredEmploymentCount } from "@/lib/data-utils";
+import { CourseData, RawCourseData, InstitutionStat, calculateCompletionRate, calculateInstitutionStats, AggregatedCourseData, csvParseOptions, aggregateCoursesByCourseIdWithLatestInfo, getIndividualInstitutionsInGroup, calculateInstitutionDetailedRevenue, getPreferredEmploymentCount, RevenueMode } from "@/lib/data-utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -13,7 +13,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatCurrency, formatNumber, formatRevenue } from "@/utils/formatters";
-import { parse as parseCsv } from 'papaparse';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
@@ -26,6 +25,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { parse as parseCsv } from 'papaparse';
 
 export interface AggregatedCourseDataWithOpenCount extends AggregatedCourseData {
   openedInYearCount?: number;
@@ -87,7 +87,7 @@ function getInstitutionYearlyStats({
     const totalEmployed = coursesToConsider.reduce((sum, c) => sum + getPreferredEmploymentCount(c), 0);
 
     completionRate = validStudents > 0 ? `${((validGraduates / validStudents) * 100).toFixed(1)}%` : '-';
-    employmentRate = validGraduates > 0 ? `${((totalEmployed / totalGraduates) * 100).toFixed(1)}%` : '-';
+    employmentRate = validGraduates > 0 ? `${((totalEmployed / validGraduates) * 100).toFixed(1)}%` : '-';
 
     const validSatisfaction = coursesToConsider.filter(c => c.만족도 && c.만족도 > 0);
     const totalWeighted = validSatisfaction.reduce((sum, c) => sum + (c.만족도 ?? 0) * (c['수료인원'] ?? 0), 0);
@@ -227,6 +227,7 @@ export default function InstitutionAnalysis() {
   const [selectedInstitutionCourses, setSelectedInstitutionCourses] = useState<AggregatedCourseDataWithOpenCount[]>([]);
   const [selectedInstitutionName, setSelectedInstitutionName] = useState<string>('');
   const [filterType, setFilterType] = useState<'all' | 'leading' | 'tech'>('all');
+  const [revenueMode, setRevenueMode] = useState<RevenueMode>('current');
   const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all'); // 월 선택 상태 추가
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedInstitutionRawCourses, setSelectedInstitutionRawCourses] = useState<CourseData[]>([]);
@@ -291,6 +292,7 @@ export default function InstitutionAnalysis() {
       const stats = calculateInstitutionStats(
         finalFiltered, // 필터링된 데이터 사용
         yearForStats,
+        revenueMode,
       );
       setInstitutionStats(stats);
       setFilteredInstitutionStats(stats); // 초기에 필터링된 목록도 전체 목록으로 설정
@@ -301,7 +303,7 @@ export default function InstitutionAnalysis() {
 
   useEffect(() => {
     void recalcStats();
-  }, [selectedYear, selectedMonth, filterType]);
+  }, [selectedYear, selectedMonth, filterType, revenueMode]);
 
   useEffect(() => {
     const q = searchTerm.trim().toLowerCase();
@@ -344,10 +346,10 @@ export default function InstitutionAnalysis() {
     const yearForCalculation = selectedMonth !== 'all'
       ? undefined
       : (selectedYear === 'all' ? undefined : selectedYear);
-    const detailedStats = calculateInstitutionDetailedRevenue(filteredOriginalData, institutionName, yearForCalculation);
+    const detailedStats = calculateInstitutionDetailedRevenue(filteredOriginalData, institutionName, yearForCalculation, revenueMode);
 
     // aggregateCoursesByCourseIdWithLatestInfo 함수에 연도 정보와 기관명 전달
-    const aggregated = aggregateCoursesByCourseIdWithLatestInfo(detailedStats.courses, yearForCalculation, institutionName);
+    const aggregated = aggregateCoursesByCourseIdWithLatestInfo(detailedStats.courses, yearForCalculation, institutionName, revenueMode);
 
     setSelectedInstitutionCourses(aggregated);
     setSelectedInstitutionRawCourses(detailedStats.courses);
@@ -379,31 +381,35 @@ export default function InstitutionAnalysis() {
       });
     }
     
+    const yearForGroup = selectedMonth !== 'all'
+      ? undefined
+      : (selectedYear === 'all' ? undefined : selectedYear);
     const individualStats = getIndividualInstitutionsInGroup(
       filteredOriginalData, // 필터링된 데이터 전달
       groupName,
-      selectedYear === 'all' ? undefined : selectedYear
+      yearForGroup,
+      revenueMode,
     );
     
     setIndividualInstitutions(individualStats);
     setIsGroupModalOpen(true);
   };
 
-  return (<div className="p-6">
-      <h1 className="text-2xl font-bold mb-6">훈련기관별 분석</h1>
+  return (<div className="p-6 bg-background text-foreground">
+      <h1 className="text-2xl font-bold mb-6 text-foreground">훈련기관별 분석</h1>
 
       {/* 연도 선택 */}
       <div className="mb-10 relative z-10 flex gap-6 items-end">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">연도 선택</label>
+          <label className="block text-sm font-medium text-foreground/80 mb-2">연도 선택</label>
           <Select
             value={selectedYear.toString()}
             onValueChange={(value) => setSelectedYear(value === 'all' ? 'all' : parseInt(value))}
           >
-            <SelectTrigger className="w-[180px] bg-white">
+            <SelectTrigger className="w-[180px] bg-background text-foreground border-border">
               <SelectValue placeholder="연도 선택" />
             </SelectTrigger>
-            <SelectContent className="bg-white z-20">
+            <SelectContent className="bg-popover text-popover-foreground z-20">
               <SelectItem value="all">전체 연도</SelectItem>
               {availableYears.map((year) => (
                 <SelectItem key={year} value={year.toString()}>{year}년</SelectItem>
@@ -412,17 +418,31 @@ export default function InstitutionAnalysis() {
           </Select>
         </div>
 
+        {/* 매출 기준 */}
+        <div>
+          <label className="block text-sm font-medium text-foreground/80 mb-2">매출 기준</label>
+          <Select value={revenueMode} onValueChange={(v) => setRevenueMode(v as RevenueMode)}>
+            <SelectTrigger className="w-[200px] bg-background text-foreground border-border">
+              <SelectValue placeholder="매출 기준" />
+            </SelectTrigger>
+            <SelectContent className="bg-popover text-popover-foreground z-20">
+              <SelectItem value="current">현재 계산된 매출</SelectItem>
+              <SelectItem value="max">최대 매출</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         {/* 월 선택 */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">월 선택</label>
+          <label className="block text-sm font-medium text-foreground/80 mb-2">월 선택</label>
           <Select
             value={selectedMonth.toString()}
             onValueChange={(value) => setSelectedMonth(value === 'all' ? 'all' : parseInt(value))}
           >
-            <SelectTrigger className="w-[180px] bg-white">
+            <SelectTrigger className="w-[180px] bg-background text-foreground border-border">
               <SelectValue placeholder="월 선택" />
             </SelectTrigger>
-            <SelectContent className="bg-white z-20">
+            <SelectContent className="bg-popover text-popover-foreground z-20">
               <SelectItem value="all">전체 월</SelectItem>
               {[...Array(12)].map((_, i) => (
                 <SelectItem key={i + 1} value={(i + 1).toString()}>{i + 1}월</SelectItem>
@@ -433,12 +453,12 @@ export default function InstitutionAnalysis() {
 
         {/* 유형 필터 */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">유형 필터</label>
+          <label className="block text-sm font-medium text-foreground/80 mb-2">유형 필터</label>
           <Select value={filterType} onValueChange={(v) => setFilterType(v as any)}>
-            <SelectTrigger className="w-[200px] bg-white">
+            <SelectTrigger className="w-[200px] bg-background text-foreground border-border">
               <SelectValue placeholder="유형 선택" />
             </SelectTrigger>
-            <SelectContent className="bg-white z-20">
+            <SelectContent className="bg-popover text-popover-foreground z-20">
               <SelectItem value="all">전체</SelectItem>
               <SelectItem value="leading">선도기업 과정만</SelectItem>
               <SelectItem value="tech">신기술 과정만</SelectItem>
@@ -448,26 +468,26 @@ export default function InstitutionAnalysis() {
 
         {/* 검색창 추가 */}
         <div>
-          <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-2">훈련기관 검색</label>
+          <label htmlFor="search" className="block text-sm font-medium text-foreground/80 mb-2">훈련기관 검색</label>
           <input
             id="search"
             type="text"
             placeholder="기관명 검색..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-[200px] bg-white p-2 border border-gray-300 rounded-md"
+            className="w-[200px] bg-background text-foreground p-2 border border-border rounded-md placeholder:text-muted-foreground"
           />
         </div>
       </div>
 
       {/* 안내 문구 추가 */}
-      <div className="mb-4 text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded px-4 py-2">
+      <div className="mb-4 text-sm text-foreground bg-muted border border-border rounded px-4 py-2">
         ※ 과정이 2개년도에 걸쳐있는 경우, 각 년도에 차지하는 비율에 맞추어 매출이 분배됩니다.
       </div>
 
       {/* 매출액 차트 */}
-      <div className="bg-white rounded-lg shadow p-6 mt-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">훈련기관별 매출액 (억원)</h3>
+      <div className="bg-card text-card-foreground rounded-lg shadow p-6 mt-6">
+        <h3 className="text-lg font-semibold text-foreground mb-4">훈련기관별 매출액 (억원)</h3>
         <div className="h-[400px]">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={filteredInstitutionStats.slice(0, 10)}>
@@ -516,36 +536,36 @@ export default function InstitutionAnalysis() {
 
       {/* 안내 문구 */}
       {selectedYear !== 'all' && (
-        <div className="mb-4 text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded px-4 py-3">
+        <div className="mb-4 text-sm text-muted-foreground bg-muted border border-border rounded px-4 py-3">
           <div>* 수료율은 과정 종료일 기준으로 계산하였으며, 분자는 {selectedYear}년 기준 {selectedYear}년의 수료생, 분모는 {selectedYear}년 기준 {selectedYear}년에 끝나는 과정이 있는 모든 과정의 입과생입니다.</div>
           <div>* ()는 전 해년 입과, 당 해년 수료 인원을 표기하였습니다.</div>
         </div>
       )}
 
       {/* 상세 통계 테이블 */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="bg-card text-card-foreground rounded-lg shadow overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <table className="min-w-full divide-y divide-border">
+            <thead className="bg-muted">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">순위 및 훈련기관</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">매출액</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">훈련과정 수</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">훈련생 수</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">수료인원</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">수료율</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">취업율</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">평균 만족도</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">상세</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">순위 및 훈련기관</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">매출액</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">훈련과정 수</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">훈련생 수</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">수료인원</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">수료율</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">취업율</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">평균 만족도</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">상세</th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-card divide-y divide-border">
               {filteredInstitutionStats.map((stat, index) => (
                 <tr key={stat.institutionName}>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className="ml-4">
-                        <div className="text-sm font-medium text-gray-900">
+                        <div className="text-sm font-medium text-foreground">
                           {index + 1}. {stat.institutionName}
                           {stat.institutionName === '주식회사 코드스테이츠' && (
                             <span className="ml-2 text-xs text-red-600">(2023년 감사를 통해 훈련비 전액 반환)</span>
@@ -554,6 +574,7 @@ export default function InstitutionAnalysis() {
                       </div>
                       </div>
                     </td>
+
                   <td className="px-6 py-4 whitespace-nowrap">{formatRevenue(stat.totalRevenue)}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {(() => {
@@ -693,9 +714,9 @@ export default function InstitutionAnalysis() {
         open={isModalOpen}
         onOpenChange={setIsModalOpen}
       >
-        <DialogContent className="mx-auto max-w-[80vw] max-h-[85vh] w-full bg-white rounded-xl shadow-lg p-0 overflow-y-auto">
-          <DialogHeader className="p-6 border-b">
-            <DialogTitle className="text-lg font-medium leading-6 text-gray-900">
+        <DialogContent className="mx-auto max-w-[80vw] max-h-[85vh] w-full bg-card text-card-foreground rounded-xl shadow-lg p-0 overflow-y-auto border border-border">
+          <DialogHeader className="p-6 border-b border-border">
+            <DialogTitle className="text-lg font-medium leading-6 text-foreground">
               {selectedInstitutionName} - 훈련과정 상세
               {filterType === 'leading' && ' (선도기업 과정)'}
               {filterType === 'tech' && ' (신기술 과정)'}
@@ -757,40 +778,40 @@ export default function InstitutionAnalysis() {
                 })();
                 return (
                   <>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <div className="text-sm text-gray-500">운영 중인 과정 수</div>
+                    <div className="bg-muted p-4 rounded-lg">
+                      <div className="text-sm text-muted-foreground">운영 중인 과정 수</div>
                       <div className="text-lg font-semibold">{stats.operatedCourseCount}</div>
                     </div>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <div className="text-sm text-gray-500">{selectedYear === 'all' ? '전체 개강 회차수' : `${selectedYear}년 개강 회차수`}</div>
+                    <div className="bg-muted p-4 rounded-lg">
+                      <div className="text-sm text-muted-foreground">{selectedYear === 'all' ? '전체 개강 회차수' : `${selectedYear}년 개강 회차수`}</div>
                       <div className="text-lg font-semibold">{stats.openedCourseCount}</div>
                     </div>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <div className="text-sm text-gray-500">합계 정원</div>
+                    <div className="bg-muted p-4 rounded-lg">
+                      <div className="text-sm text-muted-foreground">합계 정원</div>
                       <div className="text-lg font-semibold">{formatNumber(totals.capacitySum)}</div>
                     </div>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <div className="text-sm text-gray-500">평균 모집률</div>
+                    <div className="bg-muted p-4 rounded-lg">
+                      <div className="text-sm text-muted-foreground">평균 모집률</div>
                       <div className="text-lg font-semibold">{totals.capacitySum > 0 ? `${totals.avgRecruitRate.toFixed(1)}% (${formatNumber(totals.enrolledStartOnly)}/${formatNumber(totals.capacitySum)})` : '-'}</div>
                     </div>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <div className="text-sm text-gray-500">훈련생 수</div>
+                    <div className="bg-muted p-4 rounded-lg">
+                      <div className="text-sm text-muted-foreground">훈련생 수</div>
                       <div className="text-lg font-semibold">{stats.studentStr}</div>
                     </div>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <div className="text-sm text-gray-500">수료인원</div>
+                    <div className="bg-muted p-4 rounded-lg">
+                      <div className="text-sm text-muted-foreground">수료인원</div>
                       <div className="text-lg font-semibold">{stats.graduateStr}</div>
                     </div>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <div className="text-sm text-gray-500">평균 수료율</div>
+                    <div className="bg-muted p-4 rounded-lg">
+                      <div className="text-sm text-muted-foreground">평균 수료율</div>
                       <div className="text-lg font-semibold">{totals.completionDenominator > 0 ? `${totals.avgCompletionRate.toFixed(1)}% (${formatNumber(totals.completionNumerator)}/${formatNumber(totals.completionDenominator)})` : '-'}</div>
                     </div>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <div className="text-sm text-gray-500">평균 취업율</div>
+                    <div className="bg-muted p-4 rounded-lg">
+                      <div className="text-sm text-muted-foreground">평균 취업율</div>
                       <div className="text-lg font-semibold">{totals.employmentDenominator > 0 ? `${totals.avgEmploymentRate.toFixed(1)}% (${formatNumber(totals.employmentNumerator)}/${formatNumber(totals.employmentDenominator)})` : '-'}</div>
                     </div>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <div className="text-sm text-gray-500">합계 매출액</div>
+                    <div className="bg-muted p-4 rounded-lg">
+                      <div className="text-sm text-muted-foreground">합계 매출액</div>
                       <div className="text-lg font-semibold">{formatRevenue(totals.revenueSum)}</div>
                     </div>
                   </>
@@ -798,27 +819,27 @@ export default function InstitutionAnalysis() {
               })()}
             </div>
             <div className="overflow-x-auto max-h-[65vh]">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50 sticky top-0">
+              <table className="min-w-full divide-y divide-border">
+                <thead className="bg-muted sticky top-0">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[25%]">과정명</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">훈련유형</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[12%]">모집률</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">훈련생 수</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">수료인원</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">수료율</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">취업율</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">매출액</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">만족도</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[10%]">개강 회차수</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[25%]">과정명</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[10%]">훈련유형</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[12%]">모집률</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[10%]">훈련생 수</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[10%]">수료인원</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[10%]">수료율</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[10%]">취업율</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[10%]">매출액</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[10%]">만족도</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[10%]">개강 회차수</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-card divide-y divide-border">
                   {selectedInstitutionCourses.map((course: any) => (
-                    <tr key={course['훈련과정 ID']} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{course.과정명}</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.훈련유형들?.join(', ') || '-'}</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+                    <tr key={course['훈련과정 ID']} className="hover:bg-muted">
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-foreground">{course.과정명}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{course.훈련유형들?.join(', ') || '-'}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">
                         {(() => {
                           const isYearSelected = selectedYear !== 'all';
                           const quota = isYearSelected ? (course.연도정원 ?? 0) : (course.총정원 ?? 0);
@@ -828,9 +849,9 @@ export default function InstitutionAnalysis() {
                           return `${rate.toFixed(1)}% (${formatNumber(enrolled)}/${formatNumber(quota)})`;
                         })()}
                       </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.studentsStr}</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.graduatesStr}</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{course.studentsStr}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{course.graduatesStr}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">
                         {(() => {
                           // 선택된 훈련과정의 원시 코스들 기반으로 재계산 (수료인원 0인 코스 제외)
                           const courseId = course['훈련과정 ID'];
@@ -850,7 +871,7 @@ export default function InstitutionAnalysis() {
                           return `${course.평균수료율.toFixed(1)}% (${course.총수료인원}/${course.총수강신청인원})`;
                         })()}
                       </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">
                         {(() => {
                           // 선택된 훈련과정의 원시 코스들 기반으로 재계산 (취업인원 0 또는 비수치인 경우 제외)
                           const courseId = course['훈련과정 ID'];
@@ -875,19 +896,19 @@ export default function InstitutionAnalysis() {
                           return `0.0% (0/0)`;
                         })()}
                       </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatRevenue(course.총누적매출)}</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.평균만족도.toFixed(1)}</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.openCountStr}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{formatRevenue(course.총누적매출)}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{course.평균만족도.toFixed(1)}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{course.openCountStr}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           </div>
-          <div className="bg-gray-50 px-6 py-3 flex justify-end">
+          <div className="bg-muted px-6 py-3 flex justify-end border-t border-border">
             <button
               type="button"
-              className="bg-white px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
+              className="bg-background px-4 py-2 text-sm font-medium text-foreground border border-border rounded-md hover:bg-muted"
               onClick={() => setIsModalOpen(false)}
             >
               닫기
@@ -901,9 +922,9 @@ export default function InstitutionAnalysis() {
         open={isGroupModalOpen}
         onOpenChange={setIsGroupModalOpen}
       >
-        <DialogContent className="mx-auto max-w-[80vw] max-h-[85vh] w-full bg-white rounded-xl shadow-lg p-0 overflow-y-auto">
-          <DialogHeader className="p-6 border-b">
-            <DialogTitle className="text-lg font-medium leading-6 text-gray-900">
+        <DialogContent className="mx-auto max-w-[80vw] max-h-[85vh] w-full bg-card text-card-foreground rounded-xl shadow-lg p-0 overflow-y-auto border border-border">
+          <DialogHeader className="p-6 border-b border-border">
+            <DialogTitle className="text-lg font-medium leading-6 text-foreground">
               {selectedGroupName} - 개별 기관 상세
               {selectedYear !== 'all' && ` (${selectedYear}년)`}
             </DialogTitle>
@@ -913,66 +934,66 @@ export default function InstitutionAnalysis() {
           </DialogHeader>
           <div className="p-6">
             <div className="overflow-x-auto max-h-[65vh]">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50 sticky top-0">
+              <table className="min-w-full divide-y divide-border">
+                <thead className="bg-muted sticky top-0">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">순위</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">기관명</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">매출액</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">훈련과정 수</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">훈련생 수</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">수료인원</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">수료율</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">취업율</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">평균 만족도</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">순위</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">기관명</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">매출액</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">훈련과정 수</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">훈련생 수</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">수료인원</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">수료율</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">취업율</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">평균 만족도</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-card divide-y divide-border">
                   {individualInstitutions.map((institution, index) => (
-                    <tr key={institution.institutionName} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 font-medium">
+                    <tr key={institution.institutionName} className="hover:bg-muted">
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-foreground font-medium">
                         {index + 1}
                       </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-foreground">
                         {institution.institutionName}
                       </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatRevenue(institution.totalRevenue)}</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{institution.totalCourses}</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{formatRevenue(institution.totalRevenue)}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{institution.totalCourses}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">
                         {selectedYear !== 'all' && selectedMonth === 'all' && institution.prevYearStudents > 0
                           ? (
                             <div>
                               <div>{institution.totalStudents}</div>
-                              <div className="text-xs text-gray-500">({formatNumber(institution.prevYearStudents)})</div>
+                              <div className="text-xs text-muted-foreground">({formatNumber(institution.prevYearStudents)})</div>
                             </div>
                           )
                           : institution.totalStudents
                         }
                       </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">
                         {selectedYear !== 'all' && selectedMonth === 'all' && institution.prevYearCompletedStudents > 0
                           ? (
                             <div>
                               <div>{institution.completedStudents}</div>
-                              <div className="text-xs text-gray-500">({formatNumber(institution.prevYearCompletedStudents)})</div>
+                              <div className="text-xs text-muted-foreground">({formatNumber(institution.prevYearCompletedStudents)})</div>
                             </div>
                           )
                           : institution.completedStudents
                         }
                       </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{institution.completionRate.toFixed(1)}%</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{institution.employmentRate.toFixed(1)}%</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{institution.avgSatisfaction.toFixed(1)}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{institution.completionRate.toFixed(1)}%</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{institution.employmentRate.toFixed(1)}%</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{institution.avgSatisfaction.toFixed(1)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           </div>
-          <div className="bg-gray-50 px-6 py-3 flex justify-end">
+          <div className="bg-muted px-6 py-3 flex justify-end border-t border-border">
             <button
               type="button"
-              className="bg-white px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
+              className="bg-background px-4 py-2 text-sm font-medium text-foreground border border-border rounded-md hover:bg-muted"
               onClick={() => setIsGroupModalOpen(false)}
             >
               닫기
@@ -998,7 +1019,7 @@ const CustomTick = (props: any) => {
 
   return (
     <g transform={`translate(${x},${y})`}>
-      <text x={0} y={0} dy={16} textAnchor="middle" fill="#666" fontSize={10}>
+      <text x={0} y={0} dy={16} textAnchor="middle" fill="currentColor" fontSize={10}>
         <tspan x={0} dy="-1.2em">🥇 {rank}위</tspan>
         <tspan x={0} dy="1.2em">{displayValue}</tspan>
       </text>

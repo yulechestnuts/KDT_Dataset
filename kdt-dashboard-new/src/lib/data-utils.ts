@@ -887,7 +887,37 @@ export const computeCourseRevenue = (
   return baseRevenue;
 };
 
-export const calculateInstitutionStats = (data: CourseData[], year?: number): InstitutionStat[] => {
+export type RevenueMode = 'current' | 'max';
+
+const computeCourseRevenueByMode = (
+  course: CourseData,
+  year: number | undefined,
+  revenueMode: RevenueMode,
+): number => {
+  if (revenueMode === 'current') return computeCourseRevenue(course, year);
+
+  const maxRevenue = parseNumber(course['매출 최대' as keyof CourseData]);
+  if (!year) return maxRevenue;
+
+  const yearKey = `${year}년` as keyof CourseData;
+  const adjYearKey = `조정_${year}년` as keyof CourseData;
+  const yearRevenue = parseNumber((course[adjYearKey] as number) ?? (course[yearKey] as number) ?? 0);
+
+  const yearColumns = ['2021년', '2022년', '2023년', '2024년', '2025년', '2026년'] as const;
+  const adjustedCols = yearColumns.map((col) => `조정_${col}` as const);
+  const totalRevenueBase = adjustedCols.reduce((sum, key) => {
+    return sum + parseNumber(course[key as unknown as keyof CourseData]);
+  }, 0);
+
+  const denom = totalRevenueBase > 0
+    ? totalRevenueBase
+    : parseNumber(course.조정_실매출대비 ?? course['실 매출 대비'] ?? course.누적매출 ?? 0);
+
+  if (denom <= 0) return 0;
+  return maxRevenue * (yearRevenue / denom);
+};
+
+export const calculateInstitutionStats = (data: CourseData[], year?: number, revenueMode: RevenueMode = 'current'): InstitutionStat[] => {
   // 그룹명 기준으로 institutionNames 추출 (중복 제거)
   // 훈련기관과 파트너기관 모두를 고려하여 통계 목록에 포함될 기관명들을 추출
   const allPossibleInstitutionNames = new Set<string>();
@@ -912,8 +942,8 @@ export const calculateInstitutionStats = (data: CourseData[], year?: number): In
 
     // calculateInstitutionDetailedRevenue 함수를 사용하여 해당 기관의 상세 매출 및 관련 과정 데이터 추출
     // 이 함수는 이미 매출 분배 로직을 포함하고 있음
-    const detailed = calculateInstitutionDetailedRevenue(relevantCourses, institutionName, year);
-    const aggregated = aggregateCoursesByCourseIdWithLatestInfo(detailed.courses, year, institutionName);
+    const detailed = calculateInstitutionDetailedRevenue(relevantCourses, institutionName, year, revenueMode);
+    const aggregated = aggregateCoursesByCourseIdWithLatestInfo(detailed.courses, year, institutionName, revenueMode);
     const totalRevenue = aggregated.reduce((sum: number, course: AggregatedCourseData) => sum + course.총누적매출, 0);
 
     // 학생수/수료인원/과정수 계산 (파트너기관이 대체한 경우 파트너기관이 100% 담당)
@@ -943,7 +973,7 @@ export const calculateInstitutionStats = (data: CourseData[], year?: number): In
 
         if (course.isLeadingCompanyCourse && course.leadingCompanyPartnerInstitution) {
           // 선도기업 과정: 파트너기관이 100% 담당
-          if (coursePartnerGroup === institutionName) {
+          if (coursePartnerGroup === institutionName) { // 타입 오류 해결을 위해 비교 로직은 그대로 유지
             totalStudents += course['수강신청 인원'] ?? 0;
             completedStudents += course['수료인원'] ?? 0;
             totalCourses += 1;
@@ -1064,7 +1094,8 @@ export const calculateInstitutionStats = (data: CourseData[], year?: number): In
 export const calculateInstitutionDetailedRevenue = (
   allCourses: CourseData[],
   institutionName: string,
-  year?: number
+  year?: number,
+  revenueMode: RevenueMode = 'current'
 ): { courses: CourseData[]; totalRevenue: number } => {
   let totalRevenue = 0;
   const coursesForInstitution: CourseData[] = [];
@@ -1092,7 +1123,7 @@ export const calculateInstitutionDetailedRevenue = (
     }
 
     if (revenueShare > 0) {
-      const courseRevenue = computeCourseRevenue(course, year) * revenueShare;
+      const courseRevenue = computeCourseRevenueByMode(course, year, revenueMode) * revenueShare;
       totalRevenue += courseRevenue;
       coursesForInstitution.push({ ...course, 총누적매출: courseRevenue }); // 매출을 할당하여 반환
     }
@@ -1105,7 +1136,8 @@ export const calculateInstitutionDetailedRevenue = (
 export const aggregateCoursesByCourseIdWithLatestInfo = (
   courses: CourseData[],
   year?: number,
-  institutionName?: string // 기관명 추가
+  institutionName?: string, // 기관명 추가
+  revenueMode: RevenueMode = 'current'
 ): AggregatedCourseData[] => {
   const map = new Map<string, AggregatedCourseData>();
 
@@ -1191,7 +1223,7 @@ export const aggregateCoursesByCourseIdWithLatestInfo = (
     const agg = map.get(key)!;
 
     // 매출 분배 로직 (calculateInstitutionDetailedRevenue와 유사하게)
-    const courseRevenue = computeCourseRevenue(course, year) * revenueShare;
+    const courseRevenue = computeCourseRevenueByMode(course, year, revenueMode) * revenueShare;
     agg.총누적매출 += courseRevenue;
 
     // 학생수, 수료인원, 취업인원, 과정수 등 집계 (studentShare 적용)
@@ -1434,7 +1466,8 @@ export const aggregateCoursesByCourseNameForNcs = (
 export const getIndividualInstitutionsInGroup = (
   data: CourseData[],
   groupName: string,
-  year?: number
+  year?: number,
+  revenueMode: RevenueMode = 'current'
 ): InstitutionStat[] => {
   // 해당 그룹에 속하는 개별 기관들을 찾기
   const individualInstitutions = new Set<string>();
@@ -1482,10 +1515,11 @@ export const getIndividualInstitutionsInGroup = (
     const totalStudents = filteredCourses.reduce((sum, course) => sum + (course['수강신청 인원'] ?? 0), 0);
     const totalGraduates = filteredCourses.reduce((sum, course) => sum + (course['수료인원'] ?? 0), 0);
     const totalEmployed = filteredCourses.reduce((sum, course) => sum + getPreferredEmploymentCount(course), 0);
-    const totalRevenue = filteredCourses.reduce((sum, course) => {
-      const revenue = course.조정_누적매출 ?? course.누적매출 ?? 0;
-      return sum + revenue;
-    }, 0);
+    const totalRevenue = (() => {
+      const detailed = calculateInstitutionDetailedRevenue(filteredCourses, institutionName, year, revenueMode);
+      const aggregated = aggregateCoursesByCourseIdWithLatestInfo(detailed.courses, year, institutionName, revenueMode);
+      return aggregated.reduce((sum: number, c: AggregatedCourseData) => sum + (c.총누적매출 ?? 0), 0);
+    })();
 
     // 수료율 계산
     const validCourses = filteredCourses.filter(course => 
