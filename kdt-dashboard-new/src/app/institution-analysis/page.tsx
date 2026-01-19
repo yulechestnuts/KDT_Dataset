@@ -284,9 +284,13 @@ export default function InstitutionAnalysis() {
         });
       }
 
+      const yearForStats = selectedMonth !== 'all'
+        ? undefined
+        : (selectedYear === 'all' ? undefined : selectedYear);
+
       const stats = calculateInstitutionStats(
         finalFiltered, // 필터링된 데이터 사용
-        selectedYear === 'all' ? undefined : selectedYear,
+        yearForStats,
       );
       setInstitutionStats(stats);
       setFilteredInstitutionStats(stats); // 초기에 필터링된 목록도 전체 목록으로 설정
@@ -295,47 +299,56 @@ export default function InstitutionAnalysis() {
     }
   };
 
-  // initial load and when deps change
   useEffect(() => {
-    recalcStats();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedYear, filterType, selectedMonth]); // selectedMonth 추가
+    void recalcStats();
+  }, [selectedYear, selectedMonth, filterType]);
 
   useEffect(() => {
-    const filtered = institutionStats.filter(stat => 
-      stat.institutionName.toLowerCase().includes(searchTerm.toLowerCase())
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) {
+      setFilteredInstitutionStats(institutionStats);
+      return;
+    }
+    setFilteredInstitutionStats(
+      institutionStats.filter((s) => s.institutionName.toLowerCase().includes(q))
     );
-    setFilteredInstitutionStats(filtered);
   }, [searchTerm, institutionStats]);
+
+  // ...
 
   const handleViewDetails = (institutionName: string) => {
     setSelectedInstitutionName(institutionName);
-    
+
     // 필터링된 원본 데이터 사용 (그룹화 전)
     let filteredOriginalData = originalData;
-    
+
     // 유형 필터링
     if (filterType === 'leading') {
       filteredOriginalData = filteredOriginalData.filter((c) => c.훈련유형?.includes('선도기업형 훈련'));
     } else if (filterType === 'tech') {
       filteredOriginalData = filteredOriginalData.filter((c) => !c.훈련유형?.includes('선도기업형 훈련'));
     }
-    
+
     // 월별 필터링
     if (selectedMonth !== 'all') {
       filteredOriginalData = filteredOriginalData.filter(course => {
         const courseStartDate = new Date(course.과정시작일);
+        if (selectedYear !== 'all') {
+          return courseStartDate.getFullYear() === selectedYear && (courseStartDate.getMonth() + 1) === selectedMonth;
+        }
         return (courseStartDate.getMonth() + 1) === selectedMonth;
       });
     }
-    
+
     // 통합된 함수 사용하여 해당 기관의 상세 매출 계산 (원본 데이터 전체를 넘겨줌)
-    const yearForCalculation = selectedYear === 'all' ? undefined : selectedYear;
+    const yearForCalculation = selectedMonth !== 'all'
+      ? undefined
+      : (selectedYear === 'all' ? undefined : selectedYear);
     const detailedStats = calculateInstitutionDetailedRevenue(filteredOriginalData, institutionName, yearForCalculation);
-    
+
     // aggregateCoursesByCourseIdWithLatestInfo 함수에 연도 정보와 기관명 전달
     const aggregated = aggregateCoursesByCourseIdWithLatestInfo(detailedStats.courses, yearForCalculation, institutionName);
-    
+
     setSelectedInstitutionCourses(aggregated);
     setSelectedInstitutionRawCourses(detailedStats.courses);
     setIsModalOpen(true);
@@ -344,10 +357,10 @@ export default function InstitutionAnalysis() {
   // 그룹화된 기관의 개별 기관 정보 보기
   const handleViewGroupDetails = (groupName: string) => {
     setSelectedGroupName(groupName);
-    
+
     // 필터링된 원본 데이터 사용
     let filteredOriginalData = originalData;
-    
+
     // 유형 필터링
     if (filterType === 'leading') {
       filteredOriginalData = filteredOriginalData.filter((c) => c.훈련유형?.includes('선도기업형 훈련'));
@@ -359,6 +372,9 @@ export default function InstitutionAnalysis() {
     if (selectedMonth !== 'all') {
       filteredOriginalData = filteredOriginalData.filter(course => {
         const courseStartDate = new Date(course.과정시작일);
+        if (selectedYear !== 'all') {
+          return courseStartDate.getFullYear() === selectedYear && (courseStartDate.getMonth() + 1) === selectedMonth;
+        }
         return (courseStartDate.getMonth() + 1) === selectedMonth;
       });
     }
