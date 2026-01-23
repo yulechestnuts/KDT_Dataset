@@ -248,10 +248,10 @@ export default function YearlyAnalysisPage() {
       </Card>
 
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-6xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-[90vw] max-h-[90vh] overflow-y-auto bg-white dark:bg-[#1E1E1E] text-gray-950 dark:text-[#F5F5F5] border-2 border-gray-400 dark:border-gray-600 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] dark:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.8)]">
           <DialogHeader>
             <DialogTitle>{selectedYearForModal}년 과정 상세</DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-gray-600 dark:text-gray-400">
               선택된 연도의 훈련 과정 상세 정보입니다. 과정명이 같은 과정은 매출이 합산됩니다.
             </DialogDescription>
           </DialogHeader>

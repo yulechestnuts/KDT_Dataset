@@ -2,7 +2,7 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { loadDataFromGithub, preprocessData, applyRevenueAdjustment, calculateCompletionRate } from "@/utils/data-utils";
-import { CourseData } from "@/lib/data-utils";
+import { CourseData, RevenueMode, computeCourseRevenueByMode, aggregateCoursesByCourseIdWithLatestInfo } from "@/lib/data-utils";
 import Papa from "papaparse";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { useSearchParams } from 'next/navigation';
@@ -21,47 +21,32 @@ interface CourseStats {
 
 type YearColumn = '2021년' | '2022년' | '2023년' | '2024년' | '2025년' | '2026년';
 
-// 집계 함수 추가
-function aggregateCoursesByCourseIdWithLatestInfo(courses: CourseData[]) {
-  // 1. 훈련과정 ID별로 그룹화
-  const groupMap = new Map<string, CourseData[]>();
-  courses.forEach(course => {
+// allCourseDetails를 추가하는 헬퍼 함수
+function enrichAggregatedCoursesWithDetails(aggregated: any[], allCourses: CourseData[]) {
+  // 훈련과정 ID별로 원본 과정들을 그룹화
+  const courseGroups = new Map<string, CourseData[]>();
+  allCourses.forEach(course => {
     const key = course['훈련과정 ID']?.trim();
-    if (!key) return;
-    if (!groupMap.has(key)) groupMap.set(key, []);
-    groupMap.get(key)!.push(course);
+    if (key) {
+      if (!courseGroups.has(key)) courseGroups.set(key, []);
+      courseGroups.get(key)!.push(course);
+    }
   });
 
-  // 2. 각 그룹에서 최신 과정 추출 및 집계
-  const result: any[] = [];
-  groupMap.forEach((group, courseId) => {
-    // 최신 과정
-    const latest = group.reduce((a, b) => new Date(a.과정시작일) > new Date(b.과정시작일) ? a : b);
-    // 합산
-    const totalRevenue = group.reduce((sum, c) => sum + (c.조정_누적매출 ?? c.누적매출 ?? 0), 0);
-    const totalStudents = group.reduce((sum, c) => sum + (c['수강신청 인원'] || 0), 0);
-    const totalGraduates = group.reduce((sum, c) => sum + (c.수료인원 || 0), 0);
-    const totalCapacity = group.reduce((sum, c) => sum + (c.정원 || 0), 0);
-    const courseCount = group.length;
-    result.push({
-      courseId,
-      과정명: latest.과정명,
-      '훈련과정 ID': courseId,
-      총수강신청인원: totalStudents,
-      총수료인원: totalGraduates,
-      총정원: totalCapacity,
-      총누적매출: totalRevenue,
-      최소과정시작일: group.reduce((min, c) => new Date(c.과정시작일) < new Date(min) ? c.과정시작일 : min, group[0].과정시작일),
-      최대과정종료일: group.reduce((max, c) => new Date(c.과정종료일) > new Date(max) ? c.과정종료일 : max, group[0].과정종료일),
-      훈련유형: latest.훈련유형,
-      원천과정수: courseCount,
-      평균만족도: latest.만족도,
-      평균수료율: latest.수료율,
-      allCourseDetails: group.sort((a, b) => new Date(a.과정시작일).getTime() - new Date(b.과정시작일).getTime()),
-      과정페이지링크: latest.과정페이지링크,
-    });
+  // aggregated 결과에 allCourseDetails 추가
+  return aggregated.map(agg => {
+    const key = agg['훈련과정 ID']?.trim();
+    if (key && courseGroups.has(key)) {
+      const group = courseGroups.get(key)!;
+      const latest = group.reduce((a, b) => new Date(a.과정시작일) > new Date(b.과정시작일) ? a : b);
+      return {
+        ...agg,
+        allCourseDetails: group.sort((a, b) => new Date(a.과정시작일).getTime() - new Date(b.과정시작일).getTime()),
+        과정페이지링크: latest.과정페이지링크,
+      };
+    }
+    return agg;
   });
-  return result.sort((a, b) => b.총누적매출 - a.총누적매출);
 }
 
 function CourseAnalysisContent() {
@@ -76,6 +61,8 @@ function CourseAnalysisContent() {
   const [filterType, setFilterType] = useState<'all' | 'leading' | 'tech'>('all');
   // 훈련기관 검색 상태 추가
   const [institutionSearch, setInstitutionSearch] = useState('');
+  // 매출 기준 상태 추가
+  const [revenueMode, setRevenueMode] = useState<RevenueMode>('current');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -103,7 +90,9 @@ function CourseAnalysisContent() {
               totalGraduates: 0
             };
           }
-          stats[courseKey].totalRevenue += course.조정_누적매출 ?? course.누적매출 ?? 0;
+          // 매출 계산 (revenueMode에 따라, year는 undefined로 전달하여 전체 연도 매출 합산)
+          const courseRevenue = computeCourseRevenueByMode(course, undefined, revenueMode);
+          stats[courseKey].totalRevenue += courseRevenue;
           stats[courseKey].courseCount += 1;
           stats[courseKey].totalStudents += course['수강신청 인원'] || 0;
           stats[courseKey].totalGraduates += course.수료인원 || 0;
@@ -120,7 +109,7 @@ function CourseAnalysisContent() {
     };
 
     fetchData();
-  }, []);
+  }, [revenueMode]); // revenueMode 변경 시 재계산
 
   const toggleCourseExpansion = (courseId: string) => {
     const newExpanded = new Set(expandedCourses);
@@ -156,8 +145,18 @@ function CourseAnalysisContent() {
     });
   };
 
-  // 집계 결과 생성 (검색 필터 반영)
-  const aggregatedCourses = aggregateCoursesByCourseIdWithLatestInfo(getInstitutionFilteredCourses(getFilteredCourseData()));
+  // 집계 결과 생성 (검색 필터 반영, revenueMode 적용)
+  // @/lib/data-utils.ts의 함수 사용 (year는 undefined로 전달하여 전체 연도 매출 합산)
+  const filteredCourses = getInstitutionFilteredCourses(getFilteredCourseData());
+  const aggregatedCourses = enrichAggregatedCoursesWithDetails(
+    aggregateCoursesByCourseIdWithLatestInfo(
+      filteredCourses,
+      undefined, // year: 전체 연도 매출 합산
+      undefined, // institutionName: 기관 필터링 없음
+      revenueMode
+    ),
+    filteredCourses
+  );
 
   // 안전한 링크 열기 (http/https 미포함 시 https 추가)
   const openLinkSafe = (url?: string) => {
@@ -190,27 +189,48 @@ function CourseAnalysisContent() {
       <h1 className="text-3xl font-bold mb-8">
         {selectedCourse ? `${selectedCourse} 상세 분석` : '훈련과정별 상세 분석'}
       </h1>
-      {/* 유형 필터 UI */}
-      <div className="mb-6 flex gap-4 items-center">
-        <label className="block text-sm font-medium text-gray-700">유형 필터</label>
-        <Select value={filterType} onValueChange={(v) => setFilterType(v as any)}>
-          <SelectTrigger className="w-[200px] bg-white">
-            <SelectValue placeholder="유형 선택" />
-          </SelectTrigger>
-          <SelectContent className="bg-white z-20">
-            <SelectItem value="all">전체</SelectItem>
-            <SelectItem value="leading">선도기업 과정만</SelectItem>
-            <SelectItem value="tech">신기술 과정만</SelectItem>
-          </SelectContent>
-        </Select>
+      {/* 필터 UI */}
+      <div className="mb-6 flex gap-6 items-end">
+        {/* 유형 필터 */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">유형 필터</label>
+          <Select value={filterType} onValueChange={(v) => setFilterType(v as any)}>
+            <SelectTrigger className="w-[200px] bg-white">
+              <SelectValue placeholder="유형 선택" />
+            </SelectTrigger>
+            <SelectContent className="bg-white z-20">
+              <SelectItem value="all">전체</SelectItem>
+              <SelectItem value="leading">선도기업 과정만</SelectItem>
+              <SelectItem value="tech">신기술 과정만</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        
+        {/* 매출 기준 토글 */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">매출 기준</label>
+          <Select value={revenueMode} onValueChange={(v) => setRevenueMode(v as RevenueMode)}>
+            <SelectTrigger className="w-[200px] bg-white">
+              <SelectValue placeholder="매출 기준" />
+            </SelectTrigger>
+            <SelectContent className="bg-white z-20">
+              <SelectItem value="current">현재 계산된 매출</SelectItem>
+              <SelectItem value="max">최대 매출</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         {/* 훈련기관 검색 UI */}
-        <input
-          type="text"
-          value={institutionSearch}
-          onChange={e => setInstitutionSearch(e.target.value)}
-          placeholder="훈련기관명 검색 (선도기업 과정은 파트너기관 기준)"
-          className="ml-4 px-3 py-2 border rounded w-64"
-        />
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">훈련기관 검색</label>
+          <input
+            type="text"
+            value={institutionSearch}
+            onChange={e => setInstitutionSearch(e.target.value)}
+            placeholder="기관명 검색..."
+            className="w-[250px] px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+        </div>
       </div>
       <div className="grid gap-6">
         {aggregatedCourses.length === 0 ? (
@@ -275,15 +295,6 @@ function CourseAnalysisContent() {
                             <TableHead>정원</TableHead>
                             <TableHead>훈련생 수</TableHead>
                             <TableHead>수료인원</TableHead>
-                            <TableHead>수료율</TableHead>
-                            <TableHead className="text-center">
-                              <div>취업인원</div>
-                              <div className="text-xs text-gray-500">(3개월)</div>
-                            </TableHead>
-                            <TableHead className="text-center">
-                              <div>취업인원</div>
-                              <div className="text-xs text-gray-500">(6개월)</div>
-                            </TableHead>
                             <TableHead className="text-center">
                               <div>총 일수</div>
                             </TableHead>
@@ -295,7 +306,7 @@ function CourseAnalysisContent() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {agg.allCourseDetails.map((detail: CourseData, detailIdx: number) => (
+                          {agg.allCourseDetails?.map((detail: CourseData, detailIdx: number) => (
                             <TableRow key={detailIdx}>
                               <TableCell>{detail.회차}</TableCell>
                               <TableCell>
@@ -310,27 +321,24 @@ function CourseAnalysisContent() {
                                   detail.훈련기관
                                 )}
                               </TableCell>
-                              <TableCell>{new Date(detail.과정시작일).toLocaleDateString()}</TableCell>
-                              <TableCell>{new Date(detail.과정종료일).toLocaleDateString()}</TableCell>
-                              <TableCell>{detail.정원}명</TableCell>
-                              <TableCell>{detail['수강신청 인원']}명</TableCell>
-                              <TableCell>{detail.수료인원}명</TableCell>
-                              <TableCell>{((detail.수료인원 || 0) / (detail['수강신청 인원'] || 1) * 100).toFixed(1)}%</TableCell>
-                              <TableCell className="text-center">{detail['취업인원 (3개월)']}명</TableCell>
-                              <TableCell className="text-center">{detail['취업인원 (6개월)']}명</TableCell>
-                              <TableCell className="text-center">{detail.총훈련일수}일</TableCell>
-                              <TableCell className="text-center">{detail.총훈련시간}시간</TableCell>
-                              <TableCell>{formatCurrency(detail.조정_누적매출 ?? detail.누적매출)}</TableCell>
+                              <TableCell>{new Date(detail.과정시작일).toLocaleDateString('ko-KR')}</TableCell>
+                              <TableCell>{new Date(detail.과정종료일).toLocaleDateString('ko-KR')}</TableCell>
+                              <TableCell>{formatNumber(detail.정원 || 0)}</TableCell>
+                              <TableCell>{formatNumber(detail['수강신청 인원'] || 0)}</TableCell>
+                              <TableCell>{formatNumber(detail.수료인원 || 0)}</TableCell>
+                              <TableCell className="text-center">{formatNumber(detail.총일수 || 0)}</TableCell>
+                              <TableCell className="text-center">{formatNumber(detail.총시간 || 0)}</TableCell>
+                              <TableCell>{formatCurrency(computeCourseRevenueByMode(detail, undefined, revenueMode))}</TableCell>
                               <TableCell>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  disabled={!detail.과정페이지링크}
-                                  onClick={() => openLinkSafe(detail.과정페이지링크)}
-                                >
-                                  <ExternalLink className="h-4 w-4 mr-1" />
-                                  바로가기
-                                </Button>
+                                {detail.과정페이지링크 && (
+                                  <Button
+                                    variant="link"
+                                    size="sm"
+                                    onClick={() => openLinkSafe(detail.과정페이지링크)}
+                                  >
+                                    <ExternalLink className="h-4 w-4" />
+                                  </Button>
+                                )}
                               </TableCell>
                             </TableRow>
                           ))}
@@ -350,7 +358,7 @@ function CourseAnalysisContent() {
 
 export default function CourseAnalysisPage() {
   return (
-    <Suspense fallback={<div className="p-4">Loading...</div>}>
+    <Suspense fallback={<div>Loading...</div>}>
       <CourseAnalysisContent />
     </Suspense>
   );

@@ -205,12 +205,12 @@ export default function LeadingCompanyAnalysis() {
 
       {/* modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="mx-auto max-w-[80vw] max-h-[85vh] w-full bg-white rounded-xl shadow-lg p-0 overflow-y-auto">
-          <DialogHeader className="p-6 border-b">
-            <DialogTitle className="text-lg font-medium leading-6 text-gray-900">
+        <DialogContent className="mx-auto max-w-[90vw] max-h-[90vh] w-full bg-white dark:bg-[#1E1E1E] text-gray-950 dark:text-[#F5F5F5] rounded-xl shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] dark:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.8)] p-0 overflow-y-auto border-2 border-gray-400 dark:border-gray-600">
+          <DialogHeader className="p-6 border-b border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+            <DialogTitle className="text-lg font-medium leading-6 text-gray-950 dark:text-gray-100">
               {selectedCompany} - 훈련과정 상세{selectedYear !== 'all' && ` (${selectedYear}년)`}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-gray-700 dark:text-gray-400">
               선택된 선도기업의 {selectedYear === 'all' ? '모든' : `${selectedYear}년`} 훈련과정 목록입니다. (매출액 기준 내림차순 정렬)
             </DialogDescription>
           </DialogHeader>
@@ -221,11 +221,11 @@ export default function LeadingCompanyAnalysis() {
                 const s = summarize(selectedCourses);
                 return (
                   <>
-                    <div className="bg-gray-50 p-4 rounded-lg"><div className="text-sm text-gray-500">훈련과정 수</div><div className="text-lg font-semibold">{s.totalCourses}</div></div>
-                    <div className="bg-gray-50 p-4 rounded-lg"><div className="text-sm text-gray-500">훈련생 수</div><div className="text-lg font-semibold">{s.totalStudents}</div></div>
-                    <div className="bg-gray-50 p-4 rounded-lg"><div className="text-sm text-gray-500">수료인원</div><div className="text-lg font-semibold">{s.totalCompleted}</div></div>
-                    <div className="bg-gray-50 p-4 rounded-lg"><div className="text-sm text-gray-500">매출액</div><div className="text-lg font-semibold">{formatRevenue(s.totalRevenue)}</div></div>
-                    <div className="bg-gray-50 p-4 rounded-lg"><div className="text-sm text-gray-500">평균 만족도</div><div className="text-lg font-semibold">{s.avgSatisfaction.toFixed(1)}</div></div>
+                    <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700"><div className="text-sm text-gray-500 dark:text-gray-400">훈련과정 수</div><div className="text-lg font-semibold text-gray-900 dark:text-gray-100">{s.totalCourses}</div></div>
+                    <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700"><div className="text-sm text-gray-500 dark:text-gray-400">훈련생 수</div><div className="text-lg font-semibold text-gray-900 dark:text-gray-100">{s.totalStudents}</div></div>
+                    <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700"><div className="text-sm text-gray-500 dark:text-gray-400">수료인원</div><div className="text-lg font-semibold text-gray-900 dark:text-gray-100">{s.totalCompleted}</div></div>
+                    <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700"><div className="text-sm text-gray-500 dark:text-gray-400">매출액</div><div className="text-lg font-semibold text-gray-900 dark:text-gray-100">{formatRevenue(s.totalRevenue)}</div></div>
+                    <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700"><div className="text-sm text-gray-500 dark:text-gray-400">평균 만족도</div><div className="text-lg font-semibold text-gray-900 dark:text-gray-100">{s.avgSatisfaction.toFixed(1)}</div></div>
                   </>
                 );
               })()}
@@ -263,7 +263,7 @@ export default function LeadingCompanyAnalysis() {
             </div>
           </div>
           <div className="bg-gray-50 px-6 py-3 flex justify-end">
-            <button type="button" className="bg-white px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50" onClick={() => setIsModalOpen(false)}>닫기</button>
+            <button type="button" className="bg-white dark:bg-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors duration-200" onClick={() => setIsModalOpen(false)}>닫기</button>
           </div>
         </DialogContent>
       </Dialog>

@@ -398,8 +398,23 @@ export default function InstitutionAnalysis() {
   return (<div className="p-6 bg-background text-foreground">
       <h1 className="text-2xl font-bold mb-6 text-foreground">훈련기관별 분석</h1>
 
-      {/* 연도 선택 */}
+      {/* 필터 섹션 - 순서: 매출기준 > 연도선택 > 월선택 > 유형필터 > 훈련기관검색 */}
       <div className="mb-10 relative z-10 flex gap-6 items-end">
+        {/* 매출 기준 */}
+        <div>
+          <label className="block text-sm font-medium text-foreground/80 mb-2">매출 기준</label>
+          <Select value={revenueMode} onValueChange={(v) => setRevenueMode(v as RevenueMode)}>
+            <SelectTrigger className="w-[200px] bg-background text-foreground border-border">
+              <SelectValue placeholder="매출 기준" />
+            </SelectTrigger>
+            <SelectContent className="bg-popover text-popover-foreground z-20">
+              <SelectItem value="current">현재 계산된 매출</SelectItem>
+              <SelectItem value="max">최대 매출</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* 연도 선택 */}
         <div>
           <label className="block text-sm font-medium text-foreground/80 mb-2">연도 선택</label>
           <Select
@@ -414,20 +429,6 @@ export default function InstitutionAnalysis() {
               {availableYears.map((year) => (
                 <SelectItem key={year} value={year.toString()}>{year}년</SelectItem>
               ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* 매출 기준 */}
-        <div>
-          <label className="block text-sm font-medium text-foreground/80 mb-2">매출 기준</label>
-          <Select value={revenueMode} onValueChange={(v) => setRevenueMode(v as RevenueMode)}>
-            <SelectTrigger className="w-[200px] bg-background text-foreground border-border">
-              <SelectValue placeholder="매출 기준" />
-            </SelectTrigger>
-            <SelectContent className="bg-popover text-popover-foreground z-20">
-              <SelectItem value="current">현재 계산된 매출</SelectItem>
-              <SelectItem value="max">최대 매출</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -714,15 +715,15 @@ export default function InstitutionAnalysis() {
         open={isModalOpen}
         onOpenChange={setIsModalOpen}
       >
-        <DialogContent className="mx-auto max-w-[80vw] max-h-[85vh] w-full bg-card text-card-foreground rounded-xl shadow-lg p-0 overflow-y-auto border border-border">
-          <DialogHeader className="p-6 border-b border-border">
-            <DialogTitle className="text-lg font-medium leading-6 text-foreground">
+        <DialogContent className="mx-auto max-w-[90vw] max-h-[90vh] w-full bg-white dark:bg-[#1E1E1E] text-gray-950 dark:text-[#F5F5F5] rounded-xl shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] dark:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.8)] p-0 overflow-y-auto border-2 border-gray-400 dark:border-gray-600">
+          <DialogHeader className="p-6 border-b border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+            <DialogTitle className="text-lg font-medium leading-6 text-gray-950 dark:text-gray-100">
               {selectedInstitutionName} - 훈련과정 상세
               {filterType === 'leading' && ' (선도기업 과정)'}
               {filterType === 'tech' && ' (신기술 과정)'}
               {selectedYear !== 'all' && ` (${selectedYear}년)`}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-gray-700 dark:text-gray-400">
               선택된 훈련기관의 {selectedYear === 'all' ? '모든' : `${selectedYear}년`} 훈련과정 목록입니다.
               {filterType === 'leading' && ' (선도기업 과정만)'}
               {filterType === 'tech' && ' (신기술 과정만)'}
@@ -922,9 +923,9 @@ export default function InstitutionAnalysis() {
         open={isGroupModalOpen}
         onOpenChange={setIsGroupModalOpen}
       >
-        <DialogContent className="mx-auto max-w-[80vw] max-h-[85vh] w-full bg-card text-card-foreground rounded-xl shadow-lg p-0 overflow-y-auto border border-border">
-          <DialogHeader className="p-6 border-b border-border">
-            <DialogTitle className="text-lg font-medium leading-6 text-foreground">
+        <DialogContent className="mx-auto max-w-[90vw] max-h-[90vh] w-full bg-white dark:bg-[#1E1E1E] text-gray-950 dark:text-[#F5F5F5] rounded-xl shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] dark:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.8)] p-0 overflow-y-auto border-2 border-gray-400 dark:border-gray-600">
+          <DialogHeader className="p-6 border-b border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+            <DialogTitle className="text-lg font-medium leading-6 text-gray-950 dark:text-gray-100">
               {selectedGroupName} - 개별 기관 상세
               {selectedYear !== 'all' && ` (${selectedYear}년)`}
             </DialogTitle>

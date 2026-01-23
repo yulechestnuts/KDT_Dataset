@@ -776,15 +776,15 @@ export default function InstitutionAnalysisClient({ initialInstitutionStats, ava
         open={isModalOpen}
         onOpenChange={setIsModalOpen}
       >
-        <DialogContent className="mx-auto max-w-[80vw] max-h-[85vh] w-full bg-white rounded-xl shadow-lg p-0 overflow-y-auto">
-          <DialogHeader className="p-6 border-b">
-            <DialogTitle className="text-lg font-medium leading-6 text-gray-900">
+        <DialogContent className="mx-auto max-w-[90vw] max-h-[90vh] w-full bg-white dark:bg-[#1E1E1E] text-gray-950 dark:text-[#F5F5F5] rounded-xl shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] dark:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.8)] p-0 overflow-y-auto border-2 border-gray-400 dark:border-gray-600">
+          <DialogHeader className="p-6 border-b border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+            <DialogTitle className="text-lg font-medium leading-6 text-gray-950 dark:text-gray-100">
               {selectedInstitutionName} - 훈련과정 상세
               {filterType === 'leading' && ' (선도기업 과정)'}
               {filterType === 'tech' && ' (신기술 과정)'}
               {selectedYear !== 'all' && ` (${selectedYear}년)`}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-gray-700 dark:text-gray-400">
               선택된 훈련기관의 {selectedYear === 'all' ? '모든' : `${selectedYear}년`} 훈련과정 목록입니다.
               {filterType === 'leading' && ' (선도기업 과정만)'}
               {filterType === 'tech' && ' (신기술 과정만)'}
@@ -919,13 +919,13 @@ export default function InstitutionAnalysisClient({ initialInstitutionStats, ava
         open={isGroupModalOpen}
         onOpenChange={setIsGroupModalOpen}
       >
-        <DialogContent className="mx-auto max-w-[80vw] max-h-[85vh] w-full bg-white rounded-xl shadow-lg p-0 overflow-y-auto">
-          <DialogHeader className="p-6 border-b">
-            <DialogTitle className="text-lg font-medium leading-6 text-gray-900">
+        <DialogContent className="mx-auto max-w-[90vw] max-h-[90vh] w-full bg-white dark:bg-[#1E1E1E] text-gray-950 dark:text-[#F5F5F5] rounded-xl shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] dark:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.8)] p-0 overflow-y-auto border-2 border-gray-400 dark:border-gray-600">
+          <DialogHeader className="p-6 border-b border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+            <DialogTitle className="text-lg font-medium leading-6 text-gray-950 dark:text-gray-100">
               {selectedGroupName} - 개별 기관 상세
               {selectedYear !== 'all' && ` (${selectedYear}년)`}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-gray-700 dark:text-gray-400">
               {selectedGroupName} 그룹에 속하는 개별 기관들의 상세 정보입니다. (매출액 기준 내림차순 정렬)
             </DialogDescription>
           </DialogHeader>

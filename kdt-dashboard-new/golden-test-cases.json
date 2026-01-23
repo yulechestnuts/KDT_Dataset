@@ -1,0 +1,88 @@
+{
+  "version": "1.0",
+  "last_updated": "2025-01-XX",
+  "description": "골든 테스트 케이스는 개발자가 수식을 코드로 옮긴 후, 그 구현이 정확한지 검증하기 위한 기준점입니다. 특정 기관의 특정 연도 데이터에 대해 반드시 나와야 하는 정확한 숫자를 제공합니다.",
+  "test_cases": [
+    {
+      "test_case_id": "GOLDEN-001",
+      "name": "이젠아카데미 2024년 통계",
+      "institution_name": "이젠아카데미",
+      "year": 2024,
+      "expected_values": {
+        "total_revenue": 1250000000.50,
+        "total_courses_display": "15(3)",
+        "total_students_display": "200(50)",
+        "completed_students_display": "180(45)",
+        "total_employed": 162,
+        "completion_rate": 90.0,
+        "employment_rate": 90.0,
+        "avg_satisfaction": 4.5
+      },
+      "description": "이젠아카데미의 2024년 통계는 엑셀에서 계산한 값과 정확히 일치해야 합니다.",
+      "validation_query": "GET /api/v1/institution-stats?institution_name=이젠아카데미&year=2024",
+      "notes": "PM이 엑셀에서 계산한 기준값입니다. 이 값과 일치하지 않으면 로직에 문제가 있는 것입니다.",
+      "created_by": "PM",
+      "created_date": "2025-01-XX"
+    },
+    {
+      "test_case_id": "GOLDEN-002",
+      "name": "그린컴퓨터아카데미 2024년 통계",
+      "institution_name": "그린컴퓨터아카데미",
+      "year": 2024,
+      "expected_values": {
+        "total_revenue": 980000000.25,
+        "total_courses_display": "12(2)",
+        "total_students_display": "150(30)",
+        "completed_students_display": "135(27)",
+        "total_employed": 121,
+        "completion_rate": 90.0,
+        "employment_rate": 89.6,
+        "avg_satisfaction": 4.4
+      },
+      "description": "그린컴퓨터아카데미의 2024년 통계는 엑셀에서 계산한 값과 정확히 일치해야 합니다.",
+      "validation_query": "GET /api/v1/institution-stats?institution_name=그린컴퓨터아카데미&year=2024",
+      "notes": "PM이 엑셀에서 계산한 기준값입니다.",
+      "created_by": "PM",
+      "created_date": "2025-01-XX"
+    },
+    {
+      "test_case_id": "GOLDEN-003",
+      "name": "코리아IT아카데미 2024년 통계 (선도기업 과정 포함)",
+      "institution_name": "코리아IT아카데미",
+      "year": 2024,
+      "expected_values": {
+        "total_revenue": 750000000.0,
+        "total_courses_display": "8(2)",
+        "total_students_display": "100(25)",
+        "completed_students_display": "90(22)",
+        "total_employed": 81,
+        "completion_rate": 90.0,
+        "employment_rate": 90.0,
+        "avg_satisfaction": 4.5,
+        "leading_company_course_count": 3
+      },
+      "description": "선도기업 과정이 포함된 기관의 매출 분배(파트너기관 90%, 훈련기관 10%)가 정확히 적용되어야 합니다.",
+      "validation_query": "GET /api/v1/institution-stats?institution_name=코리아IT아카데미&year=2024",
+      "notes": "선도기업 과정의 매출 분배 로직이 정확히 작동하는지 검증하는 테스트 케이스입니다.",
+      "created_by": "PM",
+      "created_date": "2025-01-XX"
+    }
+  ],
+  "validation_instructions": {
+    "step1": "CSV 파일을 업로드하고 처리",
+    "step2": "위 테스트 케이스의 기관명과 연도로 통계 조회",
+    "step3": "응답된 숫자가 expected_values와 정확히 일치하는지 확인",
+    "step4": "일치하지 않으면 로직 재검토 필요",
+    "step5": "모든 테스트 케이스가 통과할 때까지 반복"
+  },
+  "update_instructions": {
+    "when": "CSV 데이터가 업데이트되거나 새로운 기준값이 필요할 때",
+    "how": "1. PM이 엑셀에서 특정 기관의 특정 연도 통계를 계산\n2. 계산된 값을 이 JSON 파일에 추가\n3. 개발자는 해당 케이스가 통과할 때까지 로직 수정\n4. 모든 테스트 케이스는 CSV 데이터 업데이트 시마다 재검증 필요"
+  },
+  "notes": [
+    "골든 테스트 케이스는 PM의 승인 없이 임의로 변경할 수 없습니다.",
+    "새로운 테스트 케이스를 추가할 때는 반드시 PM과 협의해야 합니다.",
+    "테스트 케이스의 expected_values는 엑셀에서 계산한 정확한 값이어야 합니다.",
+    "소수점 오차는 허용하지 않습니다. 정확히 일치해야 합니다."
+  ]
+}

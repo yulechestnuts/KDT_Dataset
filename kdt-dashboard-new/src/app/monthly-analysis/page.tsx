@@ -226,10 +226,10 @@ export default function MonthlyAnalysisPage() {
 
       {/* 상세 정보 모달 */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-6xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-[90vw] max-h-[90vh] overflow-y-auto bg-white dark:bg-[#1E1E1E] text-gray-950 dark:text-[#F5F5F5] border-2 border-gray-400 dark:border-gray-600 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] dark:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.8)]">
           <DialogHeader>
             <DialogTitle>{selectedMonth} 상세 분석</DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-gray-600 dark:text-gray-400">
               선택된 월의 과정 상세 목록입니다.
             </DialogDescription>
           </DialogHeader>

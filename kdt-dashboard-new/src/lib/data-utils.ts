@@ -889,7 +889,7 @@ export const computeCourseRevenue = (
 
 export type RevenueMode = 'current' | 'max';
 
-const computeCourseRevenueByMode = (
+export const computeCourseRevenueByMode = (
   course: CourseData,
   year: number | undefined,
   revenueMode: RevenueMode,
@@ -1461,6 +1461,115 @@ export const aggregateCoursesByCourseNameForNcs = (
   });
 
   return Array.from(map.values()).sort((a, b) => b.총누적매출 - a.총누적매출);
+};
+
+/**
+ * NCS별 통계 계산 함수
+ */
+export const calculateNcsStats = (
+  courses: CourseData[],
+  year?: number
+): NcsStat[] => {
+  // 연도 필터링
+  const filtered = year
+    ? courses.filter(course => {
+        const startYear = new Date(course.과정시작일).getFullYear();
+        return startYear === year;
+      })
+    : courses;
+
+  // NCS별로 그룹화
+  const ncsMap = new Map<string, {
+    courses: CourseData[];
+    totalRevenue: number;
+    totalCourses: number;
+    totalStudents: number;
+    completedStudents: number;
+    totalSatisfaction: number;
+    satisfactionCount: number;
+    prevYearStudents: number;
+    prevYearCompletedStudents: number;
+  }>();
+
+  filtered.forEach(course => {
+    const ncsName = course.NCS명 || '기타';
+    const courseStartYear = new Date(course.과정시작일).getFullYear();
+    const courseEndYear = new Date(course.과정종료일).getFullYear();
+    const targetYear = year || new Date().getFullYear();
+
+    if (!ncsMap.has(ncsName)) {
+      ncsMap.set(ncsName, {
+        courses: [],
+        totalRevenue: 0,
+        totalCourses: 0,
+        totalStudents: 0,
+        completedStudents: 0,
+        totalSatisfaction: 0,
+        satisfactionCount: 0,
+        prevYearStudents: 0,
+        prevYearCompletedStudents: 0,
+      });
+    }
+
+    const stat = ncsMap.get(ncsName)!;
+    stat.courses.push(course);
+
+    // 매출 계산
+    const courseRevenue = computeCourseRevenue(course, year);
+    stat.totalRevenue += courseRevenue;
+
+    // 과정 수
+    stat.totalCourses += 1;
+
+    // 학생 수 및 수료 인원
+    const enrollment = course['수강신청 인원'] || 0;
+    const completed = course.수료인원 || 0;
+
+    // 현재 연도 시작 과정
+    if (courseStartYear === targetYear) {
+      stat.totalStudents += enrollment;
+      if (courseEndYear >= targetYear) {
+        stat.completedStudents += completed;
+      }
+    }
+    // 이전 연도 시작, 현재 연도 진행 중
+    else if (courseStartYear < targetYear && courseEndYear >= targetYear) {
+      stat.prevYearStudents += enrollment;
+      stat.prevYearCompletedStudents += completed;
+    }
+
+    // 만족도 계산 (수료인원이 있는 경우만)
+    if (completed > 0 && course.만족도 && course.만족도 > 0) {
+      stat.totalSatisfaction += course.만족도 * completed;
+      stat.satisfactionCount += completed;
+    }
+  });
+
+  // NcsStat 배열로 변환
+  const stats: NcsStat[] = Array.from(ncsMap.entries()).map(([ncsName, data]) => {
+    const totalStudents = data.totalStudents + data.prevYearStudents;
+    const totalCompleted = data.completedStudents + data.prevYearCompletedStudents;
+    const completionRate = totalStudents > 0 ? (totalCompleted / totalStudents) * 100 : 0;
+    const avgSatisfaction = data.satisfactionCount > 0 
+      ? data.totalSatisfaction / data.satisfactionCount 
+      : 0;
+
+    return {
+      ncsName,
+      totalRevenue: data.totalRevenue,
+      totalCourses: data.totalCourses,
+      totalStudents,
+      completedStudents: totalCompleted,
+      completionRate,
+      avgSatisfaction,
+      courses: data.courses,
+      prevYearStudents: data.prevYearStudents,
+      prevYearCompletedStudents: data.prevYearCompletedStudents,
+    };
+  });
+
+  // 매출액 기준 내림차순 정렬
+  return stats.sort((a, b) => b.totalRevenue - a.totalRevenue);
 };
 
 export const getIndividualInstitutionsInGroup = (
