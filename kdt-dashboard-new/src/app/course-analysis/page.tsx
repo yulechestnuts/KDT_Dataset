@@ -295,6 +295,8 @@ function CourseAnalysisContent() {
                             <TableHead>정원</TableHead>
                             <TableHead>훈련생 수</TableHead>
                             <TableHead>수료인원</TableHead>
+                            <TableHead>취업인원 (3개월)</TableHead>
+                            <TableHead>취업인원 (6개월)</TableHead>
                             <TableHead className="text-center">
                               <div>총 일수</div>
                             </TableHead>
@@ -326,8 +328,14 @@ function CourseAnalysisContent() {
                               <TableCell>{formatNumber(detail.정원 || 0)}</TableCell>
                               <TableCell>{formatNumber(detail['수강신청 인원'] || 0)}</TableCell>
                               <TableCell>{formatNumber(detail.수료인원 || 0)}</TableCell>
-                              <TableCell className="text-center">{formatNumber(detail.총일수 || 0)}</TableCell>
-                              <TableCell className="text-center">{formatNumber(detail.총시간 || 0)}</TableCell>
+                              <TableCell>{formatNumber(detail['취업인원 (3개월)'] || 0)}</TableCell>
+                              <TableCell>{formatNumber(detail['취업인원 (6개월)'] || 0)}</TableCell>
+                              <TableCell className="text-center">
+                                {formatNumber(detail.총훈련일수 || 0)}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {formatNumber(detail.총훈련시간 || 0)}
+                              </TableCell>
                               <TableCell>{formatCurrency(computeCourseRevenueByMode(detail, undefined, revenueMode))}</TableCell>
                               <TableCell>
                                 {detail.과정페이지링크 && (
