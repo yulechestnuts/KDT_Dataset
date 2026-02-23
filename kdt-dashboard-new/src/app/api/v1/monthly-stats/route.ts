@@ -9,8 +9,32 @@ import { applyRevenueAdjustmentIfMissing } from '@/lib/backend/revenue-engine';
 import { extractYearMonth } from '@/lib/backend/parsers';
 
 function toFiniteNumber(value: unknown, fallback: number = 0): number {
-  const num = typeof value === 'number' ? value : Number(value);
-  return Number.isFinite(num) ? num : fallback;
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : fallback;
+  if (typeof value === 'string') {
+    const original = value;
+    const cleaned = original
+      .replace(/\([^)]*\)/g, '')
+      .replace(/[^0-9+\-\.]/g, '')
+      .trim();
+    if (cleaned === '' || cleaned === '-' || cleaned.toLowerCase() === 'n/a') {
+      console.log('[monthly-stats toFiniteNumber] empty/invalid string -> fallback', { original, cleaned });
+      return fallback;
+    }
+    const num = Number(cleaned);
+    if (!Number.isFinite(num)) {
+      console.log('[monthly-stats toFiniteNumber] non-finite after parse -> fallback', { original, cleaned, num });
+      return fallback;
+    }
+    return num;
+  }
+
+  const num = Number(value);
+  if (!Number.isFinite(num)) {
+    console.log('[monthly-stats toFiniteNumber] non-finite non-string -> fallback', { value, num });
+    return fallback;
+  }
+  return num;
 }
 
 export async function GET(request: NextRequest) {

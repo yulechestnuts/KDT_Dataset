@@ -94,6 +94,8 @@ export interface InstitutionStat {
   total_revenue: number;
   total_max_revenue: number;
   total_adjusted_revenue: number;
+  total_expected_revenue_all_years?: number;
+  expected_attribution_percent?: number;
   total_courses_display: string;
   total_students_display: string;
   completed_students_display: string;

@@ -84,6 +84,8 @@ export interface InstitutionStat {
   total_revenue: number;
   total_max_revenue: number;
   total_adjusted_revenue: number;
+  total_expected_revenue_all_years?: number;
+  expected_attribution_percent?: number;
   total_courses_display: string;
   total_students_display: string;
   completed_students_display: string;
@@ -132,6 +134,67 @@ export interface MonthlyStat {
   courses?: any[];
 }
 
+export interface CourseAnalysisRow {
+  고유값: string;
+  과정명: string;
+  '훈련과정 ID'?: string;
+  회차?: string;
+  훈련기관: string;
+  원본훈련기관?: string;
+  과정시작일: string;
+  과정종료일: string;
+  '수강신청 인원': number;
+  수료인원: number;
+  정원: number;
+  총훈련일수: number;
+  총훈련시간: number;
+  '취업인원 (3개월)': number;
+  '취업인원 (6개월)': number;
+  누적매출: number;
+  '실 매출 대비': number;
+  '매출 최대': number;
+  '매출 최소': number;
+  '2021년': number;
+  '2022년': number;
+  '2023년': number;
+  '2024년': number;
+  '2025년': number;
+  '2026년': number;
+  '조정_2021년': number;
+  '조정_2022년': number;
+  '조정_2023년': number;
+  '조정_2024년': number;
+  '조정_2025년': number;
+  '조정_2026년': number;
+  조정_실매출대비: number;
+  훈련유형: string;
+  NCS명: string;
+  NCS코드?: string;
+  선도기업?: string;
+  파트너기관?: string;
+  isLeadingCompanyCourse: boolean;
+  leadingCompanyPartnerInstitution?: string;
+  total_revenue?: number;
+  과정페이지링크?: string;
+  [key: string]: any;
+}
+
+export interface CourseAnalysisResponse {
+  status: string;
+  data: CourseAnalysisRow[];
+  meta?: {
+    total_rows?: number;
+    filtered_rows?: number;
+    available_years?: number[];
+    year_range?: { start: number; end: number };
+    applied_filters?: {
+      year?: number;
+      training_type?: string;
+      revenue_mode?: 'current' | 'max';
+    };
+  };
+}
+
 export class KDTStatsAPI {
   private baseUrl: string;
 
@@ -164,6 +227,36 @@ export class KDTStatsAPI {
     if (options?.noCache) params.append('no_cache', '1');
 
     const url = `/api/v1/institution-stats${params.toString() ? `?${params.toString()}` : ''}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`API Error: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * 과정 분석용 과정 목록 조회 (DB/Supabase 기반)
+   */
+  async getCourseAnalysis(options?: {
+    year?: number;
+    trainingType?: 'all' | 'leading' | 'tech';
+    revenueMode?: 'current' | 'max';
+  }): Promise<CourseAnalysisResponse> {
+    const params = new URLSearchParams();
+    if (options?.year !== undefined) params.append('year', String(options.year));
+    if (options?.trainingType && options.trainingType !== 'all') {
+      params.append('training_type', options.trainingType);
+    }
+    if (options?.revenueMode) params.append('revenue_mode', options.revenueMode);
+
+    const url = `/api/v1/course-analysis${params.toString() ? `?${params.toString()}` : ''}`;
     const response = await fetch(url, {
       method: 'GET',
       headers: {

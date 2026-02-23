@@ -4,6 +4,7 @@ export async function GET() {
   try {
     // Remote raw CSV on GitHub (latest dataset)
     const remoteUrl =
+      process.env.KDT_DATASET_URL ||
       'https://raw.githubusercontent.com/yulechestnuts/KDT_Dataset/main/result_kdtdata_202512.csv';
 
     const res = await fetch(remoteUrl, {

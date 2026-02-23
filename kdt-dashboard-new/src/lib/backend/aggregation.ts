@@ -94,10 +94,12 @@ export function calculateInstitutionDetailedRevenue(
   totalRevenue: number;
   totalMaxRevenue: number;
   totalAdjustedRevenue: number;
+  totalExpectedRevenueAllYears: number;
 } {
   let totalRevenue = 0.0;
   let totalMaxRevenue = 0.0;
   let totalAdjustedRevenue = 0.0;
+  let totalExpectedRevenueAllYears = 0.0;
   const coursesForInstitution: ProcessedCourseData[] = [];
 
   const overlapsYear = (course: ProcessedCourseData, y: number): boolean => {
@@ -131,11 +133,11 @@ export function calculateInstitutionDetailedRevenue(
         if (revenueMode === 'max') return courseMaxRevenue;
 
         // 월 필터(수주 기준)일 때는 pro-rata만 제외하고 기존 current 산식 유지
-        // (해당 월에 시작한 과정만 필터링되므로 시작월에 100% 반영되는 효과)
+        // (해당 월에 시작한 과정들의 "전체 운영기간"에 대한 current 산식을 그대로 집계)
         if (month !== undefined) {
-          const courseStart = parseDate(course.과정시작일);
-          const startYear = Number.isFinite(courseStart.getTime()) ? courseStart.getFullYear() : year;
-          return computeCourseRevenue(course, startYear) * revenueShare;
+          const expectedAllYears = computeCourseRevenue(course, undefined) * revenueShare;
+          totalExpectedRevenueAllYears += expectedAllYears;
+          return expectedAllYears;
         }
 
         return computeCourseRevenueByMode(course, year, revenueMode) * revenueShare;
@@ -153,6 +155,7 @@ export function calculateInstitutionDetailedRevenue(
     totalRevenue,
     totalMaxRevenue,
     totalAdjustedRevenue,
+    totalExpectedRevenueAllYears,
   };
 }
 
@@ -224,6 +227,7 @@ export function calculateInstitutionStats(
     const totalRevenue = detailed.totalRevenue;
     const totalMaxRevenue = detailed.totalMaxRevenue;
     const totalAdjustedRevenue = detailed.totalAdjustedRevenue;
+    const totalExpectedRevenueAllYears = detailed.totalExpectedRevenueAllYears;
 
     if (courses.length === 0) {
       continue;
@@ -398,6 +402,17 @@ export function calculateInstitutionStats(
       total_revenue: safeTotalRevenue,
       total_max_revenue: toFiniteNumber(Math.round(totalMaxRevenue * 100) / 100, 0),
       total_adjusted_revenue: toFiniteNumber(Math.round(totalAdjustedRevenue * 100) / 100, 0),
+      total_expected_revenue_all_years:
+        month !== undefined
+          ? toFiniteNumber(Math.round(totalExpectedRevenueAllYears * 100) / 100, 0)
+          : undefined,
+      expected_attribution_percent:
+        month !== undefined
+          ? toFiniteNumber(
+              totalMaxRevenue > 0 ? (totalExpectedRevenueAllYears / totalMaxRevenue) * 100 : 0,
+              0
+            )
+          : undefined,
       total_courses_display: formatXyDisplay(currentYearCoursesCount, prevYearCoursesCount),
       total_students_display: formatXyDisplay(
         Math.round(currentYearStudents),

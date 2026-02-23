@@ -347,7 +347,11 @@ export default function InstitutionAnalysisClient() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">{formatRevenue(stat.total_revenue)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {selectedMonth !== 'all' && Number.isFinite(stat.expected_attribution_percent)
+                      ? `${formatRevenue(stat.total_revenue)} (${(stat.expected_attribution_percent ?? 0).toFixed(1)}%)`
+                      : formatRevenue(stat.total_revenue)}
+                  </td>
                   {selectedMonth !== 'all' && (
                     <td className="px-6 py-4 whitespace-nowrap">{formatRevenue(stat.total_max_revenue ?? 0)}</td>
                   )}

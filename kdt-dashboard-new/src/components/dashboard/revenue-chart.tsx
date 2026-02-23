@@ -82,7 +82,10 @@ export function RevenueChart({ data }: RevenueChartProps) {
 
   // 데이터 정렬 및 처리 개선
   const sortedData = [...data]
-    .filter(stat => stat.month && (stat.revenue !== undefined || stat.totalStudents !== undefined))
+    .filter((stat: any) =>
+      Boolean(stat.month) &&
+      (stat.revenue !== undefined || stat.totalStudents !== undefined || stat.total_students !== undefined)
+    )
     .sort((a, b) => a.month.localeCompare(b.month));
 
   if (sortedData.length === 0) {
@@ -104,7 +107,11 @@ export function RevenueChart({ data }: RevenueChartProps) {
   const revenueDataWon = sortedData.map(stat => stat.revenue || 0);
   const EOK = 100_000_000;
   const revenueData = revenueDataWon.map(val => val / EOK); // 억 단위 변환
-  const studentData = sortedData.map(stat => stat.totalStudents);
+  const studentData = sortedData.map((stat: any) => {
+    const raw = stat.totalStudents ?? stat.total_students;
+    const n = typeof raw === 'number' ? raw : Number(String(raw ?? '').replace(/[^0-9+\-\.]/g, ''));
+    return Number.isFinite(n) ? n : 0;
+  });
 
   // 차트 색상 개선 (대시보드 스타일)
   const chartData = {

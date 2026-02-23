@@ -127,6 +127,7 @@ export async function getProcessedCourses(): Promise<ProcessedCourseData[]> {
       const { data, error, count } = await supabase
         .from(TABLE_NAME)
         .select('*', { count: 'exact' })
+        .order('과정시작일', { ascending: false })
         .range(from, to);
 
       if (process.env.DEBUG_SUPABASE === '1') {
