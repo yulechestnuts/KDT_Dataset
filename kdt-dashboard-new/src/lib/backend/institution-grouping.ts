@@ -98,7 +98,7 @@ export function groupInstitutionsAdvanced(institutionName: string): string {
   }
 
   // 매칭되지 않으면 원본 반환
-  return institutionName;
+  return cleanName;
 }
 
 /**

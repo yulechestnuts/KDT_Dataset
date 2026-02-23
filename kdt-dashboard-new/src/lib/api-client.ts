@@ -5,6 +5,23 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
 export interface InstitutionStatsResponse {
   status: string;
   data: InstitutionStat[];
+  meta?: {
+    total_rows?: number;
+    valid_date_rows?: number;
+    invalid_date_rows?: number;
+    year_filtered_rows?: number;
+    available_years?: number[];
+    available_months?: number[];
+    available_training_types?: {
+      leading: number;
+      tech: number;
+    };
+    applied_filters?: {
+      year?: number;
+      month?: number;
+      training_type?: string;
+    };
+  };
   pagination?: {
     total: number;
     page: number;
@@ -65,9 +82,13 @@ export interface HealthCheckResponse {
 export interface InstitutionStat {
   institution_name: string;
   total_revenue: number;
+  total_max_revenue: number;
+  total_adjusted_revenue: number;
   total_courses_display: string;
   total_students_display: string;
   completed_students_display: string;
+  current_year_completed?: number;
+  carried_over_completed?: number;
   total_employed: number;
   completion_rate: number;
   employment_rate: number;
@@ -83,6 +104,8 @@ export interface InstitutionStat {
 export interface YearlyStat {
   year: number;
   total_revenue: number;
+  total_max_revenue: number;
+  total_adjusted_revenue: number;
   total_students: number;
   completed_students: number;
   total_employed: number;
@@ -99,6 +122,8 @@ export interface YearlyStat {
 export interface MonthlyStat {
   month: string;
   revenue: number;
+  max_revenue: number;
+  adjusted_revenue: number;
   total_students: number;
   completed_students: number;
   completion_rate: number;
@@ -119,11 +144,24 @@ export class KDTStatsAPI {
    */
   async getInstitutionStats(
     year?: number,
-    revenueMode: 'current' | 'max' = 'current'
+    revenueMode: 'current' | 'max' = 'current',
+    options?: {
+      month?: number;
+      trainingType?: 'all' | 'leading' | 'tech';
+      institutionName?: string;
+      noCache?: boolean;
+    }
   ): Promise<InstitutionStatsResponse> {
     const params = new URLSearchParams();
     if (year) params.append('year', year.toString());
     if (revenueMode) params.append('revenue_mode', revenueMode);
+
+    if (options?.month !== undefined) params.append('month', String(options.month));
+    if (options?.trainingType && options.trainingType !== 'all') {
+      params.append('training_type', options.trainingType);
+    }
+    if (options?.institutionName) params.append('institution_name', options.institutionName);
+    if (options?.noCache) params.append('no_cache', '1');
 
     const url = `/api/v1/institution-stats${params.toString() ? `?${params.toString()}` : ''}`;
     const response = await fetch(url, {

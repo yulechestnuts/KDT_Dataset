@@ -92,9 +92,13 @@ export interface ProcessedCourseData {
 export interface InstitutionStat {
   institution_name: string;
   total_revenue: number;
+  total_max_revenue: number;
+  total_adjusted_revenue: number;
   total_courses_display: string;
   total_students_display: string;
   completed_students_display: string;
+  current_year_completed?: number;
+  carried_over_completed?: number;
   total_employed: number;
   completion_rate: number;
   employment_rate: number;
@@ -110,6 +114,8 @@ export interface InstitutionStat {
 export interface YearlyStat {
   year: number;
   total_revenue: number;
+  total_max_revenue: number;
+  total_adjusted_revenue: number;
   total_students: number;
   completed_students: number;
   total_employed: number;
@@ -126,6 +132,8 @@ export interface YearlyStat {
 export interface MonthlyStat {
   month: string;
   revenue: number;
+  max_revenue: number;
+  adjusted_revenue: number;
   total_students: number;
   completed_students: number;
   completion_rate: number;

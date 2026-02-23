@@ -2,11 +2,7 @@
 
 import React from 'react';
 import { useEffect, useState } from 'react';
-import { calculateMonthlyStatistics, calculateCompletionRate } from "@/lib/data-utils";
-import { applyRevenueAdjustment, computeCourseRevenue } from "@/utils/data-utils";
-import { loadDataFromGithub, preprocessData } from "@/utils/data-loader";
-import { CourseData } from "@/lib/data-utils";
-import { MonthlyStats } from "@/lib/data-utils";
+import { kdtAPI, MonthlyStat } from '@/lib/api-client';
 import { RevenueChart } from "@/components/dashboard/revenue-chart";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
@@ -17,15 +13,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
-  DialogDescription
-} from "@/components/ui/dialog";
+} from '@/components/ui/dialog';
 import {
   Select,
   SelectContent,
@@ -34,20 +29,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatCurrency, formatNumber } from "@/utils/formatters";
-import Papa from 'papaparse';
-import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
+import { ExternalLink } from "lucide-react";
+
+function toFiniteNumber(value: unknown, fallback: number = 0): number {
+  const num = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(num) ? num : fallback;
+}
 
 export default function MonthlyAnalysisPage() {
-  const [data, setData] = useState<CourseData[]>([]); // 원본 데이터
-  const [processedAdjustedData, setProcessedAdjustedData] = useState<CourseData[]>([]); // 전처리 및 조정된 데이터
-  const [monthlyStats, setMonthlyStats] = useState<MonthlyStats[]>([]);
+  const [monthlyStats, setMonthlyStats] = useState<MonthlyStat[]>([]);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedMonthDetails, setSelectedMonthDetails] = useState<CourseData[]>([]);
+  const [selectedMonthDetails, setSelectedMonthDetails] = useState<any[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>('');
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [expandedCourses, setExpandedCourses] = useState<Set<string>>(new Set());
 
   // 연도 목록 생성 (2021년부터 현재 연도까지)
   const years = Array.from(
@@ -58,25 +54,10 @@ export default function MonthlyAnalysisPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const rawData = await loadDataFromGithub();
-        const parsedData = Papa.parse(rawData, { header: true });
-        let initialProcessedData = preprocessData(parsedData.data);
-        
-        if (!Array.isArray(initialProcessedData) || initialProcessedData.length === 0) {
-          throw new Error('처리된 데이터가 유효하지 않습니다.');
-        }
-
-        // 전체 수료율을 calculateCompletionRate 함수를 사용하여 계산 (초기 1회만)
-        const overallCompletionRate = calculateCompletionRate(initialProcessedData);
-        const adjustedData = applyRevenueAdjustment(initialProcessedData, overallCompletionRate);
-
-        setData(initialProcessedData); // 원본 데이터 저장
-        setProcessedAdjustedData(adjustedData); // 조정된 데이터 저장
-
-        // 초기 월별 통계 계산 (전체 기간)
-        const initialStats = calculateMonthlyStatistics(adjustedData, undefined); // 초기에는 selectedYear 없이 호출
-        setMonthlyStats(initialStats);
-
+        setIsLoading(true);
+        setError(null);
+        const result = await kdtAPI.getMonthlyStats(undefined);
+        setMonthlyStats(result?.data ?? []);
       } catch (error) {
         console.error('Error fetching data:', error);
         setError(error instanceof Error ? error.message : '데이터를 불러오는 중 오류가 발생했습니다.');
@@ -88,49 +69,31 @@ export default function MonthlyAnalysisPage() {
     fetchData();
   }, []); // 초기 로딩 시에만 실행
 
-  // 연도 선택 시 통계 업데이트 (processedAdjustedData가 준비된 후에만 실행)
+  // 연도 선택 시 통계 업데이트 (API에서 재조회)
   useEffect(() => {
-    if (processedAdjustedData.length > 0) {
-      const stats = calculateMonthlyStatistics(processedAdjustedData, selectedYear ?? undefined);
-      setMonthlyStats(stats);
-    }
-  }, [selectedYear, processedAdjustedData]); // selectedYear 또는 조정된 데이터가 변경될 때만 실행
+    const fetchYear = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const result = await kdtAPI.getMonthlyStats(selectedYear ?? undefined);
+        setMonthlyStats(result?.data ?? []);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        setError(error instanceof Error ? error.message : '데이터를 불러오는 중 오류가 발생했습니다.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchYear();
+  }, [selectedYear]);
 
   const handleViewDetails = (monthStr: string) => {
     setSelectedMonth(monthStr);
     setIsModalOpen(true);
-    
-    // Filter data for the selected month
-    const [year, month] = monthStr.split('-').map(Number);
-    const filtered = processedAdjustedData
-      .filter(course => {
-        const startDate = new Date(course.과정시작일);
-        const endDate = new Date(course.과정종료일);
-        const targetMonthStart = new Date(year, month - 1, 1);
-        const targetMonthEnd = new Date(year, month, 0); // 다음 달의 0일은 현재 달의 마지막 날
 
-        // 과정의 시작일이 해당 월의 마지막 날보다 이전이거나 같고,
-        // 과정의 종료일이 해당 월의 시작일보다 이후이거나 같으면 포함
-        return startDate <= targetMonthEnd && endDate >= targetMonthStart;
-      })
-      // 매출액(조정_누적매출 > 누적매출) 기준 내림차순 정렬
-      .sort(
-        (a, b) =>
-          (b.조정_누적매출 ?? b.누적매출 ?? 0) -
-          (a.조정_누적매출 ?? a.누적매출 ?? 0)
-      );
-
-    setSelectedMonthDetails(filtered);
-  };
-
-  const toggleCourseExpansion = (courseId: string) => {
-    const newExpanded = new Set(expandedCourses);
-    if (newExpanded.has(courseId)) {
-      newExpanded.delete(courseId);
-    } else {
-      newExpanded.add(courseId);
-    }
-    setExpandedCourses(newExpanded);
+    const stat = monthlyStats.find((s) => s.month === monthStr);
+    setSelectedMonthDetails(stat?.courses ?? []);
   };
 
   if (isLoading) {
@@ -170,7 +133,7 @@ export default function MonthlyAnalysisPage() {
           </SelectContent>
         </Select>
       </div>
-      
+
       {/* 월별 매출 추이 그래프 */}
       <Card className="mb-8">
         <CardHeader>
@@ -203,11 +166,11 @@ export default function MonthlyAnalysisPage() {
               {monthlyStats.map((stat) => (
                 <TableRow key={stat.month}>
                   <TableCell>{stat.month}</TableCell>
-                  <TableCell>{formatCurrency(stat.revenue)}</TableCell>
-                  <TableCell>{formatNumber(stat.courses.length)}</TableCell>
-                  <TableCell>{formatNumber(stat.totalStudents)}</TableCell>
-                  <TableCell>{formatNumber(stat.completedStudents)}</TableCell>
-                  <TableCell>{stat.completionRate.toFixed(1)}%</TableCell>
+                  <TableCell>{formatCurrency(toFiniteNumber(stat.revenue, 0))}</TableCell>
+                  <TableCell>{formatNumber(toFiniteNumber(stat.course_count, 0))}</TableCell>
+                  <TableCell>{formatNumber(toFiniteNumber(stat.total_students, 0))}</TableCell>
+                  <TableCell>{formatNumber(toFiniteNumber(stat.completed_students, 0))}</TableCell>
+                  <TableCell>{toFiniteNumber(stat.completion_rate, 0).toFixed(1)}%</TableCell>
                   <TableCell>
                     <Button 
                       variant="outline" 
@@ -226,11 +189,11 @@ export default function MonthlyAnalysisPage() {
 
       {/* 상세 정보 모달 */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-[90vw] max-h-[90vh] overflow-y-auto bg-white dark:bg-[#1E1E1E] text-gray-950 dark:text-[#F5F5F5] border-2 border-gray-400 dark:border-gray-600 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] dark:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.8)]">
+        <DialogContent className="max-w-5xl">
           <DialogHeader>
-            <DialogTitle>{selectedMonth} 상세 분석</DialogTitle>
-            <DialogDescription className="text-gray-600 dark:text-gray-400">
-              선택된 월의 과정 상세 목록입니다.
+            <DialogTitle>{selectedMonth} 상세 과정</DialogTitle>
+            <DialogDescription>
+              서버에서 제공한 월별 통계 기준으로 해당 월에 연결된 과정 목록을 표시합니다.
             </DialogDescription>
           </DialogHeader>
           <Table>
@@ -238,100 +201,61 @@ export default function MonthlyAnalysisPage() {
               <TableRow>
                 <TableHead>과정명</TableHead>
                 <TableHead>훈련기관</TableHead>
-                <TableHead>회차</TableHead>
                 <TableHead>시작일</TableHead>
                 <TableHead>종료일</TableHead>
-                <TableHead>훈련생 수</TableHead>
-                <TableHead>수료인원</TableHead>
-                <TableHead>수료율</TableHead>
-                <TableHead>매출</TableHead>
-                <TableHead>과정 페이지</TableHead>
+                <TableHead className="text-right">수강신청</TableHead>
+                <TableHead className="text-right">수료</TableHead>
+                <TableHead className="text-right">매출</TableHead>
+                <TableHead>링크</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {selectedMonthDetails.map((course, idx) => {
-                // 고유 key 생성을 위해 idx 추가
-                const courseId = `${course.과정명}-${course.회차}-${idx}`;
-                const isExpanded = expandedCourses.has(courseId);
-                const allCourseDetails = processedAdjustedData.filter(c => c.과정명 === course.과정명)
-                  .sort((a, b) => new Date(a.과정시작일).getTime() - new Date(b.과정시작일).getTime());
-
-                return (
-                  <React.Fragment key={courseId}>
-                    <TableRow key={`${courseId}-main`}>
-                      <TableCell>
-                        {course.과정명}
-                      </TableCell>
-                      <TableCell>{course.훈련기관}</TableCell>
-                      <TableCell>{course.회차}</TableCell>
-                      <TableCell>{new Date(course.과정시작일).toLocaleDateString()}</TableCell>
-                      <TableCell>{new Date(course.과정종료일).toLocaleDateString()}</TableCell>
-                      <TableCell>{formatNumber(course['수강신청 인원'])}</TableCell>
-                      <TableCell>{formatNumber(course.수료인원)}</TableCell>
-                      <TableCell>{((course.수료인원 || 0) / (course['수강신청 인원'] || 1) * 100).toFixed(1)}%</TableCell>
-                      <TableCell>{formatCurrency(computeCourseRevenue(course, parseInt(selectedMonth.split('-')[0])))}</TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              window.open(
-                                `/course-analysis?course=${encodeURIComponent(course.과정명)}`,
-                                '_blank'
-                              )}
-                          >
-                            상세분석
-                          </Button>
-                          {course.과정페이지링크 && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => window.open(course.과정페이지링크, '_blank')}
-                            >
-                              <ExternalLink className="h-4 w-4 mr-1" />
-                              바로가기
-                            </Button>
+              {(selectedMonthDetails ?? []).map((course: any, idx: number) => (
+                <TableRow key={course.고유값 ?? `${idx}`}>
+                  <TableCell className="font-medium">{course.과정명 ?? '-'}</TableCell>
+                  <TableCell>{course.훈련기관 ?? '-'}</TableCell>
+                  <TableCell>{course.과정시작일 ?? '-'}</TableCell>
+                  <TableCell>{course.과정종료일 ?? '-'}</TableCell>
+                  <TableCell className="text-right">
+                    {formatNumber(toFiniteNumber(course['수강신청 인원'], 0))}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {formatNumber(toFiniteNumber(course.수료인원, 0))}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {formatCurrency(toFiniteNumber(course.총누적매출 ?? course.누적매출, 0))}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          window.open(
+                            `/course-analysis?course=${encodeURIComponent(course.과정명 ?? '')}`,
+                            '_blank'
                           )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                    {isExpanded &&
-                      allCourseDetails.map((detail, detailIdx) => (
-                        <TableRow
-                          key={`${courseId}-${detail.회차}-${detailIdx}`}
-                          className="bg-gray-50"
+                      >
+                        상세분석
+                      </Button>
+                      {course.과정페이지링크 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(course.과정페이지링크, '_blank')}
                         >
-                          <TableCell className="pl-12">{detail.과정명}</TableCell>
-                          <TableCell>{detail.훈련기관}</TableCell>
-                          <TableCell>{detail.회차}</TableCell>
-                          <TableCell>{new Date(detail.과정시작일).toLocaleDateString()}</TableCell>
-                          <TableCell>{new Date(detail.과정종료일).toLocaleDateString()}</TableCell>
-                          <TableCell>{formatNumber(detail['수강신청 인원'])}</TableCell>
-                          <TableCell>{formatNumber(detail.수료인원)}</TableCell>
-                          <TableCell>{((detail.수료인원 || 0) / (detail['수강신청 인원'] || 1) * 100).toFixed(1)}%</TableCell>
-                          <TableCell>{formatCurrency(computeCourseRevenue(detail, parseInt(selectedMonth.split('-')[0])))}</TableCell>
-                          <TableCell>
-                            {detail.과정페이지링크 && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => window.open(detail.과정페이지링크, '_blank')}
-                              >
-                                <ExternalLink className="h-4 w-4 mr-1" />
-                                바로가기
-                              </Button>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                  </React.Fragment>
-                );
-              })}
+                          <ExternalLink className="h-4 w-4 mr-1" />
+                          바로가기
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         </DialogContent>
       </Dialog>
     </div>
   );
-} 
+}

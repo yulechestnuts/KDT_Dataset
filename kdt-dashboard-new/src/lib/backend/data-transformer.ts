@@ -23,10 +23,17 @@ export function transformRawDataToCourseData(rawData: RawCourseData): ProcessedC
   const startDate = parseDate(rawData.과정시작일);
   const endDate = parseDate(rawData.과정종료일);
 
+  const startDateStr = !isNaN(startDate.getTime())
+    ? startDate.toISOString().split('T')[0]
+    : String(rawData.과정시작일 || '').trim();
+  const endDateStr = !isNaN(endDate.getTime())
+    ? endDate.toISOString().split('T')[0]
+    : String(rawData.과정종료일 || '').trim();
+
   // 날짜 차이 계산 (일수)
   const timeDiff = endDate.getTime() - startDate.getTime();
   const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
-  const calculatedDays = daysDiff > 0 ? daysDiff : 0;
+  const calculatedDays = Number.isFinite(daysDiff) && daysDiff > 0 ? daysDiff : 0;
 
   // 총훈련일수
   let totalDays: number;
@@ -110,8 +117,8 @@ export function transformRawDataToCourseData(rawData: RawCourseData): ProcessedC
     회차: String(rawData.회차 || ''),
     훈련기관: groupedInstitutionName,
     원본훈련기관: originalInstitutionName,
-    과정시작일: startDate.toISOString().split('T')[0],
-    과정종료일: endDate.toISOString().split('T')[0],
+    과정시작일: startDateStr,
+    과정종료일: endDateStr,
     '수강신청 인원': parsedEnrollment.value,
     수료인원: parsedCompletion.value,
     취업인원: parseNumber(rawData.취업인원 || 0),

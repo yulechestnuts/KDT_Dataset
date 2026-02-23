@@ -1089,7 +1089,6 @@ export const calculateInstitutionStats = (data: CourseData[], year?: number, rev
   return result.sort((a, b) => b.totalRevenue - a.totalRevenue);
 };
 
-
 // calculateInstitutionDetailedRevenue 함수 추가
 export const calculateInstitutionDetailedRevenue = (
   allCourses: CourseData[],
@@ -1132,257 +1131,24 @@ export const calculateInstitutionDetailedRevenue = (
   return { courses: coursesForInstitution, totalRevenue };
 };
 
-// aggregateCoursesByCourseIdWithLatestInfo 함수 추가
-export const aggregateCoursesByCourseIdWithLatestInfo = (
+export const aggregateCoursesByCourseNameForLeadingCompany = (
   courses: CourseData[],
-  year?: number,
-  institutionName?: string, // 기관명 추가
-  revenueMode: RevenueMode = 'current'
-): AggregatedCourseData[] => {
-  const map = new Map<string, AggregatedCourseData>();
-
-  // 훈련과정ID별로 최신 과정명 찾기
-  const latestCourseNames = new Map<string, string>();
-  courses.forEach(course => {
-    if (course['훈련과정 ID']) {
-      const existing = latestCourseNames.get(course['훈련과정 ID']);
-      if (!existing || new Date(course.과정시작일) > new Date(existing)) {
-        latestCourseNames.set(course['훈련과정 ID'], course.과정명);
-      }
-    }
-  });
-
-  // === year가 지정된 경우 해당 연도에 진행 중인 모든 과정 합산 ===
-  const filteredCourses = year !== undefined
-    ? courses.filter(c => {
-        const startDate = new Date(c.과정시작일);
-        const endDate = new Date(c.과정종료일);
-        // 해당 연도에 시작했거나, 이전 연도에 시작하여 해당 연도에 진행 중인 과정
-        return startDate.getFullYear() === year || 
-               (startDate.getFullYear() < year && endDate.getFullYear() >= year);
-      })
-    : courses;
-
-  filteredCourses.forEach(course => {
-    let revenueShare = 1;
-    let studentShare = 1; // studentShare를 여기서 정의
-
-    if (course.isLeadingCompanyCourse && course.leadingCompanyPartnerInstitution) {
-      const originalInstitutionName = course.원본훈련기관 || course.훈련기관;
-      const isTrainingInstitutionInGroup = groupInstitutionsAdvanced({ ...course, 훈련기관: originalInstitutionName }) === institutionName;
-      const isPartnerInstitutionInGroup = groupInstitutionsAdvanced({ ...course, 훈련기관: course.leadingCompanyPartnerInstitution }) === institutionName;
-
-      // 선도기업 과정: 파트너기관과 훈련기관이 같으면 100% 흡수, 아니면 파트너기관 90%, 훈련기관 10%
-      if (isTrainingInstitutionInGroup && isPartnerInstitutionInGroup) { // 훈련기관과 파트너기관이 같고, 현재 기관이 그 기관인 경우
-        revenueShare = 1.0;
-        studentShare = 1;
-      } else if (isPartnerInstitutionInGroup) {
-        revenueShare = 0.9;
-        studentShare = 1;
-      } else if (isTrainingInstitutionInGroup) {
-        revenueShare = 0.1;
-        studentShare = 0; // 훈련기관이 10%를 가져갈 때 학생 수는 0으로 설정
-      }
-    } else {
-      // 일반 과정: 훈련기관이 100%
-      if (groupInstitutionsAdvanced(course) === institutionName) {
-        revenueShare = 1.0;
-        studentShare = 1;
-      }
-    }
-
-    const key = course['훈련과정 ID'] || course.과정명;
-    if (!map.has(key)) {
-      map.set(key, {
-        과정명: latestCourseNames.get(course['훈련과정 ID'] || '') || course.과정명,
-        '훈련과정 ID': course['훈련과정 ID'],
-        총수강신청인원: 0,
-        총수료인원: 0,
-        총취업인원: 0,
-        총누적매출: 0,
-        최소과정시작일: course.과정시작일,
-        최대과정종료일: course.과정종료일,
-        훈련유형들: [],
-        원천과정수: 0,
-        총훈련생수: 0,
-        평균만족도: 0,
-        평균수료율: 0,
-        평균취업율: 0,
-        총정원: 0,
-        연도정원: 0,
-        연도훈련생수: 0,
-        개강회차수: 0,
-        과거년도개강회차수: 0,
-        현재년도수강신청인원: 0,
-        과거년도수강신청인원: 0,
-        현재년도수료인원: 0,
-        과거년도수료인원: 0,
-      });
-    }
-
-    const agg = map.get(key)!;
-
-    // 매출 분배 로직 (calculateInstitutionDetailedRevenue와 유사하게)
-    const courseRevenue = computeCourseRevenueByMode(course, year, revenueMode) * revenueShare;
-    agg.총누적매출 += courseRevenue;
-
-    // 학생수, 수료인원, 취업인원, 과정수 등 집계 (studentShare 적용)
-    agg.총수강신청인원 += (course['수강신청 인원'] ?? 0) * studentShare;
-    agg.총수료인원 += (course['수료인원'] ?? 0) * studentShare;
-    agg.총취업인원 += getPreferredEmploymentCount(course) * studentShare;
-    agg.원천과정수 += studentShare > 0 ? 1 : 0; // 학생 수가 0이 아니면 과정 수에 포함
-    agg.총훈련생수 += (course['수강신청 인원'] ?? 0) * studentShare;
-    agg.총정원 = (agg.총정원 ?? 0) + (course.정원 ?? 0) * studentShare;
-
-    // 개강회차수, 훈련생 수, 수료인원 X(Y) 표기 로직
-    const courseStartDate = new Date(course.과정시작일);
-    const courseEndDate = new Date(course.과정종료일);
-    const currentYear = year || new Date().getFullYear();
-
-    const isCurrentYearStart = courseStartDate.getFullYear() === currentYear;
-    const isPrevYearStartAndOngoing = courseStartDate.getFullYear() < currentYear && courseEndDate.getFullYear() >= currentYear;
-    const isCurrentYearEnd = courseEndDate.getFullYear() === currentYear;
-
-    // 훈련생 수: 해당 연도에 진행 중인 모든 과정의 수강신청 인원
-    if (isCurrentYearStart || isPrevYearStartAndOngoing) {
-      if (isCurrentYearStart) {
-        agg.개강회차수 = (agg.개강회차수 ?? 0) + (studentShare > 0 ? 1 : 0);
-        agg.현재년도수강신청인원 = (agg.현재년도수강신청인원 ?? 0) + (course['수강신청 인원'] ?? 0) * studentShare;
-      } else {
-        agg.과거년도개강회차수 = (agg.과거년도개강회차수 ?? 0) + (studentShare > 0 ? 1 : 0);
-        agg.과거년도수강신청인원 = (agg.과거년도수강신청인원 ?? 0) + (course['수강신청 인원'] ?? 0) * studentShare;
-      }
-    }
-
-    // 수료/취업 집계: 해당 연도에 종료된 과정만
-    if (isCurrentYearEnd) {
-      if (isCurrentYearStart) {
-        // 수료인원
-        agg.현재년도수료인원 = (agg.현재년도수료인원 ?? 0) + (course['수료인원'] ?? 0) * studentShare;
-        // 종료 회차 기준 수료율 계산용 분모(수강신청 인원)
-        agg.현재년도수료과정_수강신청인원 = (agg.현재년도수료과정_수강신청인원 ?? 0) + (course['수강신청 인원'] ?? 0) * studentShare;
-        // 취업인원
-        agg.현재년도취업인원 = (agg.현재년도취업인원 ?? 0) + getPreferredEmploymentCount(course) * studentShare;
-      } else {
-        agg.과거년도수료인원 = (agg.과거년도수료인원 ?? 0) + (course['수료인원'] ?? 0) * studentShare;
-        agg.과거년도수료과정_수강신청인원 = (agg.과거년도수료과정_수강신청인원 ?? 0) + (course['수강신청 인원'] ?? 0) * studentShare;
-        agg.과거년도취업인원 = (agg.과거년도취업인원 ?? 0) + getPreferredEmploymentCount(course) * studentShare;
-      }
-    }
-
-    // 연도별 정원 및 훈련생 수 (모집률 계산용)
-    if (year !== undefined) {
-      const isCurrentYearStart = new Date(course.과정시작일).getFullYear() === year;
-      const isPrevYearStartAndOngoing = new Date(course.과정시작일).getFullYear() < year && new Date(course.과정종료일).getFullYear() >= year;
-      if (isCurrentYearStart) {
-        agg.연도정원 = (agg.연도정원 ?? 0) + (course.정원 ?? 0) * studentShare; // X
-        agg.연도훈련생수 = (agg.연도훈련생수 ?? 0) + (course['수강신청 인원'] ?? 0) * studentShare; // X
-      } else if (isPrevYearStartAndOngoing) {
-        agg.과거년도정원 = (agg.과거년도정원 ?? 0) + (course.정원 ?? 0) * studentShare; // Y
-      }
-    }
-
-    // 훈련 유형
-    if (course.훈련유형 && !agg.훈련유형들.includes(course.훈련유형)) {
-      agg.훈련유형들.push(course.훈련유형);
-    }
-
-    // 날짜 업데이트
-    if (new Date(course.과정시작일) < new Date(agg.최소과정시작일)) {
-      agg.최소과정시작일 = course.과정시작일;
-    }
-    if (new Date(course.과정종료일) > new Date(agg.최대과정종료일)) {
-      agg.최대과정종료일 = course.과정종료일;
-    }
-
-    // 평균 만족도 및 수료율 (재계산 필요)
-    const internal = agg as any;
-    if (internal._completionEnrollmentSum === undefined) {
-      internal._completionEnrollmentSum = 0;
-      internal._completionSum = 0;
-      internal._completionWeight = 0; // 수료율 가중치 추가
-      internal._satSum = 0;
-      internal._satWeight = 0;
-    }
-
-    // 수료율과 취업율은 해당 연도에 종료된 과정들만 고려
-    if (isCurrentYearEnd && (course['수료인원'] ?? 0) > 0 && (course['수강신청 인원'] ?? 0) > 0) {
-      // 오늘 기준으로 과정이 3주 이상 지나지 않은 과정도 제외
-      const today = new Date();
-      const threeWeeksAgo = new Date(today.getTime() - (21 * 24 * 60 * 60 * 1000)); // 21일 전
-      const courseEndDate = new Date(course.과정종료일);
-      
-      if (courseEndDate <= threeWeeksAgo) {
-        internal._completionEnrollmentSum += (course['수강신청 인원'] ?? 0) * studentShare;
-        internal._completionSum += (course['수료인원'] ?? 0) * studentShare;
-        internal._completionWeight += studentShare > 0 ? 1 : 0;
-      }
-    }
-
-    // 만족도는 해당 연도에 종료된 과정들만 고려
-    if (isCurrentYearEnd && course.만족도 && course.만족도 > 0) {
-      internal._satSum += (course.만족도 ?? 0) * studentShare;
-      internal._satWeight += studentShare > 0 ? 1 : 0;
-    }
-  });
-
-  // 최종 평균 계산 및 연도별 인원 표시
-  map.forEach(agg => {
-    const internal = agg as any;
-    agg.평균만족도 = internal._satWeight > 0 ? internal._satSum / internal._satWeight : 0;
-    agg.평균수료율 = internal._completionEnrollmentSum > 0 ? (internal._completionSum / internal._completionEnrollmentSum) * 100 : 0;
-    agg.평균취업율 = agg.총수료인원 > 0 ? (agg.총취업인원 / agg.총수료인원) * 100 : 0;
-    
-    // 연도별 인원 표시 (x(y) 형식)
-    if (year !== undefined) {
-      const currentYearStudents = agg.현재년도수강신청인원 ?? 0;
-      const prevYearStudents = agg.과거년도수강신청인원 ?? 0;
-      agg.studentsStr = formatNumber(currentYearStudents);
-      if (prevYearStudents > 0) {
-        agg.studentsStr += `(${formatNumber(prevYearStudents)})`;
-      }
-      
-      const currentYearGraduates = agg.현재년도수료인원 ?? 0;
-      const prevYearGraduates = agg.과거년도수료인원 ?? 0;
-      agg.graduatesStr = formatNumber(currentYearGraduates);
-      if (prevYearGraduates > 0) {
-        agg.graduatesStr += `(${formatNumber(prevYearGraduates)})`;
-      }
-      
-      // 개강 회차수도 연도별로 표시
-      const currentYearCount = agg.개강회차수 ?? 0;
-      const prevYearCount = agg.과거년도개강회차수 ?? 0;
-      agg.openCountStr = `${currentYearCount}`;
-      if (prevYearCount > 0) {
-        agg.openCountStr += `(${prevYearCount})`;
-      }
-    } else {
-      agg.studentsStr = formatNumber(agg.총수강신청인원);
-      agg.graduatesStr = formatNumber(agg.총수료인원);
-      agg.openCountStr = `${agg.원천과정수}`;
-    }
-  });
-
-  return Array.from(map.values()).sort((a, b) => b.총누적매출 - a.총누적매출);
-};
-
-// 그룹화된 기관명에 속하는 개별 기관들을 반환하는 함수
-export const aggregateCoursesByCourseNameForNcs = (
-  courses: CourseData[],
-  ncsName: string,
+  leadingCompany: string,
   year?: number
 ): AggregatedCourseData[] => {
-  // NCS명과 연도로 필터링
-  const filtered = courses.filter(course => 
-    (course.NCS명 || '기타') === ncsName && 
-    (year ? new Date(course.과정시작일).getFullYear() === year : true)
-  );
+  const filtered = courses.filter((c) => {
+    if (String(c.선도기업 ?? '').trim() !== String(leadingCompany ?? '').trim()) return false;
+    if (year === undefined) return true;
+
+    const start = new Date(c.과정시작일);
+    const end = new Date(c.과정종료일);
+    return start.getFullYear() === year || (start.getFullYear() < year && end.getFullYear() >= year);
+  });
 
   const map = new Map<string, AggregatedCourseData>();
 
-  filtered.forEach(course => {
+  filtered.forEach((course) => {
     const courseKey = course.과정명;
-
     if (!map.has(courseKey)) {
       map.set(courseKey, {
         과정명: course.과정명,
@@ -1398,29 +1164,24 @@ export const aggregateCoursesByCourseNameForNcs = (
         총훈련생수: 0,
         평균만족도: 0,
         평균수료율: 0,
-        평균취업율: 0
+        평균취업율: 0,
       });
     }
 
     const agg = map.get(courseKey)!;
-
-    // 매출 집계
-    const courseRevenue = computeCourseRevenue(course);
+    const courseRevenue = computeCourseRevenue(course, year);
     agg.총누적매출 += courseRevenue;
 
-    // 학생수, 수료인원, 취업인원, 과정수 등 집계
     agg.총수강신청인원 += course['수강신청 인원'] ?? 0;
     agg.총수료인원 += course['수료인원'] ?? 0;
     agg.총취업인원 += getPreferredEmploymentCount(course);
     agg.원천과정수 += 1;
     agg.총훈련생수 += course['수강신청 인원'] ?? 0;
 
-    // 훈련 유형
     if (course.훈련유형 && !agg.훈련유형들.includes(course.훈련유형)) {
       agg.훈련유형들.push(course.훈련유형);
     }
 
-    // 날짜 업데이트
     if (new Date(course.과정시작일) < new Date(agg.최소과정시작일)) {
       agg.최소과정시작일 = course.과정시작일;
     }
@@ -1428,12 +1189,10 @@ export const aggregateCoursesByCourseNameForNcs = (
       agg.최대과정종료일 = course.과정종료일;
     }
 
-    // 평균값 계산을 위한 임시 데이터 저장
     const internal = agg as any;
     if (internal._completionEnrollmentSum === undefined) {
       internal._completionEnrollmentSum = 0;
       internal._completionSum = 0;
-      internal._completionWeight = 0;
       internal._satSum = 0;
       internal._satWeight = 0;
     }
@@ -1441,22 +1200,21 @@ export const aggregateCoursesByCourseNameForNcs = (
     if ((course['수료인원'] ?? 0) > 0 && (course['수강신청 인원'] ?? 0) > 0) {
       internal._completionEnrollmentSum += course['수강신청 인원'] ?? 0;
       internal._completionSum += course['수료인원'] ?? 0;
-      internal._completionWeight += 1;
     }
 
     if ((course['수료인원'] ?? 0) > 0 && course.만족도 && course.만족도 > 0) {
-      internal._satSum += course.만족도;
-      internal._satWeight += 1;
+      internal._satSum += course.만족도 * (course['수료인원'] ?? 0);
+      internal._satWeight += course['수료인원'] ?? 0;
     }
   });
 
-  // 최종 평균 계산
-  map.forEach(agg => {
+  map.forEach((agg) => {
     const internal = agg as any;
     agg.평균만족도 = internal._satWeight > 0 ? internal._satSum / internal._satWeight : 0;
-    agg.평균수료율 = internal._completionEnrollmentSum > 0 
-      ? (internal._completionSum / internal._completionEnrollmentSum) * 100 
-      : 0;
+    agg.평균수료율 =
+      internal._completionEnrollmentSum > 0
+        ? (internal._completionSum / internal._completionEnrollmentSum) * 100
+        : 0;
     agg.평균취업율 = agg.총수료인원 > 0 ? (agg.총취업인원 / agg.총수료인원) * 100 : 0;
   });
 

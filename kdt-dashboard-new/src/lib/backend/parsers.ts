@@ -125,13 +125,46 @@ export function parseDate(value: any): Date {
   }
 
   if (value === null || value === undefined) {
-    return new Date();
+    return new Date(NaN);
   }
 
   if (typeof value === 'string') {
     const cleaned = value.trim();
     if (cleaned === '') {
-      return new Date();
+      return new Date(NaN);
+    }
+
+    // 강력 전처리: 구분자/공백/후행 문자 혼합을 모두 정규화하여 YYYY-MM-DD로 흡수
+    // 예: "2026. 1. 5", "2026-1-5", "2026/01/05", "2026.1.5." 등
+    const normalized = cleaned
+      .replace(/[年月]/g, '-')
+      .replace(/[日]/g, '')
+      .replace(/\s+/g, '')
+      .replace(/[./]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/[^0-9-]/g, '');
+
+    const ymdMatch = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (ymdMatch) {
+      const year = parseInt(ymdMatch[1], 10);
+      const month = parseInt(ymdMatch[2], 10) - 1;
+      const day = parseInt(ymdMatch[3], 10);
+      const date = new Date(year, month, day);
+      if (!isNaN(date.getTime())) {
+        return date;
+      }
+    }
+
+    // 최후 수단: 숫자 3개(YYYY, M, D)만 뽑아 Date로 구성
+    const loose = cleaned.match(/(\d{4})\D*(\d{1,2})\D*(\d{1,2})/);
+    if (loose) {
+      const year = parseInt(loose[1], 10);
+      const month = parseInt(loose[2], 10) - 1;
+      const day = parseInt(loose[3], 10);
+      const date = new Date(year, month, day);
+      if (!isNaN(date.getTime())) {
+        return date;
+      }
     }
 
     // 다양한 날짜 형식 시도
@@ -139,6 +172,7 @@ export function parseDate(value: any): Date {
       /^(\d{4})-(\d{2})-(\d{2})$/, // YYYY-MM-DD
       /^(\d{4})\/(\d{2})\/(\d{2})$/, // YYYY/MM/DD
       /^(\d{4})\.(\d{2})\.(\d{2})$/, // YYYY.MM.DD
+      /^(\d{4})\s*[.\/-]\s*(\d{1,2})\s*[.\/-]\s*(\d{1,2})$/, // YYYY. M. D (spaces, 1-2 digits)
     ];
 
     for (const format of formats) {
@@ -159,9 +193,58 @@ export function parseDate(value: any): Date {
     if (!isNaN(parsed.getTime())) {
       return parsed;
     }
+
+    if (process.env.DEBUG_DATE_PARSE === '1') {
+      console.warn('[parseDate] failed to parse date:', value);
+    }
   }
 
-  return new Date();
+  if (process.env.DEBUG_DATE_PARSE === '1') {
+    console.warn('[parseDate] unsupported date value:', value);
+  }
+
+  return new Date(NaN);
+}
+
+export type ExtractedYearMonth = {
+  year: number | null;
+  month: number | null;
+};
+
+export function extractYearMonth(value: any): ExtractedYearMonth {
+  if (value === null || value === undefined) {
+    return { year: null, month: null };
+  }
+
+  const str = String(value).trim();
+  if (str === '') {
+    return { year: null, month: null };
+  }
+
+  const d = parseDate(str);
+  if (Number.isFinite(d.getTime())) {
+    return { year: d.getFullYear(), month: d.getMonth() + 1 };
+  }
+
+  const ym = str.match(/(\d{4})\D*(\d{1,2})/);
+  if (ym) {
+    const year = parseInt(ym[1], 10);
+    const month = parseInt(ym[2], 10);
+    if (Number.isFinite(year) && year > 1900) {
+      const safeMonth = month >= 1 && month <= 12 ? month : null;
+      return { year, month: safeMonth };
+    }
+  }
+
+  const y = str.match(/(\d{4})/);
+  if (y) {
+    const year = parseInt(y[1], 10);
+    if (Number.isFinite(year) && year > 1900) {
+      return { year, month: null };
+    }
+  }
+
+  return { year: null, month: null };
 }
 
 /**
