@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
 import { formatCurrency, formatNumber } from "@/utils/formatters";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { useGlobalFilters } from "@/contexts/FilterContext";
 
 interface CourseStats {
   totalRevenue: number;
@@ -104,7 +105,11 @@ function CourseAnalysisContent() {
   const debouncedSearchQuery = useDebounce(institutionSearch, 300);
   // 매출 기준 상태 추가
   const [revenueMode, setRevenueMode] = useState<RevenueMode>('current');
-  const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
+  const {
+    filters: { selectedYear: globalSelectedYear },
+    setSelectedYear: setGlobalSelectedYear,
+  } = useGlobalFilters();
+  const selectedYear: number | 'all' = globalSelectedYear === null ? 'all' : globalSelectedYear;
   const [availableYears, setAvailableYears] = useState<number[]>([]);
   // 표시할 과정 수 제한
   const [displayLimit, setDisplayLimit] = useState(30);
@@ -453,7 +458,7 @@ const CourseCard = React.memo(({
           <label className="block text-sm font-medium text-gray-700 mb-2">연도 선택</label>
           <Select
             value={selectedYear.toString()}
-            onValueChange={(v) => setSelectedYear(v === 'all' ? 'all' : parseInt(v))}
+            onValueChange={(v) => setGlobalSelectedYear(v === 'all' ? null : parseInt(v, 10))}
           >
             <SelectTrigger className="w-[200px] bg-white">
               <SelectValue placeholder="연도 선택" />

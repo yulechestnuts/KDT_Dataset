@@ -95,10 +95,11 @@ export default function InstitutionAnalysisClient() {
     let employedSum = 0;
     let revenueSum = 0;
 
+    let targetPopSum = 0;
+    let integratedEmployedSum = 0;
+
     let completionDenom = 0;
     let completionNumer = 0;
-    let employmentDenom = 0;
-    let employmentNumer = 0;
 
     let satWeight = 0;
     let satSum = 0;
@@ -126,25 +127,22 @@ export default function InstitutionAnalysisClient() {
       const enrolled = Number(c?.['수강신청 인원'] ?? 0) || 0;
       const capacity = Number(c?.정원 ?? 0) || 0;
       const completed = Number(c?.수료인원 ?? 0) || 0;
-      const employed =
-        Number(c?.['취업인원 (6개월)'] ?? 0) ||
-        Number(c?.['취업인원 (3개월)'] ?? 0) ||
-        Number(c?.취업인원 ?? 0) ||
-        0;
+      const targetPop = Number(c?.취업대상인원 ?? completed) || 0;
+      const integratedEmployed = Number(c?.통합취업인원 ?? 0) || 0;
       const satisfaction = Number(c?.만족도 ?? 0) || 0;
       const revenue = Number(c?.총누적매출 ?? c?.누적매출 ?? 0) || 0;
 
       enrolledSum += enrolled;
       capacitySum += capacity;
       completedSum += completed;
-      employedSum += employed;
+      employedSum += integratedEmployed;
       revenueSum += revenue;
+      targetPopSum += targetPop;
+      integratedEmployedSum += integratedEmployed;
 
       if (enrolled > 0 && completed > 0) {
         completionDenom += enrolled;
         completionNumer += completed;
-        employmentDenom += completed;
-        employmentNumer += employed;
       }
 
       if (satisfaction > 0 && completed > 0) {
@@ -165,7 +163,7 @@ export default function InstitutionAnalysisClient() {
       revenueSum,
       recruitmentStr: renderRateWithCount(enrolledSum, capacitySum, 1),
       completionStr: renderRateWithCount(completionNumer, completionDenom, 1),
-      employmentStr: renderRateWithCount(employmentNumer, employmentDenom, 1),
+      employmentStr: renderRateWithCount(integratedEmployedSum, targetPopSum, 1),
       avgSatisfaction,
     };
   }, [selectedInstitutionCourses, selectedInstitutionName]);
@@ -327,7 +325,7 @@ export default function InstitutionAnalysisClient() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">훈련생 수</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">수료인원</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">수료율</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">취업율</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">취업대상자 대비 취업률</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">평균 만족도</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">상세</th>
               </tr>
@@ -430,7 +428,7 @@ export default function InstitutionAnalysisClient() {
                 <div className="text-lg font-semibold text-foreground">{selectedInstitutionKpis.completionStr}</div>
               </div>
               <div className="bg-muted p-4 rounded-lg border border-border">
-                <div className="text-sm text-muted-foreground">평균 취업률</div>
+                <div className="text-sm text-muted-foreground">취업대상자 대비 취업률</div>
                 <div className="text-lg font-semibold text-foreground">{selectedInstitutionKpis.employmentStr}</div>
               </div>
               <div className="bg-muted p-4 rounded-lg border border-border">
@@ -453,7 +451,7 @@ export default function InstitutionAnalysisClient() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[8%]">훈련생</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[8%]">수료인원</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[12%]">수료율</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[12%]">취업률</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[12%]">취업대상자 대비 취업률</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[10%]">매출액</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[8%]">만족도</th>
                   </tr>
@@ -465,17 +463,14 @@ export default function InstitutionAnalysisClient() {
                         const enrolled = Number(course?.['수강신청 인원'] ?? 0) || 0;
                         const capacity = Number(course?.정원 ?? 0) || 0;
                         const completed = Number(course?.수료인원 ?? 0) || 0;
-                        const employed =
-                          Number(course?.['취업인원 (6개월)'] ?? 0) ||
-                          Number(course?.['취업인원 (3개월)'] ?? 0) ||
-                          Number(course?.취업인원 ?? 0) ||
-                          0;
+                        const targetPop = Number(course?.취업대상인원 ?? completed) || 0;
+                        const integratedEmployed = Number(course?.통합취업인원 ?? 0) || 0;
                         const satisfaction = Number(course?.만족도 ?? 0) || 0;
                         const revenue = Number(course?.총누적매출 ?? course?.누적매출 ?? 0) || 0;
 
                         const recruitStr = renderRateWithCount(enrolled, capacity, 1);
                         const completionStr = renderRateWithCount(completed, enrolled, 1);
-                        const employmentStr = renderRateWithCount(employed, completed, 1);
+                        const employmentStr = renderRateWithCount(integratedEmployed, targetPop, 1);
 
                         return (
                           <>

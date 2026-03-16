@@ -1,0 +1,39 @@
+name: Supabase Keep-Alive
+
+on:
+  schedule:
+    # 매 2일마다 실행 (UTC 09:00 = KST 18:00)
+    - cron: '0 9 */2 * *'
+  workflow_dispatch: # 수동 실행도 가능
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Keep Supabase alive
+        run: |
+          echo "🔄 Supabase keep-alive ping 시작..."
+          curl -X POST "https://your-app-url.vercel.app/api/health" \
+            -H "Content-Type: application/json" \
+            -d '{"action": "keep-alive"}' \
+            --max-time 30 \
+            --retry 3 \
+            --retry-delay 5
+          echo "✅ Supabase keep-alive 완료"
+        env:
+          # 필요한 환경변수가 있다면 여기에 추가
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}

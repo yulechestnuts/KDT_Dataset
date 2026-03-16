@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Toolbar } from "@/components/common/toolbar";
+import Providers from "./providers";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -22,8 +23,10 @@ export default function RootLayout({
         <script src="https://unpkg.com/@pdftron/pdfjs-express/dist/pdfjs-express.min.js"></script>
       </head>
       <body className={inter.className}>
-        <Toolbar />
-        <div className="pt-16">{children}</div>
+        <Providers>
+          <Toolbar />
+          <div className="pt-16">{children}</div>
+        </Providers>
       </body>
     </html>
   );

@@ -44,18 +44,18 @@ const CourseDetail = () => {
     if (!allCourses.length) return null;
 
     const validCourses = allCourses.filter(course => 
-      course.취업인원 > 0 && course.수료인원 > 0
+      (course.취업대상인원 ?? course.수료인원) > 0
     );
 
     if (validCourses.length === 0) return null;
 
-    const totalEmployment = validCourses.reduce((sum, course) => sum + course.취업인원, 0);
-    const totalCompletion = validCourses.reduce((sum, course) => sum + course.수료인원, 0);
-    const avgEmploymentRate = totalCompletion > 0 ? (totalEmployment / totalCompletion) * 100 : 0;
+    const totalIntegratedEmployed = validCourses.reduce((sum, course) => sum + (course.통합취업인원 || 0), 0);
+    const totalTargetPop = validCourses.reduce((sum, course) => sum + (course.취업대상인원 ?? course.수료인원), 0);
+    const avgEmploymentRate = totalTargetPop > 0 ? (totalIntegratedEmployed / totalTargetPop) * 100 : 0;
 
     return {
-      totalEmployment,
-      totalCompletion,
+      totalEmployment: totalIntegratedEmployed,
+      totalCompletion: totalTargetPop,
       avgEmploymentRate,
       validCoursesCount: validCourses.length
     };
@@ -99,11 +99,11 @@ const CourseDetail = () => {
               <h2 className="text-xl font-semibold mb-4">현재 과정 취업 현황</h2>
               <div className="grid grid-cols-2 gap-4">
                 <div className="text-center p-4 bg-blue-50 rounded-lg">
-                  <p className="text-2xl font-bold text-blue-600">{courseData.취업인원}명</p>
+                  <p className="text-2xl font-bold text-blue-600">{courseData.통합취업인원 ?? courseData.취업인원}명</p>
                   <p className="text-sm text-gray-600">취업인원</p>
                 </div>
                 <div className="text-center p-4 bg-green-50 rounded-lg">
-                  <p className="text-2xl font-bold text-green-600">{courseData.취업률.toFixed(1)}%</p>
+                  <p className="text-2xl font-bold text-green-600">{(courseData.취업대상인원 && courseData.취업대상인원 > 0) ? (courseData.통합취업인원 / courseData.취업대상인원 * 100).toFixed(1) : courseData.취업률.toFixed(1)}%</p>
                   <p className="text-sm text-gray-600">취업률</p>
                 </div>
                 <div className="text-center p-4 bg-purple-50 rounded-lg">
@@ -117,7 +117,7 @@ const CourseDetail = () => {
               </div>
             </div>
 
-            {/* 전체 평균 취업률 */}
+            {/* 전체 취업대상자 대비 취업률 */}
             {employmentStats && (
               <div className="bg-white rounded-lg shadow-lg p-6">
                 <h2 className="text-xl font-semibold mb-4">전체 평균 취업 현황</h2>
@@ -128,11 +128,11 @@ const CourseDetail = () => {
                   </div>
                   <div className="text-center p-4 bg-teal-50 rounded-lg">
                     <p className="text-2xl font-bold text-teal-600">{employmentStats.avgEmploymentRate.toFixed(1)}%</p>
-                    <p className="text-sm text-gray-600">평균 취업률</p>
+                    <p className="text-sm text-gray-600">취업대상자 대비 취업률</p>
                   </div>
                   <div className="text-center p-4 bg-pink-50 rounded-lg">
                     <p className="text-2xl font-bold text-pink-600">{employmentStats.totalCompletion.toLocaleString()}명</p>
-                    <p className="text-sm text-gray-600">총 수료인원</p>
+                    <p className="text-sm text-gray-600">총 취업대상 인원</p>
                   </div>
                   <div className="text-center p-4 bg-yellow-50 rounded-lg">
                     <p className="text-2xl font-bold text-yellow-600">{employmentStats.validCoursesCount}개</p>
@@ -152,11 +152,11 @@ const CourseDetail = () => {
                 <h3 className="text-lg font-semibold text-blue-800 mb-4">전체 취업 현황</h3>
                 <div className="space-y-3">
                   <div>
-                    <p className="text-3xl font-bold text-blue-600">{courseData.취업인원}명</p>
+                    <p className="text-3xl font-bold text-blue-600">{courseData.통합취업인원 ?? courseData.취업인원}명</p>
                     <p className="text-sm text-gray-600">취업인원</p>
                   </div>
                   <div>
-                    <p className="text-2xl font-bold text-blue-700">{courseData.취업률.toFixed(1)}%</p>
+                    <p className="text-2xl font-bold text-blue-700">{(courseData.취업대상인원 && courseData.취업대상인원 > 0) ? (courseData.통합취업인원 / courseData.취업대상인원 * 100).toFixed(1) : courseData.취업률.toFixed(1)}%</p>
                     <p className="text-sm text-gray-600">취업률</p>
                   </div>
                 </div>

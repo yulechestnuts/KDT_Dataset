@@ -45,15 +45,15 @@ export async function GET(request: NextRequest) {
 
       if (year === undefined) return true;
 
-      const start = parseDate(c.과정시작일);
+      // 요구사항: 연도 필터는 훈련종료일(TR_END_DT) 기준
       const end = parseDate(c.과정종료일);
-      if (Number.isFinite(start.getTime()) && Number.isFinite(end.getTime())) {
+      if (Number.isFinite(end.getTime())) {
         const yearStart = new Date(year, 0, 1);
-        const yearEnd = new Date(year, 11, 31);
-        return start <= yearEnd && end >= yearStart;
+        const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999);
+        return end >= yearStart && end <= yearEnd;
       }
 
-      const ym = extractYearMonth(c.과정시작일);
+      const ym = extractYearMonth(c.과정종료일);
       return ym.year === year;
     });
 
@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
       let maxYear = Number.NEGATIVE_INFINITY;
 
       for (const c of adjustedCourses as any[]) {
-        const ym = extractYearMonth(c.과정시작일);
+        const ym = extractYearMonth(c.과정종료일);
         if (ym.year !== null) {
           years.add(ym.year);
           minYear = Math.min(minYear, ym.year);

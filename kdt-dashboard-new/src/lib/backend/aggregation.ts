@@ -19,6 +19,8 @@ import {
   getPreferredEmploymentCount,
   formatXyDisplay,
   formatRateDetail,
+  calculateEmploymentRate,
+  getSafeEmploymentData,
 } from './performance-engine';
 import { extractYearMonth, parseDate } from './parsers';
 
@@ -245,6 +247,8 @@ export function calculateInstitutionStats(
 
     let totalEmployed = 0;
 
+    const employmentCourses: ProcessedCourseData[] = [];
+
     let totalValidStudentsForCompletion = 0;
     let totalValidGraduatesForCompletion = 0;
     let totalWeightedSatisfaction = 0;
@@ -279,6 +283,7 @@ export function calculateInstitutionStats(
       }
 
       totalEmployed += employed;
+      employmentCourses.push(course);
 
       if (month !== undefined || isCumulativeAllYears) {
         currentYearCoursesCount += 1;
@@ -371,10 +376,6 @@ export function calculateInstitutionStats(
       totalValidStudentsForCompletion > 0
         ? (totalValidGraduatesForCompletion / totalValidStudentsForCompletion) * 100
         : 0.0;
-    const employmentRate =
-      totalValidGraduatesForCompletion > 0
-        ? (totalEmployed / totalValidGraduatesForCompletion) * 100
-        : 0.0;
 
     const avgSatisfaction =
       totalWeightSatisfaction > 0 ? totalWeightedSatisfaction / totalWeightSatisfaction : 0.0;
@@ -386,15 +387,27 @@ export function calculateInstitutionStats(
     const recruitmentRate =
       totalCapacity > 0 ? ((currentYearStudents + prevYearStudents) / totalCapacity) * 100 : 0.0;
 
+    // HRD-Net 통합 취업률 로직 적용 (가중 평균)
+    let totalTargetPop = 0;
+    let totalIntegratedEmployed = 0;
+
+    courses.forEach((c) => {
+      const empData = getSafeEmploymentData(c);
+      totalTargetPop += empData.targetPop;
+      totalIntegratedEmployed += empData.employed;
+    });
+
+    const employmentRate = totalTargetPop > 0 ? (totalIntegratedEmployed / totalTargetPop) * 100 : 0.0;
+
     const safeTotalRevenue = toFiniteNumber(Math.round(totalRevenue * 100) / 100, 0);
-    const safeTotalEmployed = Math.round(toFiniteNumber(totalEmployed, 0));
+    const safeTotalEmployed = Math.round(toFiniteNumber(totalIntegratedEmployed, 0));
     const safeCompletionRate = toFiniteNumber(Math.round(completionRate * 10) / 10, 0);
     const safeEmploymentRate = toFiniteNumber(Math.round(employmentRate * 10) / 10, 0);
     const safeAvgSatisfaction = toFiniteNumber(avgSatisfaction, 0);
     const safeRecruitmentRate = toFiniteNumber(recruitmentRate, 0);
     const safeValidGraduates = Math.round(toFiniteNumber(totalValidGraduatesForCompletion, 0));
     const safeValidStudents = Math.round(toFiniteNumber(totalValidStudentsForCompletion, 0));
-    const safeCompletedForEmployment = Math.round(toFiniteNumber(totalValidGraduatesForCompletion, 0));
+    const safeCompletedForEmployment = Math.round(toFiniteNumber(totalTargetPop, 0));
     const safeCapacity = Math.round(toFiniteNumber(totalCapacity, 0));
 
     result.push({
@@ -424,6 +437,8 @@ export function calculateInstitutionStats(
       total_employed: safeTotalEmployed,
       completion_rate: safeCompletionRate,
       employment_rate: safeEmploymentRate,
+      total_target_pop: totalTargetPop,
+      total_integrated_employed: totalIntegratedEmployed,
       avg_satisfaction: safeAvgSatisfaction,
       completion_rate_detail: formatRateDetail(
         safeValidGraduates,
@@ -466,10 +481,7 @@ export function calculateYearlyStats(
 
   const totalStudents = yearData.reduce((sum, course) => sum + (course['수강신청 인원'] || 0), 0);
   const completedStudents = yearData.reduce((sum, course) => sum + (course.수료인원 || 0), 0);
-  const totalEmployed = yearData.reduce(
-    (sum, course) => sum + getPreferredEmploymentCount(course),
-    0
-  );
+  const totalEmployed = yearData.reduce((sum, course) => sum + getSafeEmploymentData(course).employed, 0);
   const totalMaxRevenue = yearData.reduce(
     (sum, course) => sum + toFiniteNumber(course['매출 최대'] || 0, 0),
     0
@@ -480,8 +492,8 @@ export function calculateYearlyStats(
   );
 
   const completionRate = calculateCompletionRate(courses, year);
-  const employmentRate = calculateEmploymentRate(courses);
-  const avgSatisfaction = calculateWeightedSatisfaction(courses);
+  const employmentRate = calculateEmploymentRate(yearData);
+  const avgSatisfaction = calculateWeightedSatisfaction(yearData);
 
   const institutions = new Set(yearData.map((c) => c.훈련기관));
 
@@ -495,6 +507,8 @@ export function calculateYearlyStats(
     total_employed: totalEmployed,
     overall_completion_rate: completionRate,
     overall_employment_rate: employmentRate,
+    total_target_pop: yearData.reduce((sum, c) => sum + getSafeEmploymentData(c).targetPop, 0),
+    total_integrated_employed: yearData.reduce((sum, c) => sum + getSafeEmploymentData(c).employed, 0),
     avg_satisfaction: avgSatisfaction,
     course_count: yearData.length,
     institution_count: institutions.size,

@@ -1,33 +1,51 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Papa from 'papaparse';
 import { CourseData } from '@/lib/data-utils';
 import { loadDataFromGithub, preprocessData } from '@/utils/data-utils';
+import { useGlobalFilters } from '@/contexts/FilterContext';
 
 const EmploymentAnalysis = () => {
+
   const [courseData, setCourseData] = useState<CourseData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [periodOption, setPeriodOption] = useState<'3개월' | '6개월'>('3개월');
-  const [filterZero, setFilterZero] = useState(false);
-  const [selectedYear, setSelectedYear] = useState<number | null>(null);
-  const [yearType, setYearType] = useState<'started' | 'ended'>('started');
-  const [sortKey, setSortKey] = useState<'totalEmployment' | 'avgRate' | 'totalCompletion' | 'courseCount'>('totalEmployment');
-  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
-  const [ncsSortKey, setNcsSortKey] = useState<'totalEmployment' | 'avgRate' | 'totalCompletion' | 'courseCount'>('totalEmployment');
-  const [ncsSortOrder, setNcsSortOrder] = useState<'desc' | 'asc'>('desc');
+  const {
+    filters: { selectedYear, yearType, periodOption, filterZero },
+    setSelectedYear,
+    setYearType,
+    setPeriodOption,
+    setFilterZero,
+  } = useGlobalFilters();
+  const [sortKey, setSortKey] = useState<'totalEmployment' | 'totalTargetPop' | 'avgRate' | 'totalCompletion' | 'courseCount'>('totalEmployment');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [ncsSortKey, setNcsSortKey] = useState<'totalEmployment' | 'totalTargetPop' | 'avgRate' | 'totalCompletion' | 'courseCount'>('totalEmployment');
+  const [ncsSortOrder, setNcsSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  // 연도 목록 생성 (종료일 우선, 없으면 시작일)
+  const yearList = useMemo(() => {
+    const years = new Set<number>();
+    for (const course of courseData) {
+      const endYear = new Date(course.과정종료일).getFullYear();
+      const startYear = new Date(course.과정시작일).getFullYear();
+      const y = Number.isFinite(endYear) ? endYear : startYear;
+      if (Number.isFinite(y)) years.add(y);
+    }
+    return Array.from(years).sort((a, b) => b - a);
+  }, [courseData]);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const data = await loadDataFromGithub();
-        const parsedData = Papa.parse(data, { header: true });
-        const processedData = preprocessData(parsedData.data);
+        setLoading(true);
+        const rawData = await loadDataFromGithub();
+        const processedData = preprocessData(rawData);
         setCourseData(processedData);
+        setError(null);
       } catch (err) {
         setError('데이터를 불러오는 중 오류가 발생했습니다.');
-        console.error('Error loading data:', err);
+        console.error('Data loading error:', err);
       } finally {
         setLoading(false);
       }
@@ -36,68 +54,102 @@ const EmploymentAnalysis = () => {
     fetchData();
   }, []);
 
-  // 연도 목록 추출
-  const yearList = Array.from(new Set(courseData.map(c => c.훈련연도))).filter(Boolean).sort((a, b) => b - a);
+  // ...
 
-  // 연도 및 기준별 필터링
-  const yearFilteredData = selectedYear
-    ? courseData.filter(course => {
-        if (yearType === 'started') {
-          return course.훈련연도 === selectedYear;
-        } else {
-          // 종료일 기준: 종료일의 연도 추출
-          const endYear = course.과정종료일 ? new Date(course.과정종료일).getFullYear() : null;
-          return endYear === selectedYear;
-        }
-      })
-    : courseData;
-
-  // 기준별 컬럼명 매핑
-  const getEmploymentColumns = () => {
-    switch (periodOption) {
-      case '3개월':
-        return {
-          empCol: '취업인원 (3개월)',
-          rateCol: '취업률 (3개월)'
-        };
-      case '6개월':
-        return {
-          empCol: '취업인원 (6개월)',
-          rateCol: '취업률 (6개월)'
-        };
-      default:
-        return {
-          empCol: '취업인원 (3개월)',
-          rateCol: '취업률 (3개월)'
-        };
-    }
+  const getKstNow = () => {
+    const now = new Date();
+    return new Date(now.getTime() + now.getTimezoneOffset() * 60_000 + 9 * 60 * 60_000);
   };
 
-  const { empCol, rateCol } = getEmploymentColumns();
+  const parseYmdToKstDate = (ymd: string) => {
+    const m = /^\s*(\d{4})-(\d{2})-(\d{2})\s*$/.exec(String(ymd || '').trim());
+    if (!m) return null;
+    const y = Number(m[1]);
+    const mo = Number(m[2]);
+    const d = Number(m[3]);
+    if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) return null;
+    // KST 기준 자정
+    return new Date(Date.UTC(y, mo - 1, d, 0, 0, 0) + 9 * 60 * 60_000);
+  };
 
-  // 필터링된 데이터 (0제외 등)
-  const filteredData = filterZero 
-    ? yearFilteredData.filter(course => course[empCol] > 0 && course[rateCol] > 0)
-    : yearFilteredData;
+  const isEmploymentMatured = (course: CourseData, monthsAfterEnd: 3 | 6) => {
+    const end = parseYmdToKstDate(course.과정종료일);
+    if (!end) return false;
+    const maturedAt = new Date(end.getTime());
+    maturedAt.setMonth(maturedAt.getMonth() + monthsAfterEnd);
+    return getKstNow().getTime() >= maturedAt.getTime();
+  };
 
-  // 상단 통계: 수강인원/수료인원/취업인원/취업률만 표시
-  const totalApplicants = filteredData.reduce((sum, course) => sum + (course['수강신청 인원'] || 0), 0);
-  const totalCompletion = filteredData.reduce((sum, course) => sum + (course['수료인원'] || 0), 0);
-  const totalEmployment = filteredData.reduce((sum, course) => sum + (course[empCol] || 0), 0);
-  const avgEmploymentRate = totalCompletion > 0 ? (totalEmployment / totalCompletion * 100) : 0;
+  // 필터링된 데이터 (연도/기준 + 0 제외)
+  const filteredData = useMemo(() => {
+    const base = courseData.filter((course) => {
+      if (selectedYear === null) return true;
+      const dateStr = yearType === 'ended' ? course.과정종료일 : course.과정시작일;
+      if (!dateStr) return false;
+      const y = new Date(dateStr).getFullYear();
+      return Number.isFinite(y) && y === selectedYear;
+    });
+
+    if (!filterZero) return base;
+    return base.filter((course) => (course.취업대상인원 || 0) > 0 && (course.통합취업인원 || 0) > 0);
+  }, [courseData, selectedYear, yearType, filterZero]);
+
+  // 상단 통계/테이블 집계는 반드시 동일한 배열(summaryCourses) 기준
+  const maturityMonths = periodOption === '6개월' ? 6 : 3;
+
+  const getRateForPeriod = (course: CourseData) => {
+    if (periodOption === '6개월') {
+      return Number(course['취업률 (6개월)'] ?? 0) || 0;
+    }
+    return Number(course['취업률 (3개월)'] ?? 0) || 0;
+  };
+
+  const summaryCourses = useMemo(() => {
+    return filteredData.filter((course) => {
+      const targetPop = course.취업대상인원 || 0;
+      const employed = course.통합취업인원 || 0;
+      if (targetPop <= 0) return false;
+      if (!isEmploymentMatured(course, maturityMonths)) return false;
+      if (filterZero) {
+        if (employed <= 0) return false;
+        const rate = getRateForPeriod(course);
+        if (rate <= 0) return false;
+      }
+      return true;
+    });
+  }, [filteredData, maturityMonths, filterZero, periodOption]);
+
+  const totalCompletedStudents = useMemo(
+    () => summaryCourses.reduce((sum, course) => sum + (course['수료인원'] || 0), 0),
+    [summaryCourses]
+  );
+  const totalTargetPop = useMemo(
+    () => summaryCourses.reduce((sum, course) => sum + (course.취업대상인원 || 0), 0),
+    [summaryCourses]
+  );
+  const totalEmployment = useMemo(
+    () => summaryCourses.reduce((sum, course) => sum + (course.통합취업인원 || 0), 0),
+    [summaryCourses]
+  );
+  const avgEmploymentRate = useMemo(
+    () => (totalTargetPop > 0 ? (totalEmployment / totalTargetPop) * 100 : 0),
+    [totalEmployment, totalTargetPop]
+  );
 
   // 기본 통계 계산
   const calculateBasicStats = () => {
-    const totalEmployment = filteredData.reduce((sum, course) => sum + course[empCol], 0);
-    const avgEmploymentRate = filteredData.reduce((sum, course) => sum + course[rateCol], 0) / filteredData.length;
-    const totalCompletion = filteredData.reduce((sum, course) => sum + course.수료인원, 0);
-    const employmentCompletionRate = totalCompletion > 0 ? (totalEmployment / totalCompletion * 100) : 0;
-    const coursesWithEmployment = filteredData.filter(course => course[empCol] > 0).length;
+    const eligible = summaryCourses;
+    const roundedAvgEmploymentRate = totalTargetPop > 0 ? (totalEmployment / totalTargetPop * 10) / 10 : 0;
+    const totalCompletion = totalTargetPop;
+    const employmentCompletionRate = totalTargetPop > 0 ? (totalEmployment / totalTargetPop * 100) : 0;
+
+    const coursesWithEmployment = eligible.length;
     const employmentCourseRate = filteredData.length > 0 ? (coursesWithEmployment / filteredData.length * 100) : 0;
 
     return {
       totalEmployment,
-      avgEmploymentRate,
+      avgEmploymentRate: roundedAvgEmploymentRate,
+      totalCompletion,
       employmentCompletionRate,
       employmentCourseRate,
       coursesWithEmployment,
@@ -109,46 +161,54 @@ const EmploymentAnalysis = () => {
 
   // 훈련기관별 표는 선도기업/파트너기관/훈련기관 기준으로 집계
   const calculateInstitutionStats = () => {
+
     const institutionMap = new Map<string, {
       totalEmployment: number;
-      totalCompletion: number;
+      totalTargetPop: number;
       avgRate: number;
       courseCount: number;
+      totalCompletion: number;
     }>();
 
-    yearFilteredData.forEach(course => {
+    summaryCourses.forEach(course => {
+
       let instName = course.훈련기관;
       if (
         course.선도기업 && course.선도기업.trim() !== '' &&
-        course.파트너기관 && course.파트너기관.trim() !== '' &&
-        course.파트너기관.trim() !== course.훈련기관.trim()
+        course.leadingCompanyPartnerInstitution &&
+        course.leadingCompanyPartnerInstitution.trim() !== course.훈련기관.trim()
       ) {
-        instName = course.파트너기관.trim();
+        instName = course.leadingCompanyPartnerInstitution.trim();
       }
       // 그 외는 훈련기관 그대로
       if (!institutionMap.has(instName)) {
         institutionMap.set(instName, {
           totalEmployment: 0,
-          totalCompletion: 0,
+          totalTargetPop: 0,
           avgRate: 0,
-          courseCount: 0
+          courseCount: 0,
+          totalCompletion: 0
         });
       }
       const inst = institutionMap.get(instName)!;
-      inst.totalEmployment += course[empCol];
-      inst.totalCompletion += course.수료인원;
-      inst.avgRate += course[rateCol];
+      const tp = course.취업대상인원 || 0;
+      const employed = course.통합취업인원 || 0;
+      if (tp > 0) {
+        inst.totalEmployment += employed;
+        inst.totalTargetPop += tp;
+        inst.totalCompletion += tp;
+      }
       inst.courseCount += 1;
     });
 
-    // 평균 계산
+    // 평균 계산 (가중 평균)
     institutionMap.forEach(inst => {
-      inst.avgRate = inst.courseCount > 0 ? inst.avgRate / inst.courseCount : 0;
+      inst.avgRate = inst.totalTargetPop > 0 ? (inst.totalEmployment / inst.totalTargetPop * 100) : 0;
     });
 
     return Array.from(institutionMap.entries())
-      .map(([name, stats]) => ({ name, ...stats }))
-      .filter(item => item.totalCompletion > 0)
+      .map(([name, stats]) => ({ name, ...stats, totalCompletion: stats.totalTargetPop }))
+      .filter(item => item.totalTargetPop > 0)
       .sort((a, b) => b[sortKey] - a[sortKey]);
   };
 
@@ -156,17 +216,21 @@ const EmploymentAnalysis = () => {
 
   // NCS별 취업인원 많은 순으로 전체 보여주기 (훈련기관 분석과 동일한 표 구조)
   const calculateNcsStats = () => {
+
     const ncsMap = new Map<string, {
       totalEmployment: number;
+      totalTargetPop: number;
       totalCompletion: number;
       avgRate: number;
       courseCount: number;
     }>();
 
-    filteredData.forEach(course => {
+    summaryCourses.forEach(course => {
+
       if (!ncsMap.has(course.NCS명)) {
         ncsMap.set(course.NCS명, {
           totalEmployment: 0,
+          totalTargetPop: 0,
           totalCompletion: 0,
           avgRate: 0,
           courseCount: 0
@@ -174,15 +238,19 @@ const EmploymentAnalysis = () => {
       }
 
       const ncs = ncsMap.get(course.NCS명)!;
-      ncs.totalEmployment += course[empCol];
-      ncs.totalCompletion += course.수료인원;
-      ncs.avgRate += course[rateCol];
+      const tp = course.취업대상인원 || 0;
+      const employed = course.통합취업인원 || 0;
+      if (tp > 0) {
+        ncs.totalEmployment += employed;
+        ncs.totalTargetPop += tp;
+        ncs.totalCompletion += tp;
+      }
       ncs.courseCount += 1;
     });
 
-    // 평균 계산
+    // 평균 계산 (가중 평균)
     ncsMap.forEach(ncs => {
-      ncs.avgRate = ncs.courseCount > 0 ? ncs.avgRate / ncs.courseCount : 0;
+      ncs.avgRate = ncs.totalTargetPop > 0 ? (ncs.totalEmployment / ncs.totalTargetPop * 100) : 0;
     });
 
     return Array.from(ncsMap.entries())
@@ -300,29 +368,29 @@ const EmploymentAnalysis = () => {
         </div>
       </div>
 
-      {/* 상단 통계 UI (총 수강인원, 총 수료인원, 총 취업인원, 수료대비 취업률만 남김) */}
+      {/* 상단 통계 UI (총 수강인원, 총 취업대상 인원, 총 취업인원, 취업대상자 대비 취업률) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div className="bg-white rounded-lg shadow-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-700 mb-2">총 수강인원</h3>
-          <p className="text-3xl font-bold text-blue-600">{totalApplicants.toLocaleString()}명</p>
+          <h3 className="text-lg font-semibold text-gray-700 mb-2">총 수료생</h3>
+          <p className="text-3xl font-bold text-blue-600">{(totalCompletedStudents ?? 0).toLocaleString()}명</p>
         </div>
         <div className="bg-white rounded-lg shadow-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-700 mb-2">총 수료인원</h3>
-          <p className="text-3xl font-bold text-green-600">{totalCompletion.toLocaleString()}명</p>
+          <h3 className="text-lg font-semibold text-gray-700 mb-2">총 취업대상 인원</h3>
+          <p className="text-3xl font-bold text-green-600">{(totalTargetPop ?? 0).toLocaleString()}명</p>
         </div>
         <div className="bg-white rounded-lg shadow-lg p-6">
           <h3 className="text-lg font-semibold text-gray-700 mb-2">총 취업인원</h3>
-          <p className="text-3xl font-bold text-purple-600">{totalEmployment.toLocaleString()}명</p>
+          <p className="text-3xl font-bold text-purple-600">{(totalEmployment ?? 0).toLocaleString()}명</p>
         </div>
         <div className="bg-white rounded-lg shadow-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-700 mb-2">수료 대비 취업률</h3>
+          <h3 className="text-lg font-semibold text-gray-700 mb-2">취업대상자 대비 취업률</h3>
           <p className="text-3xl font-bold text-orange-600">{avgEmploymentRate.toFixed(1)}%</p>
         </div>
       </div>
 
       {/* 훈련기관별 표 헤더 클릭 시 정렬 */}
       <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-        <h2 className="text-xl font-semibold mb-4">훈련기관별 취업인원/취업률/수료인원/과정수 정렬</h2>
+        <h2 className="text-xl font-semibold mb-4">훈련기관별 취업인원/취업률/취업대상 인원/과정수 정렬</h2>
         <div className="overflow-x-auto">
           <table className="min-w-full table-auto">
             <thead>
@@ -336,7 +404,7 @@ const EmploymentAnalysis = () => {
                   총 취업인원 {sortKey === 'totalEmployment' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
                 </th>
                 <th className="px-4 py-2 text-right cursor-pointer" onClick={() => handleSort('totalCompletion')}>
-                  총 수료인원 {sortKey === 'totalCompletion' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
+                  총 취업대상 인원 {sortKey === 'totalCompletion' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
                 </th>
                 <th className="px-4 py-2 text-right cursor-pointer" onClick={() => handleSort('courseCount')}>
                   과정 수 {sortKey === 'courseCount' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
@@ -349,8 +417,8 @@ const EmploymentAnalysis = () => {
                   <td className="px-4 py-2">{index + 1}</td>
                   <td className="px-4 py-2 font-medium">{inst.name}</td>
                   <td className="px-4 py-2 text-right font-bold text-green-600">{inst.avgRate.toFixed(1)}%</td>
-                  <td className="px-4 py-2 text-right">{inst.totalEmployment.toLocaleString()}명</td>
-                  <td className="px-4 py-2 text-right">{inst.totalCompletion.toLocaleString()}명</td>
+                  <td className="px-4 py-2 text-right">{(inst.totalEmployment ?? 0).toLocaleString()}명</td>
+                  <td className="px-4 py-2 text-right">{(inst.totalCompletion ?? 0).toLocaleString()}명</td>
                   <td className="px-4 py-2 text-right">{inst.courseCount}개</td>
                 </tr>
               ))}
@@ -375,7 +443,7 @@ const EmploymentAnalysis = () => {
                   총 취업인원 {ncsSortKey === 'totalEmployment' ? (ncsSortOrder === 'desc' ? '▼' : '▲') : ''}
                 </th>
                 <th className="px-4 py-2 text-right cursor-pointer" onClick={() => handleNcsSort('totalCompletion')}>
-                  총 수료인원 {ncsSortKey === 'totalCompletion' ? (ncsSortOrder === 'desc' ? '▼' : '▲') : ''}
+                  총 취업대상 인원 {ncsSortKey === 'totalCompletion' ? (ncsSortOrder === 'desc' ? '▼' : '▲') : ''}
                 </th>
                 <th className="px-4 py-2 text-right cursor-pointer" onClick={() => handleNcsSort('courseCount')}>
                   과정 수 {ncsSortKey === 'courseCount' ? (ncsSortOrder === 'desc' ? '▼' : '▲') : ''}
@@ -388,8 +456,8 @@ const EmploymentAnalysis = () => {
                   <td className="px-4 py-2">{index + 1}</td>
                   <td className="px-4 py-2 font-medium">{ncs.name}</td>
                   <td className="px-4 py-2 text-right font-bold text-blue-600">{ncs.avgRate.toFixed(1)}%</td>
-                  <td className="px-4 py-2 text-right">{ncs.totalEmployment.toLocaleString()}명</td>
-                  <td className="px-4 py-2 text-right">{ncs.totalCompletion.toLocaleString()}명</td>
+                  <td className="px-4 py-2 text-right">{(ncs.totalEmployment ?? 0).toLocaleString()}명</td>
+                  <td className="px-4 py-2 text-right">{(ncs.totalCompletion ?? 0).toLocaleString()}명</td>
                   <td className="px-4 py-2 text-right">{ncs.courseCount}개</td>
                 </tr>
               ))}

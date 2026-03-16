@@ -16,9 +16,25 @@ export const loadDataFromGithub = async (): Promise<string> => {
 };
 
 // 데이터 전처리
-export const preprocessData = (rawData: any[]): CourseData[] => {
+export const preprocessData = (rawData: string): CourseData[] => {
+  // CSV 문자열을 파싱하여 배열로 변환
+  const parsed = Papa.parse(rawData, {
+    header: true,
+    skipEmptyLines: true,
+    transform: (value, field) => {
+      if (field === '과정시작일' || field === '과정종료일') {
+        return value; // 날짜는 그대로 유지
+      }
+      return value;
+    }
+  });
+  
+  if (parsed.errors.length > 0) {
+    console.error('CSV parsing errors:', parsed.errors);
+  }
+  
   // transformRawDataArray를 사용하여 그룹화까지 포함한 전처리 수행
-  return transformRawDataArray(rawData);
+  return transformRawDataArray(parsed.data as any[]);
 };
 
 export const generateYearlyStats = (data: CourseData[]): YearlyStats[] => {
