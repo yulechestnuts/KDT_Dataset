@@ -146,8 +146,19 @@ export function calculateInstitutionDetailedRevenue(
       })();
       totalRevenue += selected;
 
-      // 매출을 할당하여 과정 복사
-      const courseCopy = { ...course, 총누적매출: selected };
+      const empData = getSafeEmploymentData(course);
+
+      // 매출 및 성과지표(취업대상/취업인원/취업률)를 할당하여 과정 복사
+      // 프론트에서 취업대상인원이 비어 있으면 수료인원으로 fallback하는 로직이 있어,
+      // 서버에서 역산된 targetPop을 과정 단위로 항상 내려주도록 보강한다.
+      const courseCopy = {
+        ...course,
+        총누적매출: selected,
+        취업대상인원: empData.targetPop,
+        통합취업인원: empData.employed,
+        취업인원: empData.employed,
+        취업률: empData.rate,
+      };
       coursesForInstitution.push(courseCopy);
     }
   }
@@ -393,10 +404,13 @@ export function calculateInstitutionStats(
 
     courses.forEach((c) => {
       const empData = getSafeEmploymentData(c);
+      // ★ 절대 명제 1 적용: targetPop이 0이면 분모에서 제외
+      if (empData.targetPop === 0) return;
       totalTargetPop += empData.targetPop;
       totalIntegratedEmployed += empData.employed;
     });
 
+    // ★ 절대 명제 1 적용: 전체 분모가 0이면 취업률도 0 반환
     const employmentRate = totalTargetPop > 0 ? (totalIntegratedEmployed / totalTargetPop) * 100 : 0.0;
 
     const safeTotalRevenue = toFiniteNumber(Math.round(totalRevenue * 100) / 100, 0);
@@ -445,11 +459,10 @@ export function calculateInstitutionStats(
         safeValidStudents,
         safeCompletionRate
       ),
-      employment_rate_detail: formatRateDetail(
-        safeTotalEmployed,
-        safeCompletedForEmployment,
-        safeEmploymentRate
-      ),
+      employment_rate_detail:
+        safeCompletedForEmployment > 0
+          ? formatRateDetail(safeTotalEmployed, safeCompletedForEmployment, safeEmploymentRate)
+          : '-',
       recruitment_rate_detail: formatRateDetail(
         Math.round(currentYearStudents + prevYearStudents),
         safeCapacity,
@@ -481,7 +494,11 @@ export function calculateYearlyStats(
 
   const totalStudents = yearData.reduce((sum, course) => sum + (course['수강신청 인원'] || 0), 0);
   const completedStudents = yearData.reduce((sum, course) => sum + (course.수료인원 || 0), 0);
-  const totalEmployed = yearData.reduce((sum, course) => sum + getSafeEmploymentData(course).employed, 0);
+  const totalEmployed = yearData.reduce((sum, course) => {
+    const empData = getSafeEmploymentData(course);
+    if (empData.targetPop === 0) return sum;
+    return sum + empData.employed;
+  }, 0);
   const totalMaxRevenue = yearData.reduce(
     (sum, course) => sum + toFiniteNumber(course['매출 최대'] || 0, 0),
     0
@@ -507,8 +524,16 @@ export function calculateYearlyStats(
     total_employed: totalEmployed,
     overall_completion_rate: completionRate,
     overall_employment_rate: employmentRate,
-    total_target_pop: yearData.reduce((sum, c) => sum + getSafeEmploymentData(c).targetPop, 0),
-    total_integrated_employed: yearData.reduce((sum, c) => sum + getSafeEmploymentData(c).employed, 0),
+    total_target_pop: yearData.reduce((sum, c) => {
+      const empData = getSafeEmploymentData(c);
+      if (empData.targetPop === 0) return sum;
+      return sum + empData.targetPop;
+    }, 0),
+    total_integrated_employed: yearData.reduce((sum, c) => {
+      const empData = getSafeEmploymentData(c);
+      if (empData.targetPop === 0) return sum;
+      return sum + empData.employed;
+    }, 0),
     avg_satisfaction: avgSatisfaction,
     course_count: yearData.length,
     institution_count: institutions.size,

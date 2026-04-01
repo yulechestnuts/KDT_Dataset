@@ -379,6 +379,10 @@ const Board: React.FC = () => {
 
   const handleFileUpload = async (file: File) => {
     try {
+      if (!file || !(file instanceof Blob)) {
+        return;
+      }
+
       // 파일 크기 제한 (5MB)
       const maxSize = 5 * 1024 * 1024; // 5MB
       if (file.size > maxSize) {

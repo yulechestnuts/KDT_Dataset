@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { kdtAPI, InstitutionStat } from '@/lib/api-client';
+import { getSafeEmploymentData } from '@/lib/data-utils';
 import type { RevenueMode } from '@/lib/backend/types';
 import { formatNumber, formatRevenue } from '@/utils/formatters';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
@@ -15,7 +16,11 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 
-function renderRateWithCount(numer: number, denom: number, digits: number = 1): string {
+function renderRateWithCount(numer: number | null, denom: number | null, digits: number = 1): string {
+  // null 체크: 데이터 없음 vs 계산 실패
+  if (numer === null || denom === null) {
+    return '- / -'; // 계산 실패
+  }
   if (!Number.isFinite(numer) || !Number.isFinite(denom) || denom <= 0) {
     return '-';
   }
@@ -127,8 +132,9 @@ export default function InstitutionAnalysisClient() {
       const enrolled = Number(c?.['수강신청 인원'] ?? 0) || 0;
       const capacity = Number(c?.정원 ?? 0) || 0;
       const completed = Number(c?.수료인원 ?? 0) || 0;
-      const targetPop = Number(c?.취업대상인원 ?? completed) || 0;
-      const integratedEmployed = Number(c?.통합취업인원 ?? 0) || 0;
+      // ★ 반드시 getSafeEmploymentData에서 반환된 값을 사용
+      const empData = getSafeEmploymentData(c);
+      const { employed: integratedEmployed, targetPop } = empData;
       const satisfaction = Number(c?.만족도 ?? 0) || 0;
       const revenue = Number(c?.총누적매출 ?? c?.누적매출 ?? 0) || 0;
 
@@ -137,8 +143,10 @@ export default function InstitutionAnalysisClient() {
       completedSum += completed;
       employedSum += integratedEmployed;
       revenueSum += revenue;
-      targetPopSum += targetPop;
-      integratedEmployedSum += integratedEmployed;
+      if (typeof targetPop === 'number' && Number.isFinite(targetPop) && targetPop > 0) {
+        targetPopSum += targetPop;
+        integratedEmployedSum += integratedEmployed;
+      }
 
       if (enrolled > 0 && completed > 0) {
         completionDenom += enrolled;
@@ -153,6 +161,14 @@ export default function InstitutionAnalysisClient() {
 
     const avgSatisfaction = satWeight > 0 ? satSum / satWeight : 0;
 
+    // ★ 명제 1 적용: targetPop이 0이거나 유효하지 않으면 0/0으로 표시 ★
+    const displayTargetPop = (typeof targetPopSum === 'number' && targetPopSum > 0) ? targetPopSum : 0;
+    const displayEmployed = (typeof integratedEmployedSum === 'number' && integratedEmployedSum > 0) ? integratedEmployedSum : 0;
+    const employmentStr = 
+      displayTargetPop > 0
+        ? renderRateWithCount(displayEmployed, displayTargetPop, 1)
+        : `0.0% (${displayEmployed}/${displayTargetPop})`;
+
     return {
       ongoingCourses,
       totalSessions,
@@ -163,7 +179,7 @@ export default function InstitutionAnalysisClient() {
       revenueSum,
       recruitmentStr: renderRateWithCount(enrolledSum, capacitySum, 1),
       completionStr: renderRateWithCount(completionNumer, completionDenom, 1),
-      employmentStr: renderRateWithCount(integratedEmployedSum, targetPopSum, 1),
+      employmentStr,
       avgSatisfaction,
     };
   }, [selectedInstitutionCourses, selectedInstitutionName]);
@@ -171,7 +187,43 @@ export default function InstitutionAnalysisClient() {
   const handleViewDetails = (institutionName: string) => {
     setSelectedInstitutionName(institutionName);
     const stat = institutionStats.find((s) => s.institution_name === institutionName);
-    setSelectedInstitutionCourses(stat?.courses ?? []);
+    const courses = stat?.courses ?? [];
+    
+    // ★ [Step 1 디버깅] 첫 번째 course 객체의 실제 키 구조 출력
+    if (courses.length > 0) {
+      const firstCourse = courses[0];
+      console.group('🔴 [EMERGENCY DEBUG] 기관: ' + institutionName);
+      console.log('========== FULL COURSE OBJECT ==========');
+      console.log(firstCourse);
+      console.log('========== ALL KEYS ==========');
+      const allKeys = Object.keys(firstCourse);
+      console.log('Total Keys:', allKeys.length);
+      console.table(allKeys);
+      
+      // 취업 관련 키 필터링
+      console.log('========== EMPLOYMENT KEYS ==========');
+      const employmentRelatedKeys = allKeys.filter(k => 
+        k.includes('취업') || k.includes('employed') || 
+        k.includes('employ') || k.includes('employment')
+      );
+      if (employmentRelatedKeys.length === 0) {
+        console.warn('⚠️ 취업 관련 키 없음! 백엔드에서 이미 변환했을 가능성');
+      } else {
+        console.log('찾은 취업 관련 키:', employmentRelatedKeys);
+        employmentRelatedKeys.forEach(key => {
+          const value = firstCourse[key];
+          console.log(`  ${key}: "${value}" (type: ${typeof value})`);
+        });
+      }
+      
+      // ★ [Step 2 디버깅] getSafeEmploymentData 호출 with forceDebug=true
+      console.log('========== EMPLOYMENT DATA PARSING ==========');
+      const empData = getSafeEmploymentData(firstCourse, true);
+      console.log('최종 파싱 결과:', empData);
+      console.groupEnd();
+    }
+    
+    setSelectedInstitutionCourses(courses);
     setIsModalOpen(true);
   };
 
@@ -463,14 +515,35 @@ export default function InstitutionAnalysisClient() {
                         const enrolled = Number(course?.['수강신청 인원'] ?? 0) || 0;
                         const capacity = Number(course?.정원 ?? 0) || 0;
                         const completed = Number(course?.수료인원 ?? 0) || 0;
-                        const targetPop = Number(course?.취업대상인원 ?? completed) || 0;
-                        const integratedEmployed = Number(course?.통합취업인원 ?? 0) || 0;
+                        // 반드시 getSafeEmploymentData에서 반환된 값을 구조 분해 할당하여 사용
+                        const { employed: safeEmployed, targetPop, rate: safeRate } = getSafeEmploymentData(course);
                         const satisfaction = Number(course?.만족도 ?? 0) || 0;
                         const revenue = Number(course?.총누적매출 ?? course?.누적매출 ?? 0) || 0;
 
                         const recruitStr = renderRateWithCount(enrolled, capacity, 1);
                         const completionStr = renderRateWithCount(completed, enrolled, 1);
-                        const employmentStr = renderRateWithCount(integratedEmployed, targetPop, 1);
+
+                        // ★ source 필드를 확인해서 뱃지 표시
+                        const empDataResult = getSafeEmploymentData(course);
+                        const { employed: safeEmployed2, targetPop: targetPop2, rate: safeRate2, source } = empDataResult;
+                        let employmentStr: string;
+                        let sourceBadge: string = '';
+                        
+                        if (targetPop2 === null) {
+                          // 데이터 없음
+                          employmentStr = '- / -';
+                        } else if (targetPop2 > 0) {
+                          // 정상 역산됨
+                          employmentStr = renderRateWithCount(safeEmployed2, targetPop2, 1);
+                          // 3개월 기준이면 뱃지 표시
+                          if (source === '3개월') {
+                            sourceBadge = ' 🏷️ 3개월';
+                          }
+                        } else {
+                          employmentStr = '-';
+                        }
+                        
+                        employmentStr += sourceBadge;
 
                         return (
                           <>

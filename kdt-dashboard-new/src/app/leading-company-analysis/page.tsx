@@ -61,7 +61,6 @@ export default function LeadingCompanyAnalysis() {
           header: true,
           skipEmptyLines: true,
           dynamicTyping: false,
-          trimHeaders: true,
         });
         const processed = preprocessData(parsed.data as RawCourseData[]);
         const overallCompletion = calculateCompletionRate(processed);
@@ -89,7 +88,6 @@ export default function LeadingCompanyAnalysis() {
           header: true,
           skipEmptyLines: true,
           dynamicTyping: false,
-          trimHeaders: true,
         });
         const processed = preprocessData(parsed.data as RawCourseData[]);
         const overallCompletion = calculateCompletionRate(processed);

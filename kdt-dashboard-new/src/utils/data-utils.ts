@@ -16,25 +16,33 @@ export const loadDataFromGithub = async (): Promise<string> => {
 };
 
 // 데이터 전처리
-export const preprocessData = (rawData: string): CourseData[] => {
-  // CSV 문자열을 파싱하여 배열로 변환
-  const parsed = Papa.parse(rawData, {
-    header: true,
-    skipEmptyLines: true,
-    transform: (value, field) => {
-      if (field === '과정시작일' || field === '과정종료일') {
-        return value; // 날짜는 그대로 유지
+export const preprocessData = (rawData: unknown): CourseData[] => {
+  if (typeof rawData === 'string') {
+    // CSV 문자열을 파싱하여 배열로 변환
+    const parsed = Papa.parse(rawData, {
+      header: true,
+      skipEmptyLines: true,
+      transform: (value, field) => {
+        if (field === '과정시작일' || field === '과정종료일') {
+          return value; // 날짜는 그대로 유지
+        }
+        return value;
       }
-      return value;
+    });
+    
+    if (parsed.errors.length > 0) {
+      console.error('CSV parsing errors:', parsed.errors);
     }
-  });
-  
-  if (parsed.errors.length > 0) {
-    console.error('CSV parsing errors:', parsed.errors);
+    
+    // transformRawDataArray를 사용하여 그룹화까지 포함한 전처리 수행
+    return transformRawDataArray(parsed.data as any[]);
   }
-  
-  // transformRawDataArray를 사용하여 그룹화까지 포함한 전처리 수행
-  return transformRawDataArray(parsed.data as any[]);
+
+  if (Array.isArray(rawData)) {
+    return transformRawDataArray(rawData as any[]);
+  }
+
+  throw new Error('preprocessData: rawData must be a CSV string or parsed row array');
 };
 
 export const generateYearlyStats = (data: CourseData[]): YearlyStats[] => {

@@ -59,7 +59,6 @@ export interface ProcessedCourseData {
   '취업인원 (3개월)': number | null;
   '취업인원 (6개월)': number | null;
   수료율: number;
-  취업률: number | null;
   '취업률 (3개월)': number | null;
   '취업률 (6개월)': number | null;
   총취업대상인원?: number;

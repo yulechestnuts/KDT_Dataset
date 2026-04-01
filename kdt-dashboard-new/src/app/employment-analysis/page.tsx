@@ -106,9 +106,9 @@ const EmploymentAnalysis = () => {
 
   const summaryCourses = useMemo(() => {
     return filteredData.filter((course) => {
-      const targetPop = course.취업대상인원 || 0;
+      const targetPop = course.취업대상인원;
+      if (targetPop === null || targetPop === undefined || targetPop <= 0) return false;
       const employed = course.통합취업인원 || 0;
-      if (targetPop <= 0) return false;
       if (!isEmploymentMatured(course, maturityMonths)) return false;
       if (filterZero) {
         if (employed <= 0) return false;
@@ -124,11 +124,19 @@ const EmploymentAnalysis = () => {
     [summaryCourses]
   );
   const totalTargetPop = useMemo(
-    () => summaryCourses.reduce((sum, course) => sum + (course.취업대상인원 || 0), 0),
+    () => summaryCourses.reduce((sum, course) => {
+      const tp = course.취업대상인원;
+      return typeof tp === 'number' && Number.isFinite(tp) && tp > 0 ? sum + tp : sum;
+    }, 0),
     [summaryCourses]
   );
   const totalEmployment = useMemo(
-    () => summaryCourses.reduce((sum, course) => sum + (course.통합취업인원 || 0), 0),
+    () => summaryCourses.reduce((sum, course) => {
+      const tp = course.취업대상인원;
+      const employed = course.통합취업인원 || 0;
+      if (typeof tp !== 'number' || !Number.isFinite(tp) || tp <= 0) return sum;
+      return sum + employed;
+    }, 0),
     [summaryCourses]
   );
   const avgEmploymentRate = useMemo(
@@ -191,13 +199,15 @@ const EmploymentAnalysis = () => {
         });
       }
       const inst = institutionMap.get(instName)!;
-      const tp = course.취업대상인원 || 0;
-      const employed = course.통합취업인원 || 0;
-      if (tp > 0) {
-        inst.totalEmployment += employed;
-        inst.totalTargetPop += tp;
-        inst.totalCompletion += tp;
+      const tp = course.취업대상인원;
+      if (typeof tp !== 'number' || !Number.isFinite(tp) || tp <= 0) {
+        inst.courseCount += 1;
+        return;
       }
+      const employed = course.통합취업인원 || 0;
+      inst.totalEmployment += employed;
+      inst.totalTargetPop += tp;
+      inst.totalCompletion += tp;
       inst.courseCount += 1;
     });
 
@@ -238,13 +248,15 @@ const EmploymentAnalysis = () => {
       }
 
       const ncs = ncsMap.get(course.NCS명)!;
-      const tp = course.취업대상인원 || 0;
-      const employed = course.통합취업인원 || 0;
-      if (tp > 0) {
-        ncs.totalEmployment += employed;
-        ncs.totalTargetPop += tp;
-        ncs.totalCompletion += tp;
+      const tp = course.취업대상인원;
+      if (typeof tp !== 'number' || !Number.isFinite(tp) || tp <= 0) {
+        ncs.courseCount += 1;
+        return;
       }
+      const employed = course.통합취업인원 || 0;
+      ncs.totalEmployment += employed;
+      ncs.totalTargetPop += tp;
+      ncs.totalCompletion += tp;
       ncs.courseCount += 1;
     });
 

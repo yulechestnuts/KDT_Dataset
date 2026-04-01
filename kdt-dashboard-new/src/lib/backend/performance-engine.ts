@@ -1,7 +1,7 @@
 // 성과 지표 산출 엔진
 
 import { ProcessedCourseData } from './types';
-import { parseNumber, parsePercentage, parseDate } from './parsers';
+import { parseNumber, parsePercentage, parsePercentageNullable, parseDate } from './parsers';
 
 // 1. 퍼센트 문자열을 안전하게 숫자로 변환하는 헬퍼 함수
 export const parsePercentageSafe = (value: any): number => {
@@ -34,102 +34,59 @@ const pickFirst = (obj: any, keys: string[]): any => {
 };
 
 // 2. 과정별 안전한 취업 데이터 추출 및 모수 역산 함수
+// ★ 절대 명제 적용:
+//   1. 취업률 확인 불가 또는 필수 데이터 없음 → 0/0 처리 (targetPop: 0)
+//   2. 취업률(%) + 취업인원 모두 유효 → 역산: targetPop = employed / (rate / 100)
+// ★ Supabase DB 컬럼명 매핑:
+//   - DB 컬럼명에 공백이 포함되어 있으므로 대괄호 표기법 필수
+//   - 예: course['취업인원 (6개월)'] ← 점 표기법(course.취업인원) 사용 불가
 export const getSafeEmploymentData = (course: any) => {
-  const rate6Raw = pickFirst(course, ['취업률 (6개월)', '취업률(6개월)', '취업률_6개월']);
-  const rate3Raw = pickFirst(course, ['취업률 (3개월)', '취업률(3개월)', '취업률_3개월']);
-  const rateAllRaw = pickFirst(course, ['취업률']);
+  // 모든 Key를 배열로 추출
+  const keys = Object.keys(course || {});
 
-  const eiRate6Raw = pickFirst(course, ['EI_EMPL_RATE_6', 'EI_EMPL_RATE6', 'EI_RATE_6', 'EI_RATE6']);
-  const hrdRate6Raw = pickFirst(course, ['HRD_EMPL_RATE_6', 'HRD_EMPL_RATE6', 'HRD_RATE_6', 'HRD_RATE6']);
+  // Step 1: 6개월 데이터 명시적으로 찾기
+  const count6Key = keys.find(k => k.includes('취업인원') && k.includes('6개월'));
+  const rate6Key = keys.find(k => k.includes('취업률') && k.includes('6개월'));
+  
+  const employed6 = count6Key ? Number(course[count6Key]) || 0 : 0;
+  const rawRate6 = rate6Key ? course[rate6Key] : null;
+  const rate6 = rawRate6 !== null ? parsePercentageNullable(rawRate6) : null;
 
-  // 진행 중(B) / 미실시(C) / 집계대기 등은 분자/분모 모두 완전 제외
-  if (
-    isExcludedEmploymentStatus(rate6Raw) ||
-    isExcludedEmploymentStatus(rate3Raw) ||
-    isExcludedEmploymentStatus(rateAllRaw) ||
-    isExcludedEmploymentStatus(eiRate6Raw) ||
-    isExcludedEmploymentStatus(hrdRate6Raw)
-  ) {
+  // 6개월 데이터가 유효하면 사용
+  if (employed6 > 0 && rate6 !== null && rate6 > 0) {
+    const targetPop = Math.round(employed6 / (rate6 / 100));
     return {
-      employed: 0,
-      targetPop: 0,
-      rate: 0,
-      excluded: true,
+      employed: employed6,
+      targetPop,
+      rate: rate6,
+      source: '6개월'
     };
   }
 
-  // 6개월 데이터 우선 추출
-  const emp6Raw = pickFirst(course, ['취업인원 (6개월)', '취업인원(6개월)', '취업인원_6개월']);
-  const emp6 = Number(emp6Raw) || 0;
-  const rate6 = parsePercentageSafe(rate6Raw);
+  // Step 2: 6개월이 없거나 null이면 3개월로 fallback (2021년 초기 과정 대응)
+  const count3Key = keys.find(k => k.includes('취업인원') && k.includes('3개월'));
+  const rate3Key = keys.find(k => k.includes('취업률') && k.includes('3개월'));
   
-  // 3개월 데이터 추출
-  const emp3Raw = pickFirst(course, ['취업인원 (3개월)', '취업인원(3개월)', '취업인원_3개월']);
-  const emp3 = Number(emp3Raw) || 0;
-  const rate3 = parsePercentageSafe(rate3Raw);
-  
-  // 유효 데이터 판별 (6개월 > 3개월 우선순위)
-  let employed = 0;
-  let rate = 0;
-  
-  if (emp6 > 0 || rate6 > 0) {
-    employed = emp6;
-    rate = rate6;
-  } else if (emp3 > 0 || rate3 > 0) {
-    employed = emp3;
-    rate = rate3;
+  const employed3 = count3Key ? Number(course[count3Key]) || 0 : 0;
+  const rawRate3 = rate3Key ? course[rate3Key] : null;
+  const rate3 = rawRate3 !== null ? parsePercentageNullable(rawRate3) : null;
+
+  if (employed3 > 0 && rate3 !== null && rate3 > 0) {
+    const targetPop = Math.round(employed3 / (rate3 / 100));
+    return {
+      employed: employed3,
+      targetPop,
+      rate: rate3,
+      source: '3개월'
+    };
   }
 
-  const completion = Number(course.수료인원 || course['수료인원']) || 0;
-
-  // API 기반(EI/HRD) 취업인원/취업률이 존재하면 우선 적용
-  const eiCnt6Raw = pickFirst(course, ['EI_EMPL_CNT_6', 'EI_EMPL_CNT6', 'EI_CNT_6', 'EI_CNT6']);
-  const hrdCnt6Raw = pickFirst(course, ['HRD_EMPL_CNT_6', 'HRD_EMPL_CNT6', 'HRD_CNT_6', 'HRD_CNT6']);
-
-  const eiCnt6 = Number(String(eiCnt6Raw ?? '').replace(/[^0-9.]/g, '')) || 0;
-  const hrdCnt6 = Number(String(hrdCnt6Raw ?? '').replace(/[^0-9.]/g, '')) || 0;
-  const eiRate6 = parsePercentageSafe(eiRate6Raw);
-  const hrdRate6 = parsePercentageSafe(hrdRate6Raw);
-
-  const hasApiEmployment = eiCnt6 > 0 || hrdCnt6 > 0 || eiRate6 > 0 || hrdRate6 > 0;
-
-  // 취업인원 = EI + HRD (가입 + 미가입)
-  if (hasApiEmployment) {
-    employed = eiCnt6 + hrdCnt6;
-  }
-
-  // ★ 단일 과정별 targetPop 역산: EI/HRD 분모는 동일하므로 절대 더하지 말고 max 선택 ★
-  const denomEi = eiCnt6 > 0 && eiRate6 > 0 ? Math.round(eiCnt6 / (eiRate6 / 100)) : 0;
-  const denomHrd = hrdCnt6 > 0 && hrdRate6 > 0 ? Math.round(hrdCnt6 / (hrdRate6 / 100)) : 0;
-  let targetPop = Math.max(denomEi, denomHrd);
-
-  // EI/HRD가 없거나 역산 불가인 경우에만 기존 HRD-Net 취업률 기반으로 fallback
-  if (targetPop === 0) {
-    targetPop = completion;
-    if (employed > 0 && rate > 0) {
-      targetPop = Math.round(employed / (rate / 100));
-    }
-  }
-
-  // 상한선 강제: targetPop은 수료인원(FINI_CNT)을 초과할 수 없음
-  if (completion > 0 && targetPop > completion) {
-    targetPop = completion;
-  }
-
-  // 정합성 보정: 취업인원이 수료인원을 초과할 수 없음
-  if (completion > 0 && employed > completion) {
-    employed = completion;
-  }
-
-  // 이상치 방어: 분모가 분자보다 작으면 100%로 상한
-  if (employed > 0 && targetPop > 0 && targetPop < employed) {
-    targetPop = employed;
-  }
-
-  return { 
-    employed,   // 최종 취업인원
-    targetPop,  // 역산된 산정대상자(분모)
-    rate        // 명시된 취업률
+  // Step 3: 데이터 없음 - null 반환하여 "미집계" 표시
+  return {
+    employed: null,
+    targetPop: null,
+    rate: null,
+    source: null
   };
 };
 
@@ -159,6 +116,7 @@ export function calculateEmploymentRate(courses: ProcessedCourseData[]): number 
 
   courses.forEach((c) => {
     const empData = getSafeEmploymentData(c);
+    if (empData.targetPop === null || empData.targetPop <= 0) return;
     totalEmployed += empData.employed;
     // ★ 산정대상자(targetPop)를 분모로 강제 적용 ★
     totalTargetPop += empData.targetPop;
@@ -256,7 +214,7 @@ export function calculateEmploymentRateLegacy(courses: ProcessedCourseData[]): n
 
   for (const course of courses) {
     const empData = getSafeEmploymentData(course);
-    if (empData.targetPop <= 0) continue;
+    if (empData.targetPop === null || empData.targetPop <= 0) continue;
 
     totalEmployed += empData.employed;
     totalValidTargetPop += empData.targetPop;

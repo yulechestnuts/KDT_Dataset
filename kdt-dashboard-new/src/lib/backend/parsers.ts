@@ -277,3 +277,29 @@ export function calculateCumulativeRevenue(rawData: Record<string, any>): number
 
   return total;
 }
+
+/**
+ * null을 유지하는 퍼센트 파싱 함수 (취업률 같은 필수 데이터용)
+ * null/undefined는 null로 반환 (0으로 오염되지 않음)
+ */
+export function parsePercentageNullable(value: any): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === 'number') {
+    return isNaN(value) ? null : value;
+  }
+
+  if (typeof value === 'string') {
+    const cleaned = value.replace(/%/g, '').replace(/\s+/g, '').trim();
+    if (cleaned === '' || cleaned === '-' || cleaned.toUpperCase() === 'N/A') {
+      return null;
+    }
+
+    const parsed = parseFloat(cleaned);
+    return isNaN(parsed) ? null : parsed;
+  }
+
+  return null;
+}

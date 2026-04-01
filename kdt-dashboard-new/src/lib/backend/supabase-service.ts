@@ -23,7 +23,7 @@ function parseNumericNullable(value: unknown): number | null {
   if (value === null || value === undefined) return null;
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
   if (typeof value === 'string') {
-    const cleaned = value.replace(/,/g, '').trim();
+    const cleaned = value.replace(/%/g, '').replace(/,/g, '').trim();
     if (cleaned === '') return null;
     const n = Number(cleaned);
     return Number.isFinite(n) ? n : null;
@@ -234,12 +234,12 @@ export async function getProcessedCourses(): Promise<ProcessedCourseData[]> {
           0
         ),
         취업인원: parseNumericNullable(pickRowValue(row, ['취업인원', '취업 인원'])),
-        '취업인원 (3개월)': parseNumericNullable(pickRowValue(row, ['취업인원_3개월', '취업인원 (3개월)'])),
-        '취업인원 (6개월)': parseNumericNullable(pickRowValue(row, ['취업인원_6개월', '취업인원 (6개월)'])),
+        '취업인원 (3개월)': parseNumericNullable(row['취업인원 (3개월)'] ?? row['취업인원_3개월']),
+        '취업인원 (6개월)': parseNumericNullable(row['취업인원 (6개월)'] ?? row['취업인원_6개월']),
         수료율: parseNumeric(pickRowValue(row, ['수료율']), 0),
         취업률: parseNumericNullable(pickRowValue(row, ['취업률'])),
-        '취업률 (3개월)': parseNumericNullable(pickRowValue(row, ['취업률_3개월', '취업률 (3개월)'])),
-        '취업률 (6개월)': parseNumericNullable(pickRowValue(row, ['취업률_6개월', '취업률 (6개월)'])),
+        '취업률 (3개월)': parseNumericNullable(row['취업률 (3개월)'] ?? row['취업률_3개월']),
+        '취업률 (6개월)': parseNumericNullable(row['취업률 (6개월)'] ?? row['취업률_6개월']),
         만족도: parseNumeric(pickRowValue(row, ['만족도']), 0),
         훈련비: parseNumeric(pickRowValue(row, ['훈련비']), 0),
         정원: parseNumeric(pickRowValue(row, ['정원']), 0),
