@@ -23,7 +23,7 @@ export interface RawCourseData {
   NCS코드: string;
   훈련비: number;
   정원: string;
-  수강신청인원: number;
+  '수강신청 인원': number;
   수료인원: number;
   수료율: string;
   만족도: string;
@@ -436,7 +436,7 @@ export const transformRawDataToCourseData = (rawData: RawCourseData): CourseData
   const endDateStr = !isNaN(endDate.getTime()) ? endDate.toISOString().split('T')[0] : '';
   
   const completionCount = parseNumber(rawData.수료인원);
-  const enrollmentCount = parseNumber(rawData.수강신청인원);
+  const enrollmentCount = parseNumber(rawData['수강신청 인원']);
   const completionRate = enrollmentCount > 0 ? (completionCount / enrollmentCount) * 100 : 0;
 
   // 안전한 취업 데이터 추출 및 모수 역산
