@@ -95,11 +95,13 @@ export function calculateInstitutionDetailedRevenue(
   courses: ProcessedCourseData[];
   totalRevenue: number;
   totalMaxRevenue: number;
+  totalContractRevenue: number;
   totalAdjustedRevenue: number;
   totalExpectedRevenueAllYears: number;
 } {
   let totalRevenue = 0.0;
   let totalMaxRevenue = 0.0;
+  let totalContractRevenue = 0.0;
   let totalAdjustedRevenue = 0.0;
   let totalExpectedRevenueAllYears = 0.0;
   const coursesForInstitution: ProcessedCourseData[] = [];
@@ -116,6 +118,20 @@ export function calculateInstitutionDetailedRevenue(
     return start <= yearEnd && end >= yearStart;
   };
 
+  // 수주 매출: 과정시작일(=계약/수주 시점)이 선택 연·월에 속한 과정에만 매출 최대 전액 귀속
+  const startMatchesPeriod = (course: ProcessedCourseData): boolean => {
+    if (year === undefined && month === undefined) return true;
+    const ym = extractYearMonth(course.과정시작일);
+    if (year !== undefined) {
+      const startYear = ym.year ?? inferMostLikelyRevenueYear(course);
+      if (startYear === null || startYear !== year) return false;
+    }
+    if (month !== undefined) {
+      if (ym.month === null || ym.month !== month) return false;
+    }
+    return true;
+  };
+
   for (const course of allCourses) {
     const revenueShare = calculateRevenueShare(course, institutionName, groupInstitutionsAdvanced);
 
@@ -130,6 +146,9 @@ export function calculateInstitutionDetailedRevenue(
 
       totalMaxRevenue += courseMaxRevenue;
       totalAdjustedRevenue += courseAdjustedRevenue;
+      if (startMatchesPeriod(course)) {
+        totalContractRevenue += courseMaxRevenue;
+      }
 
       const selected = (() => {
         if (revenueMode === 'max') return courseMaxRevenue;
@@ -167,6 +186,7 @@ export function calculateInstitutionDetailedRevenue(
     courses: coursesForInstitution,
     totalRevenue,
     totalMaxRevenue,
+    totalContractRevenue,
     totalAdjustedRevenue,
     totalExpectedRevenueAllYears,
   };
@@ -221,9 +241,6 @@ export function calculateInstitutionStats(
   const targetYear = year || new Date().getFullYear();
   const isCumulativeAllYears = year === undefined && month === undefined;
 
-  const today = new Date();
-  const threeWeeksAgo = new Date(today.getTime() - 21 * 24 * 60 * 60 * 1000);
-
   for (const [institutionName, relevantCourses] of institutionToCourses.entries()) {
 
     if (relevantCourses.length === 0) continue;
@@ -239,6 +256,7 @@ export function calculateInstitutionStats(
     const courses = detailed.courses;
     const totalRevenue = detailed.totalRevenue;
     const totalMaxRevenue = detailed.totalMaxRevenue;
+    const totalContractRevenue = detailed.totalContractRevenue;
     const totalAdjustedRevenue = detailed.totalAdjustedRevenue;
     const totalExpectedRevenueAllYears = detailed.totalExpectedRevenueAllYears;
 
@@ -296,21 +314,29 @@ export function calculateInstitutionStats(
       totalEmployed += employed;
       employmentCourses.push(course);
 
+      const canUseForCompletion = completed > 0 && enrollment > 0;
+      const canUseForSatisfaction = satisfaction > 0 && completed > 0;
+
+      // year-specific 경로에서 사용할 시작/종료 연도 (cumulative/월 필터 경로에선 불필요)
+      let startYear: number | null = null;
+      let endYear: number | null = null;
+      if (!(month !== undefined || isCumulativeAllYears)) {
+        const courseStartDate = parseDate(course.과정시작일);
+        const courseEndDate = parseDate(course.과정종료일);
+        startYear = Number.isFinite(courseStartDate.getTime())
+          ? courseStartDate.getFullYear()
+          : getSafeYearFromDateOrRevenue(course, course.과정시작일, year);
+        endYear = Number.isFinite(courseEndDate.getTime())
+          ? courseEndDate.getFullYear()
+          : getSafeYearFromDateOrRevenue(course, course.과정종료일, year);
+      }
+
       if (month !== undefined || isCumulativeAllYears) {
         currentYearCoursesCount += 1;
         currentYearStudents += enrollment;
         currentYearCompletedStudents += completed;
         currentYearCompleted += completed;
       } else {
-        const courseStartDate = parseDate(course.과정시작일);
-        const courseEndDate = parseDate(course.과정종료일);
-        const startYear = Number.isFinite(courseStartDate.getTime())
-          ? courseStartDate.getFullYear()
-          : getSafeYearFromDateOrRevenue(course, course.과정시작일, year);
-        const endYear = Number.isFinite(courseEndDate.getTime())
-          ? courseEndDate.getFullYear()
-          : getSafeYearFromDateOrRevenue(course, course.과정종료일, year);
-
         const isCurrentYearStart = startYear === targetYear;
         const isPrevYearStartAndOngoing =
           startYear !== null && endYear !== null
@@ -327,7 +353,9 @@ export function calculateInstitutionStats(
           prevYearCompletedStudents += completed;
         }
 
-        if (endYear !== null && endYear === targetYear) {
+        // ★ 수료인원 x(y)와 수료율 분자(z)가 항상 일치하도록 동일한 필터 적용:
+        //   endYear === targetYear && canUseForCompletion
+        if (canUseForCompletion && endYear !== null && endYear === targetYear) {
           if (startYear !== null && startYear === targetYear) {
             currentYearCompleted += completed;
           } else if (startYear !== null && startYear < targetYear) {
@@ -335,9 +363,6 @@ export function calculateInstitutionStats(
           }
         }
       }
-
-      const canUseForCompletion = completed > 0 && enrollment > 0;
-      const canUseForSatisfaction = satisfaction > 0 && completed > 0;
 
       if (month !== undefined || isCumulativeAllYears) {
         if (canUseForCompletion) {
@@ -349,12 +374,11 @@ export function calculateInstitutionStats(
           totalWeightSatisfaction += completed;
         }
       } else {
-        if (canUseForCompletion) {
-          const courseEndDate = parseDate(course.과정종료일);
-          if (Number.isFinite(courseEndDate.getTime()) && courseEndDate <= threeWeeksAgo) {
-            totalValidStudentsForCompletion += enrollment;
-            totalValidGraduatesForCompletion += completed;
-          }
+        // ★ x(y) 합계와 동일하게 종료 연도 = targetYear 인 과정만 분자/분모에 포함
+        // (이전 3주 정산 룰은 x(y) 합계와의 불일치를 유발해 폐지)
+        if (canUseForCompletion && endYear !== null && endYear === targetYear) {
+          totalValidStudentsForCompletion += enrollment;
+          totalValidGraduatesForCompletion += completed;
         }
         if (canUseForSatisfaction) {
           totalWeightedSatisfaction += satisfaction * completed;
@@ -428,6 +452,7 @@ export function calculateInstitutionStats(
       institution_name: institutionName,
       total_revenue: safeTotalRevenue,
       total_max_revenue: toFiniteNumber(Math.round(totalMaxRevenue * 100) / 100, 0),
+      total_contract_revenue: toFiniteNumber(Math.round(totalContractRevenue * 100) / 100, 0),
       total_adjusted_revenue: toFiniteNumber(Math.round(totalAdjustedRevenue * 100) / 100, 0),
       total_expected_revenue_all_years:
         month !== undefined

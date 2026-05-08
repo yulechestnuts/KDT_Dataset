@@ -16,6 +16,8 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 
+type ViewRevenueMode = RevenueMode | 'contract';
+
 function renderRateWithCount(numer: number | null, denom: number | null, digits: number = 1): string {
   // null 체크: 데이터 없음 vs 계산 실패
   if (numer === null || denom === null) {
@@ -34,7 +36,7 @@ export default function InstitutionAnalysisClient() {
   const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
   const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all');
   const [filterType, setFilterType] = useState<'all' | 'leading' | 'tech'>('all');
-  const [revenueMode, setRevenueMode] = useState<RevenueMode>('current');
+  const [revenueMode, setRevenueMode] = useState<ViewRevenueMode>('current');
   const [searchTerm, setSearchTerm] = useState('');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -54,7 +56,8 @@ export default function InstitutionAnalysisClient() {
       try {
         const yearParam = selectedYear === 'all' ? undefined : selectedYear;
         const monthParam = selectedMonth === 'all' ? undefined : selectedMonth;
-        const res = await kdtAPI.getInstitutionStats(yearParam, revenueMode, {
+        const apiRevenueMode: RevenueMode = revenueMode === 'contract' ? 'max' : revenueMode;
+        const res = await kdtAPI.getInstitutionStats(yearParam, apiRevenueMode, {
           month: monthParam,
           trainingType: filterType,
         });
@@ -84,8 +87,12 @@ export default function InstitutionAnalysisClient() {
       ? institutionStats
       : institutionStats.filter((s) => s.institution_name.toLowerCase().includes(q));
 
-    return [...base].sort((a, b) => (b.total_revenue ?? 0) - (a.total_revenue ?? 0));
-  }, [searchTerm, institutionStats]);
+    const sortKey: keyof InstitutionStat =
+      revenueMode === 'contract' ? 'total_contract_revenue' : 'total_revenue';
+    return [...base].sort(
+      (a, b) => ((b[sortKey] as number) ?? 0) - ((a[sortKey] as number) ?? 0)
+    );
+  }, [searchTerm, institutionStats, revenueMode]);
 
   const selectedInstitutionKpis = useMemo(() => {
     const institution = selectedInstitutionName;
@@ -234,13 +241,14 @@ export default function InstitutionAnalysisClient() {
       <div className="mb-10 relative z-10 flex gap-6 items-end">
         <div>
           <label className="block text-sm font-medium text-foreground/80 mb-2">매출 기준</label>
-          <Select value={revenueMode} onValueChange={(v) => setRevenueMode(v as RevenueMode)}>
+          <Select value={revenueMode} onValueChange={(v) => setRevenueMode(v as ViewRevenueMode)}>
             <SelectTrigger className="w-[200px] bg-background text-foreground border-border">
               <SelectValue placeholder="매출 기준" />
             </SelectTrigger>
             <SelectContent className="bg-popover text-popover-foreground z-20">
               <SelectItem value="current">현재 계산된 매출</SelectItem>
               <SelectItem value="max">최대 매출</SelectItem>
+              <SelectItem value="contract">수주 매출</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -308,8 +316,9 @@ export default function InstitutionAnalysisClient() {
         </div>
       </div>
 
-      <div className="mb-4 text-sm text-foreground bg-muted border border-border rounded px-4 py-2">
-        ※ 과정이 2개년도에 걸쳐있는 경우, 각 년도에 차지하는 비율에 맞추어 매출이 분배됩니다.
+      <div className="mb-4 text-sm text-foreground bg-muted border border-border rounded px-4 py-2 space-y-1">
+        <div>※ 매출액: 과정이 2개년도에 걸쳐있는 경우, 각 년도에 차지하는 비율에 맞추어 매출이 분배됩니다.</div>
+        <div>※ 수주 매출: 과정시작일(=위탁계약 수주 시점)이 선택 연·월에 속한 과정의 매출 최대 합계입니다. 분배되지 않고 수주 연도에 전액 귀속됩니다.</div>
       </div>
 
       <div className="bg-card text-card-foreground rounded-lg shadow p-6 mt-6">
@@ -350,7 +359,11 @@ export default function InstitutionAnalysisClient() {
                   return `기관명: ${institutionName}`;
                 }}
               />
-              <Bar dataKey="total_revenue" fill="#4F46E5" name="매출액" />
+              <Bar
+                dataKey={revenueMode === 'contract' ? 'total_contract_revenue' : 'total_revenue'}
+                fill="#4F46E5"
+                name="매출액"
+              />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -370,9 +383,7 @@ export default function InstitutionAnalysisClient() {
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">순위 및 훈련기관</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">매출액</th>
-                {selectedMonth !== 'all' && (
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">수주 금액(매출 최대)</th>
-                )}
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">수주 매출</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">훈련과정 수</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">훈련생 수</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">수료인원</th>
@@ -402,9 +413,7 @@ export default function InstitutionAnalysisClient() {
                       ? `${formatRevenue(stat.total_revenue)} (${(stat.expected_attribution_percent ?? 0).toFixed(1)}%)`
                       : formatRevenue(stat.total_revenue)}
                   </td>
-                  {selectedMonth !== 'all' && (
-                    <td className="px-6 py-4 whitespace-nowrap">{formatRevenue(stat.total_max_revenue ?? 0)}</td>
-                  )}
+                  <td className="px-6 py-4 whitespace-nowrap">{formatRevenue(stat.total_contract_revenue ?? 0)}</td>
                   <td className="px-6 py-4 whitespace-nowrap">{stat.total_courses_display}</td>
                   <td className="px-6 py-4 whitespace-nowrap">{stat.total_students_display}</td>
                   <td className="px-6 py-4 whitespace-nowrap">{stat.completed_students_display}</td>

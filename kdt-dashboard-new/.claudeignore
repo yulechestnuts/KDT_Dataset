@@ -1,0 +1,11 @@
+node_modules/
+venv/
+.git/
+dist/
+build/
+*.csv
+*.json
+*.sqlite3
+*.png
+*.jpg
+*.mp4

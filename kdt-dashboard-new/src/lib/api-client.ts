@@ -83,6 +83,7 @@ export interface InstitutionStat {
   institution_name: string;
   total_revenue: number;
   total_max_revenue: number;
+  total_contract_revenue: number;
   total_adjusted_revenue: number;
   total_expected_revenue_all_years?: number;
   expected_attribution_percent?: number;
