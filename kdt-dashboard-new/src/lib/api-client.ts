@@ -126,6 +126,7 @@ export interface MonthlyStat {
   month: string;
   revenue: number;
   max_revenue: number;
+  contract_revenue: number;
   adjusted_revenue: number;
   total_students: number;
   completed_students: number;

@@ -603,6 +603,7 @@ export function calculateMonthlyStatistics(
         month: monthName,
         revenue: 0,
         max_revenue: 0,
+        contract_revenue: 0,
         adjusted_revenue: 0,
         total_students: 0,
         completed_students: 0,
@@ -667,11 +668,17 @@ export function calculateMonthlyStatistics(
     ).padStart(2, '0')}`;
     if (monthlyMap.has(courseStartMonthName) && (year === undefined || courseStartDate.getFullYear() === year)) {
       const stats = monthlyMap.get(courseStartMonthName)!;
+      const contractRevenueForCourse = toFiniteNumber(course['매출 최대'] || 0, 0);
       stats.total_students += toFiniteNumber(course['수강신청 인원'] || 0, 0);
       stats.completed_students += toFiniteNumber(course.수료인원 || 0, 0);
       stats.course_count += 1;
+      // 수주 매출: 과정시작일이 해당 월인 과정에 매출 최대 전액 귀속 (institution-analysis와 동일 정의)
+      stats.contract_revenue += contractRevenueForCourse;
       if (!stats.courses) stats.courses = [];
-      stats.courses.push(course);
+      stats.courses.push({
+        ...course,
+        월별수주매출: contractRevenueForCourse,
+      });
     }
 
     // 매출은 연도별로 과정 기간 overlap 월에 균등 분배
@@ -724,6 +731,10 @@ export function calculateMonthlyStatistics(
     // 응답 안정성: 숫자 필드는 항상 finite number가 되도록 정규화
     stats.revenue = toFiniteNumber(stats.revenue, 0);
     stats.max_revenue = toFiniteNumber(stats.max_revenue, 0);
+    stats.contract_revenue = toFiniteNumber(
+      Math.round(stats.contract_revenue * 100) / 100,
+      0
+    );
     stats.adjusted_revenue = toFiniteNumber(stats.adjusted_revenue, 0);
     stats.total_students = toFiniteNumber(stats.total_students, 0);
     stats.completed_students = toFiniteNumber(stats.completed_students, 0);

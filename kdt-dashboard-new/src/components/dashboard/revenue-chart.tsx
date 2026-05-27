@@ -84,7 +84,10 @@ export function RevenueChart({ data }: RevenueChartProps) {
   const sortedData = [...data]
     .filter((stat: any) =>
       Boolean(stat.month) &&
-      (stat.revenue !== undefined || stat.totalStudents !== undefined || stat.total_students !== undefined)
+      (stat.revenue !== undefined ||
+        stat.contract_revenue !== undefined ||
+        stat.totalStudents !== undefined ||
+        stat.total_students !== undefined)
     )
     .sort((a, b) => a.month.localeCompare(b.month));
 
@@ -105,8 +108,10 @@ export function RevenueChart({ data }: RevenueChartProps) {
 
   const months = sortedData.map(stat => stat.month);
   const revenueDataWon = sortedData.map(stat => stat.revenue || 0);
+  const contractRevenueDataWon = sortedData.map((stat: any) => stat.contract_revenue || 0);
   const EOK = 100_000_000;
   const revenueData = revenueDataWon.map(val => val / EOK); // 억 단위 변환
+  const contractRevenueData = contractRevenueDataWon.map(val => val / EOK);
   const studentData = sortedData.map((stat: any) => {
     const raw = stat.totalStudents ?? stat.total_students;
     const n = typeof raw === 'number' ? raw : Number(String(raw ?? '').replace(/[^0-9+\-\.]/g, ''));
@@ -130,6 +135,21 @@ export function RevenueChart({ data }: RevenueChartProps) {
         pointHoverRadius: 8,
         tension: 0.4, // 부드러운 곡선
         fill: true,
+        yAxisID: 'y',
+      },
+      {
+        label: '수주매출',
+        data: contractRevenueData,
+        borderColor: '#eab308', // Yellow-500
+        backgroundColor: 'rgba(234, 179, 8, 0.1)',
+        borderWidth: 3,
+        pointBackgroundColor: '#eab308',
+        pointBorderColor: '#ffffff',
+        pointBorderWidth: 2,
+        pointRadius: 6,
+        pointHoverRadius: 8,
+        tension: 0.4,
+        fill: false,
         yAxisID: 'y',
       },
       {
@@ -253,6 +273,7 @@ export function RevenueChart({ data }: RevenueChartProps) {
       <CardHeader className="pb-4">
         <CardTitle className="text-lg font-semibold text-gray-800 flex items-center gap-2">
           <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+          <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
           월별 매출 및 수강인원 추이
         </CardTitle>
       </CardHeader>
@@ -262,11 +283,17 @@ export function RevenueChart({ data }: RevenueChartProps) {
         </div>
         
         {/* 간단한 통계 요약 */}
-        <div className="grid grid-cols-2 gap-4 mt-6 pt-4 border-t border-gray-100">
+        <div className="grid grid-cols-3 gap-4 mt-6 pt-4 border-t border-gray-100">
           <div className="text-center">
             <p className="text-sm text-gray-600">총 매출</p>
             <p className="text-lg font-semibold text-blue-600">
               {formatCurrency(revenueDataWon.reduce((sum, val) => sum + val, 0))}
+            </p>
+          </div>
+          <div className="text-center">
+            <p className="text-sm text-gray-600">총 수주매출</p>
+            <p className="text-lg font-semibold text-yellow-600">
+              {formatCurrency(contractRevenueDataWon.reduce((sum, val) => sum + val, 0))}
             </p>
           </div>
           <div className="text-center">
