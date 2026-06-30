@@ -25,6 +25,7 @@ interface CourseStats {
 }
 
 type YearColumn = '2021년' | '2022년' | '2023년' | '2024년' | '2025년' | '2026년';
+type ViewRevenueMode = RevenueMode | 'contract';
 
 // 디바운싱 훅
 function useDebounce<T>(value: T, delay: number): T {
@@ -104,7 +105,7 @@ function CourseAnalysisContent() {
   // 디바운싱된 검색어
   const debouncedSearchQuery = useDebounce(institutionSearch, 300);
   // 매출 기준 상태 추가
-  const [revenueMode, setRevenueMode] = useState<RevenueMode>('current');
+  const [revenueMode, setRevenueMode] = useState<ViewRevenueMode>('current');
   const {
     filters: { selectedYear: globalSelectedYear },
     setSelectedYear: setGlobalSelectedYear,
@@ -121,10 +122,11 @@ function CourseAnalysisContent() {
         setError(null);
 
         const year = selectedYear === 'all' ? undefined : selectedYear;
+        const apiRevenueMode: RevenueMode = revenueMode === 'contract' ? 'max' : revenueMode;
         const result = await kdtAPI.getCourseAnalysis({
           year,
           trainingType: filterType,
-          revenueMode,
+          revenueMode: apiRevenueMode,
         });
 
         setCourseData((result?.data ?? []) as unknown as CourseData[]);
@@ -174,16 +176,31 @@ function CourseAnalysisContent() {
     });
   }, [debouncedSearchQuery]); // useCallback으로 메모이제이션
 
+  // 수주 매출(contract) 모드에서는 과정시작일 기반 필터링
+  const getContractFilteredCourses = useCallback((courses: CourseData[]) => {
+    if (revenueMode !== 'contract') return courses;
+    if (selectedYear === 'all') return courses;
+    
+    // selectedYear에 시작한 과정만 필터링
+    return courses.filter(c => {
+      const startDate = new Date(c.과정시작일);
+      return startDate.getFullYear() === selectedYear;
+    });
+  }, [revenueMode, selectedYear]);
+
   // 집계 결과 생성 (검색 필터 반영, revenueMode 적용)
   // @/lib/data-utils.ts의 함수 사용 (year는 undefined로 전달하여 전체 연도 매출 합산)
   const filteredCourses = useMemo(() => {
     console.log('[course-analysis] Filtering courses with search:', debouncedSearchQuery);
     const baseFiltered = getFilteredCourseData();
-    return getInstitutionFilteredCourses(baseFiltered);
-  }, [rawCourses, debouncedSearchQuery, selectedYear, filterType]); // debouncedSearchQuery 사용
+    const institutionFiltered = getInstitutionFilteredCourses(baseFiltered);
+    const contractFiltered = getContractFilteredCourses(institutionFiltered);
+    return contractFiltered;
+  }, [rawCourses, debouncedSearchQuery, selectedYear, filterType, getContractFilteredCourses]); // debouncedSearchQuery 사용
 
   const aggregatedCourses = useMemo(() => {
     console.log('[course-analysis] filteredCourses count before aggregation:', filteredCourses.length);
+    console.log('[course-analysis] revenueMode:', revenueMode);
     if (selectedYear === 2026 || selectedYear === 'all') {
       console.log('[course-analysis] 2026/all sample before aggregation:', filteredCourses.slice(0, 3).map((c: any) => ({
         과정명: c.과정명,
@@ -198,7 +215,7 @@ function CourseAnalysisContent() {
       filteredCourses,
       selectedYear === 'all' ? undefined : selectedYear,
       undefined, // institutionName: 기관 필터링 없음
-      revenueMode
+      revenueMode === 'contract' ? 'max' : revenueMode
     );
     
     console.log('[course-analysis] aggregatedCourses count after aggregation:', aggregated.length);
@@ -238,11 +255,11 @@ function CourseAnalysisContent() {
 const CourseCard = React.memo(({ 
   agg, 
   selectedYear, 
-  revenueMode 
+  revenueMode: propRevenueMode 
 }: {
   agg: any;
   selectedYear: number | 'all';
-  revenueMode: RevenueMode;
+  revenueMode: ViewRevenueMode;
 }) => {
   // 개별 카드의 확장 상태 (독립적 관리)
   const [isExpanded, setIsExpanded] = useState(false);
@@ -250,11 +267,25 @@ const CourseCard = React.memo(({
   // 개별 카드의 상세 정보 표시 수 제한
   const [displayCount, setDisplayCount] = useState(10);
   
+  // 수주 매출 모드 체크
+  const isContractMode = propRevenueMode === 'contract';
+  
   // 개별 카드의 상세 정보만 필요할 때 계산
+  // 수주 매출 모드라면 선택된 연도 시작 과정만 필터링
   const courseDetails = useMemo(() => {
     if (!isExpanded) return [];
-    return agg.allCourseDetails?.slice(0, displayCount) || [];
-  }, [agg.allCourseDetails, isExpanded, displayCount]);
+    let details = agg.allCourseDetails || [];
+    
+    // 수주 매출 모드에서는 해당 연도에 시작한 과정만 표시
+    if (isContractMode && selectedYear !== 'all') {
+      details = details.filter((course: CourseData) => {
+        const startYear = new Date(course.과정시작일).getFullYear();
+        return startYear === selectedYear;
+      });
+    }
+    
+    return details.slice(0, displayCount);
+  }, [agg.allCourseDetails, isExpanded, displayCount, isContractMode, selectedYear]);
 
   // 확장 토글 핸들러
   const handleToggle = useCallback(() => {
@@ -302,11 +333,15 @@ const CourseCard = React.memo(({
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
-              <h3 className="text-sm font-medium text-gray-500">총 매출</h3>
+              <h3 className="text-sm font-medium text-gray-500">
+                {isContractMode ? '수주 매출' : '총 매출'}
+              </h3>
               <p className="text-2xl font-bold">{formatCurrency(agg.총누적매출)}</p>
             </div>
             <div>
-              <h3 className="text-sm font-medium text-gray-500">과정 수</h3>
+              <h3 className="text-sm font-medium text-gray-500">
+                {isContractMode && selectedYear !== 'all' ? `${selectedYear}년 시작 과정 수` : '과정 수'}
+              </h3>
               <p className="text-2xl font-bold">{agg.원천과정수}개</p>
             </div>
             <div>
@@ -321,7 +356,11 @@ const CourseCard = React.memo(({
 
           {isExpanded && (
             <div className="mt-6">
-              <h3 className="text-lg font-semibold mb-4">회차별 상세 정보</h3>
+              <h3 className="text-lg font-semibold mb-4">
+                {isContractMode && selectedYear !== 'all' 
+                  ? `${selectedYear}년 시작 과정 상세 정보` 
+                  : '회차별 상세 정보'}
+              </h3>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -340,63 +379,70 @@ const CourseCard = React.memo(({
                     <TableHead className="text-center">
                       <div>총 시간</div>
                     </TableHead>
-                    <TableHead>매출</TableHead>
+                    <TableHead>{isContractMode ? '수주매출' : '매출'}</TableHead>
                     <TableHead>과정 페이지</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {courseDetails.map((detail: CourseData, detailIdx: number) => {
-                    const rowKey = `${detail['훈련과정 ID'] || 'unknown'}-${detailIdx}`;
-                    console.log('[course-analysis] rendering detail row:', {
-                      rowKey,
-                      과정명: detail.과정명,
-                      '훈련과정 ID': detail['훈련과정 ID'],
-                      수료인원: detail.수료인원,
-                      '수강신청 인원': detail['수강신청 인원'],
-                      정원: detail.정원,
-                      과정페이지링크: detail.과정페이지링크,
-                    });
-                    return (
-                      <TableRow key={rowKey}>
-                        <TableCell>{detail.회차}</TableCell>
-                        <TableCell>
-                          {detail.isLeadingCompanyCourse && detail.leadingCompanyPartnerInstitution ? (
-                            <span>
-                              {detail.leadingCompanyPartnerInstitution}
-                              {detail.훈련기관 && (
-                                <span> (<span style={{ whiteSpace: 'pre' }}>{detail.훈련기관}</span>)</span>
-                              )}
-                            </span>
-                          ) : (
-                            detail.훈련기관
-                          )}
-                        </TableCell>
-                        <TableCell>{new Date(detail.과정시작일).toLocaleDateString('ko-KR')}</TableCell>
-                        <TableCell>{new Date(detail.과정종료일).toLocaleDateString('ko-KR')}</TableCell>
-                        <TableCell>{formatNumber(detail.정원 || 0)}</TableCell>
-                        <TableCell>{formatNumber(detail['수강신청 인원'] || 0)}</TableCell>
-                        <TableCell>{formatNumber(detail.수료인원 || 0)}</TableCell>
-                        <TableCell>{formatNumber(detail['취업인원 (3개월)'] || 0)}</TableCell>
-                        <TableCell>{formatNumber(detail['취업인원 (6개월)'] || 0)}</TableCell>
-                        <TableCell className="text-center">
-                          {formatNumber(detail.총훈련일수 || 0)}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {formatNumber(detail.총훈련시간 || 0)}
-                        </TableCell>
-                        <TableCell>
-                          {formatCurrency(
-                            computeCourseRevenueByMode(
-                              detail,
-                              selectedYear === 'all' ? undefined : selectedYear,
-                              revenueMode
-                            )
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {detail.과정페이지링크 && (
-                            <Button
-                              variant="link"
+                  {courseDetails.length === 0 && isContractMode && selectedYear !== 'all' ? (
+                    <TableRow>
+                      <TableCell colSpan={13} className="text-center py-4 text-gray-500">
+                        {selectedYear}년에 시작한 과정이 없습니다.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    courseDetails.map((detail: CourseData, detailIdx: number) => {
+                      const rowKey = `${detail['훈련과정 ID'] || 'unknown'}-${detailIdx}`;
+                      console.log('[course-analysis] rendering detail row:', {
+                        rowKey,
+                        과정명: detail.과정명,
+                        '훈련과정 ID': detail['훈련과정 ID'],
+                        수료인원: detail.수료인원,
+                        '수강신청 인원': detail['수강신청 인원'],
+                        정원: detail.정원,
+                        과정페이지링크: detail.과정페이지링크,
+                      });
+                      return (
+                        <TableRow key={rowKey}>
+                          <TableCell>{detail.회차}</TableCell>
+                          <TableCell>
+                            {detail.isLeadingCompanyCourse && detail.leadingCompanyPartnerInstitution ? (
+                              <span>
+                                {detail.leadingCompanyPartnerInstitution}
+                                {detail.훈련기관 && (
+                                  <span> (<span style={{ whiteSpace: 'pre' }}>{detail.훈련기관}</span>)</span>
+                                )}
+                              </span>
+                            ) : (
+                              detail.훈련기관
+                            )}
+                          </TableCell>
+                          <TableCell>{new Date(detail.과정시작일).toLocaleDateString('ko-KR')}</TableCell>
+                          <TableCell>{new Date(detail.과정종료일).toLocaleDateString('ko-KR')}</TableCell>
+                          <TableCell>{formatNumber(detail.정원 || 0)}</TableCell>
+                          <TableCell>{formatNumber(detail['수강신청 인원'] || 0)}</TableCell>
+                          <TableCell>{formatNumber(detail.수료인원 || 0)}</TableCell>
+                          <TableCell>{formatNumber(detail['취업인원 (3개월)'] || 0)}</TableCell>
+                          <TableCell>{formatNumber(detail['취업인원 (6개월)'] || 0)}</TableCell>
+                          <TableCell className="text-center">
+                            {formatNumber(detail.총훈련일수 || 0)}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {formatNumber(detail.총훈련시간 || 0)}
+                          </TableCell>
+                          <TableCell>
+                            {formatCurrency(
+                              computeCourseRevenueByMode(
+                                detail,
+                                selectedYear === 'all' ? undefined : selectedYear,
+                                propRevenueMode === 'contract' ? 'max' : propRevenueMode
+                              )
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {detail.과정페이지링크 && (
+                              <Button
+                                variant="link"
                               size="sm"
                               onClick={() => openLinkSafe(detail.과정페이지링크)}
                             >
@@ -406,8 +452,9 @@ const CourseCard = React.memo(({
                         </TableCell>
                       </TableRow>
                     );
-                  })}
-                  {agg.allCourseDetails && agg.allCourseDetails.length > displayCount && (
+                  })
+                  )}
+                  {courseDetails.length < (agg.allCourseDetails?.length || 0) && (
                     <TableRow>
                       <TableCell colSpan={13} className="text-center py-2">
                         <Button
@@ -416,7 +463,7 @@ const CourseCard = React.memo(({
                           onClick={handleShowMore}
                           className="px-4 py-1"
                         >
-                          더보기 ({agg.allCourseDetails.length - displayCount}개 항목)
+                          더보기 ({(agg.allCourseDetails?.length || 0) - courseDetails.length}개 항목)
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -492,13 +539,14 @@ const CourseCard = React.memo(({
         {/* 매출 기준 토글 */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">매출 기준</label>
-          <Select value={revenueMode} onValueChange={(v) => setRevenueMode(v as RevenueMode)}>
+          <Select value={revenueMode} onValueChange={(v) => setRevenueMode(v as ViewRevenueMode)}>
             <SelectTrigger className="w-[200px] bg-white">
               <SelectValue placeholder="매출 기준" />
             </SelectTrigger>
             <SelectContent className="bg-white z-20">
               <SelectItem value="current">현재 계산된 매출</SelectItem>
               <SelectItem value="max">최대 매출</SelectItem>
+              <SelectItem value="contract">수주 매출</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -515,6 +563,12 @@ const CourseCard = React.memo(({
           />
         </div>
       </div>
+
+      <div className="mb-4 text-sm text-foreground bg-muted border border-border rounded px-4 py-2 space-y-1">
+        <div>※ 매출액: 과정이 2개년도에 걸쳐있는 경우, 각 년도에 차지하는 비율에 맞추어 매출이 분배됩니다.</div>
+        <div>※ 수주 매출: 과정시작일(=위탁계약 수주 시점)이 선택 연도에 속한 과정의 매출 최대 합계입니다. 분배되지 않고 수주 연도에 전액 귀속됩니다.</div>
+      </div>
+
       <div className="grid gap-6">
         {displayCourses.length === 0 ? (
           <div className="text-center text-gray-500 py-20">표시할 데이터가 없습니다.</div>
