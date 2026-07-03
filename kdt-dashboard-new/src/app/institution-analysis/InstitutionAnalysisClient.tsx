@@ -117,6 +117,8 @@ export default function InstitutionAnalysisClient() {
   const [isModalDataLoading, setIsModalDataLoading] = useState(false);
   // ★ 그룹핑 토글: false=개별 과정 테이블, true=과정 묶음(그룹) 테이블
   const [isGroupedView, setIsGroupedView] = useState(false);
+  // ★ 그룹 뷰 전용 연도 필터: 'all'=전체 기간, 또는 특정 연도
+  const [groupYearFilter, setGroupYearFilter] = useState<number | 'all'>('all');
 
   const [availableYears] = useState<number[]>(() =>
     Array.from({ length: new Date().getFullYear() - 2020 }, (_, i) => 2021 + i)
@@ -306,10 +308,18 @@ export default function InstitutionAnalysisClient() {
     return Array.from(byYear.values()).sort((a, b) => a.year - b.year);
   }, [allYearCourses]);
 
-  // ★ 과정 그룹핑 (전체 기간): 훈련과정 ID 우선, 없으면 과정명으로 묶음. 매출 높은 순.
+  // ★ 과정 그룹핑: 훈련과정 ID 우선, 없으면 과정명으로 묶음. 매출 높은 순.
+  //   groupYearFilter가 특정 연도면 그 해 개강 과정만 대상으로 하되,
+  //   연도 안에서도 같은 ID/과정명은 계속 하나로 묶는다.
   const institutionCourseGroups = useMemo<CourseGroup[]>(() => {
     const byKey = new Map<string, CourseGroup>();
     for (const c of allYearCourses) {
+      // 연도 필터: 'all'이 아니면 해당 연도 개강 과정만
+      if (groupYearFilter !== 'all') {
+        const cy = extractCourseYear(c);
+        if (cy !== groupYearFilter) continue;
+      }
+
       const key = getCourseGroupKey(c);
       const g =
         byKey.get(key) ??
@@ -351,11 +361,22 @@ export default function InstitutionAnalysisClient() {
     groups.forEach((g) => g.years.sort((a, b) => a - b));
     // 매출 높은 순 정렬
     return groups.sort((a, b) => b.revenueSum - a.revenueSum);
-  }, [allYearCourses, isContractMode]);
+  }, [allYearCourses, isContractMode, groupYearFilter]);
+
+  // ★ 그룹 뷰 연도 드롭다운 옵션: allYearCourses에 실제 존재하는 연도만
+  const groupAvailableYears = useMemo<number[]>(() => {
+    const set = new Set<number>();
+    for (const c of allYearCourses) {
+      const y = extractCourseYear(c);
+      if (y !== null) set.add(y);
+    }
+    return Array.from(set).sort((a, b) => a - b);
+  }, [allYearCourses]);
 
   const handleViewDetails = async (institutionName: string) => {
     setSelectedInstitutionName(institutionName);
     setIsGroupedView(false); // 열 때마다 개별 뷰로 초기화
+    setGroupYearFilter('all'); // 그룹 연도 필터도 전체로 초기화
 
     // 현재 대시보드 필터 기준 course (KPI 카드 계산에 계속 사용)
     const stat = institutionStats.find((s) => s.institution_name === institutionName);
@@ -747,25 +768,47 @@ export default function InstitutionAnalysisClient() {
             </div>
 
             {/* ★ 과정 그룹핑 토글: 개별 과정 ↔ 과정 묶음(그룹) */}
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
               <h4 className="text-sm font-semibold text-foreground">
-                {isGroupedView ? '과정별 그룹 요약 (동일 과정 묶음)' : '개별 훈련과정 목록'}
+                {isGroupedView
+                  ? `과정별 그룹 요약 (동일 과정 묶음${groupYearFilter === 'all' ? ', 전체 기간' : `, ${groupYearFilter}년 개강`})`
+                  : '개별 훈련과정 목록'}
               </h4>
-              <div className="inline-flex rounded-md border border-border overflow-hidden text-sm">
-                <button
-                  type="button"
-                  onClick={() => setIsGroupedView(false)}
-                  className={`px-3 py-1.5 ${!isGroupedView ? 'bg-indigo-600 text-white' : 'bg-background text-foreground hover:bg-muted'}`}
-                >
-                  개별 과정
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsGroupedView(true)}
-                  className={`px-3 py-1.5 border-l border-border ${isGroupedView ? 'bg-indigo-600 text-white' : 'bg-background text-foreground hover:bg-muted'}`}
-                >
-                  과정 묶음
-                </button>
+              <div className="flex items-center gap-3">
+                {/* 그룹 뷰일 때만 연도 필터 노출 */}
+                {isGroupedView && (
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-muted-foreground">연도</label>
+                    <select
+                      value={String(groupYearFilter)}
+                      onChange={(e) =>
+                        setGroupYearFilter(e.target.value === 'all' ? 'all' : parseInt(e.target.value, 10))
+                      }
+                      className="text-sm bg-background text-foreground border border-border rounded-md px-2 py-1.5"
+                    >
+                      <option value="all">전체 기간</option>
+                      {groupAvailableYears.map((y) => (
+                        <option key={y} value={String(y)}>{y}년</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <div className="inline-flex rounded-md border border-border overflow-hidden text-sm">
+                  <button
+                    type="button"
+                    onClick={() => setIsGroupedView(false)}
+                    className={`px-3 py-1.5 ${!isGroupedView ? 'bg-indigo-600 text-white' : 'bg-background text-foreground hover:bg-muted'}`}
+                  >
+                    개별 과정
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsGroupedView(true)}
+                    className={`px-3 py-1.5 border-l border-border ${isGroupedView ? 'bg-indigo-600 text-white' : 'bg-background text-foreground hover:bg-muted'}`}
+                  >
+                    과정 묶음
+                  </button>
+                </div>
               </div>
             </div>
 
