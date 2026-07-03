@@ -25,7 +25,11 @@ import { Button } from "@/components/ui/button";
 interface YearlyStatsData {
   year: number;
   revenue: number;
+  previousRevenue?: number;
+  revenueYoY?: number | null;
   contractRevenue: number;
+  previousContractRevenue?: number;
+  contractRevenueYoY?: number | null;
   contractStudents: number;
   totalStudents: number;
   completedStudents: number;
@@ -85,8 +89,17 @@ export default function YearlyAnalysisPage() {
         // 클라이언트에서 연도별 집계
         const yearMap: { [year: number]: YearlyStatsData } = {};
 
-        // 2021~2026년 초기화
-        for (let year = 2021; year <= 2026; year++) {
+        const availableYears = resultCurrent.meta?.available_years?.length
+          ? [...new Set(resultCurrent.meta.available_years)].sort((a, b) => a - b)
+          : Array.from(
+              new Set(
+                currentCourses
+                  .map((course) => new Date(String(course.과정종료일)).getFullYear())
+                  .filter((year) => Number.isFinite(year))
+              )
+            ).sort((a, b) => a - b);
+
+        availableYears.forEach((year) => {
           yearMap[year] = {
             year,
             revenue: 0,
@@ -98,19 +111,18 @@ export default function YearlyAnalysisPage() {
             courseCount: 0,
             courses: [],
           };
-        }
+        });
 
         // 현재 매출: 조정된 연도별 매출로 집계
+        const yearColumns = availableYears.map((year) => `${year}년` as keyof CourseAnalysisRow);
         currentCourses.forEach((course) => {
-          const yearColumns = ['2021년', '2022년', '2023년', '2024년', '2025년', '2026년'] as const;
-          
           yearColumns.forEach((yearCol) => {
-            const year = parseInt(yearCol, 10);
+            const year = parseInt(String(yearCol), 10);
             const adjustedRevenue = course[`조정_${yearCol}` as keyof CourseAnalysisRow];
-            
+
             if (adjustedRevenue && typeof adjustedRevenue === 'number' && adjustedRevenue > 0) {
-              // 이 과정이 해당 연도에 매출이 있으면 포함
-              if (!yearMap[year].courses.find(c => c.고유값 === course.고유값)) {
+              if (!yearMap[year]) return;
+              if (!yearMap[year].courses.find((c) => c.고유값 === course.고유값)) {
                 yearMap[year].courses.push(course);
               }
               yearMap[year].revenue += adjustedRevenue;
@@ -163,7 +175,28 @@ export default function YearlyAnalysisPage() {
           }
         });
 
-        const stats = Object.values(yearMap).sort((a, b) => a.year - b.year);
+        const sortedYears = Object.keys(yearMap)
+          .map((y) => parseInt(y, 10))
+          .sort((a, b) => a - b);
+
+        sortedYears.forEach((year, index) => {
+          const stat = yearMap[year];
+          if (index === 0) {
+            stat.previousRevenue = 0;
+            stat.revenueYoY = null;
+            stat.previousContractRevenue = 0;
+            stat.contractRevenueYoY = null;
+          } else {
+            const prevYear = sortedYears[index - 1];
+            const prevStat = yearMap[prevYear];
+            stat.previousRevenue = prevStat.revenue;
+            stat.revenueYoY = prevStat.revenue > 0 ? ((stat.revenue - prevStat.revenue) / prevStat.revenue) * 100 : null;
+            stat.previousContractRevenue = prevStat.contractRevenue;
+            stat.contractRevenueYoY = prevStat.contractRevenue > 0 ? ((stat.contractRevenue - prevStat.contractRevenue) / prevStat.contractRevenue) * 100 : null;
+          }
+        });
+
+        const stats = sortedYears.map((year) => yearMap[year]);
         setYearlyStats(stats);
 
       } catch (error) {
@@ -220,8 +253,10 @@ export default function YearlyAnalysisPage() {
               <TableRow>
                 <TableHead>연도</TableHead>
                 <TableHead>총 매출</TableHead>
+                <TableHead>전년 대비 매출</TableHead>
                 <TableHead>총 수주인원</TableHead>
                 <TableHead>수주 매출</TableHead>
+                <TableHead>전년 대비 수주 매출</TableHead>
                 <TableHead>총 수강인원</TableHead>
                 <TableHead>총 수료인원</TableHead>
                 <TableHead>평균 수료율</TableHead>
@@ -235,8 +270,14 @@ export default function YearlyAnalysisPage() {
                   <TableRow key={stat.year}>
                     <TableCell>{stat.year}년</TableCell>
                     <TableCell>{formatCurrency(stat.revenue || 0)}</TableCell>
+                    <TableCell>
+                      {stat.revenueYoY === null ? '-' : `${stat.revenueYoY.toFixed(1)}%`}
+                    </TableCell>
                     <TableCell>{formatNumber(stat.contractStudents || 0)}명</TableCell>
                     <TableCell>{formatCurrency(stat.contractRevenue || 0)}</TableCell>
+                    <TableCell>
+                      {stat.contractRevenueYoY === null ? '-' : `${stat.contractRevenueYoY.toFixed(1)}%`}
+                    </TableCell>
                     <TableCell>{formatNumber(stat.totalStudents || 0)}명</TableCell>
                     <TableCell>{formatNumber(stat.completedStudents || 0)}명</TableCell>
                     <TableCell>{stat.completionRate.toFixed(1)}%</TableCell>

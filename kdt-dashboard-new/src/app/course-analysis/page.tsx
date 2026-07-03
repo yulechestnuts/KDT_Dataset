@@ -121,7 +121,7 @@ function CourseAnalysisContent() {
         setLoading(true);
         setError(null);
 
-        const year = selectedYear === 'all' ? undefined : selectedYear;
+        const year = revenueMode === 'contract' ? undefined : selectedYear === 'all' ? undefined : selectedYear;
         const apiRevenueMode: RevenueMode = revenueMode === 'contract' ? 'max' : revenueMode;
         const result = await kdtAPI.getCourseAnalysis({
           year,
@@ -132,14 +132,6 @@ function CourseAnalysisContent() {
         setCourseData((result?.data ?? []) as unknown as CourseData[]);
         setRawCourses((result?.data ?? []) as unknown as CourseData[]); // 원본 데이터 보관
         setAvailableYears(result?.meta?.available_years ?? []);
-        console.log('[course-analysis] API response setCourseData first 3 rows:', (result?.data ?? []).slice(0, 3).map((d: any) => ({
-          고유값: d.고유값,
-          과정명: d.과정명,
-          '훈련과정 ID': d['훈련과정 ID'],
-          과정시작일: d.과정시작일,
-          total_revenue: d.total_revenue,
-          '2026년': d['2026년'],
-        })));
       } catch (err) {
         setError('데이터를 불러오는 중 오류가 발생했습니다.');
         console.error('Error loading data:', err);
@@ -191,53 +183,20 @@ function CourseAnalysisContent() {
   // 집계 결과 생성 (검색 필터 반영, revenueMode 적용)
   // @/lib/data-utils.ts의 함수 사용 (year는 undefined로 전달하여 전체 연도 매출 합산)
   const filteredCourses = useMemo(() => {
-    console.log('[course-analysis] Filtering courses with search:', debouncedSearchQuery);
     const baseFiltered = getFilteredCourseData();
     const institutionFiltered = getInstitutionFilteredCourses(baseFiltered);
     const contractFiltered = getContractFilteredCourses(institutionFiltered);
     return contractFiltered;
-  }, [rawCourses, debouncedSearchQuery, selectedYear, filterType, getContractFilteredCourses]); // debouncedSearchQuery 사용
+  }, [rawCourses, debouncedSearchQuery, selectedYear, filterType, getContractFilteredCourses]);
 
   const aggregatedCourses = useMemo(() => {
-    console.log('[course-analysis] filteredCourses count before aggregation:', filteredCourses.length);
-    console.log('[course-analysis] revenueMode:', revenueMode);
-    if (selectedYear === 2026 || selectedYear === 'all') {
-      console.log('[course-analysis] 2026/all sample before aggregation:', filteredCourses.slice(0, 3).map((c: any) => ({
-        과정명: c.과정명,
-        '훈련과정 ID': c['훈련과정 ID'],
-        과정시작일: c.과정시작일,
-        '2026년': c['2026년'],
-        total_revenue: c.total_revenue,
-      })));
-    }
-    
     const aggregated = aggregateCoursesByCourseIdWithLatestInfo(
       filteredCourses,
-      selectedYear === 'all' ? undefined : selectedYear,
+      revenueMode === 'contract' ? undefined : selectedYear === 'all' ? undefined : selectedYear,
       undefined, // institutionName: 기관 필터링 없음
       revenueMode === 'contract' ? 'max' : revenueMode
     );
-    
-    console.log('[course-analysis] aggregatedCourses count after aggregation:', aggregated.length);
-    if (selectedYear === 2026 || selectedYear === 'all') {
-      console.log('[course-analysis] 2026/all sample after aggregation:', aggregated.slice(0, 3).map((a: any) => ({
-        과정명: a.과정명,
-        '훈련과정 ID': a['훈련과정 ID'],
-        총누적매출: a.총누적매출,
-        allCourseDetails_count: a.allCourseDetails?.length ?? 0,
-      })));
-    }
-    
     const enriched = enrichAggregatedCoursesWithDetails(aggregated, filteredCourses);
-    console.log('[course-analysis] enrichAggregatedCoursesWithDetails debug:', enriched.map((a: any) => ({
-      과정명: a.과정명,
-      '훈련과정 ID': a['훈련과정 ID'],
-      hasDetails: Boolean(a.allCourseDetails),
-      detailsCount: a.allCourseDetails?.length ?? 0,
-      firstDetailName: a.allCourseDetails?.[0]?.과정명,
-      firstDetailLink: a.allCourseDetails?.[0]?.과정페이지링크,
-    })));
-    
     return enriched;
   }, [filteredCourses, selectedYear, revenueMode]);
 
@@ -434,7 +393,7 @@ const CourseCard = React.memo(({
                             {formatCurrency(
                               computeCourseRevenueByMode(
                                 detail,
-                                selectedYear === 'all' ? undefined : selectedYear,
+                                propRevenueMode === 'contract' ? undefined : selectedYear === 'all' ? undefined : selectedYear,
                                 propRevenueMode === 'contract' ? 'max' : propRevenueMode
                               )
                             )}

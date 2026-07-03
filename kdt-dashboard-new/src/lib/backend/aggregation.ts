@@ -17,7 +17,6 @@ import {
 } from './revenue-engine';
 import {
   getPreferredEmploymentCount,
-  formatXyDisplay,
   formatRateDetail,
   calculateEmploymentRate,
   getSafeEmploymentData,
@@ -27,6 +26,29 @@ import { extractYearMonth, parseDate } from './parsers';
 function toFiniteNumber(value: unknown, fallback: number = 0): number {
   const num = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(num) ? num : fallback;
+}
+
+/**
+ * a(c/b) 표기 포매터.
+ *   a = 전체 (당해 검토 연도에 진행된 총량)
+ *   c = 당해 연도에 개강한 분
+ *   b = 다른 연도에 개강한 분
+ *   c + b = a
+ * cumulative/월 필터 등 연도 구분이 무의미한 경우 currentOnly=true로 a만 표기한다.
+ */
+function formatAbcDisplay(
+  currentYearAmount: number,
+  prevYearAmount: number,
+  currentOnly: boolean = false
+): string {
+  const c = Math.round(toFiniteNumber(currentYearAmount, 0));
+  const b = Math.round(toFiniteNumber(prevYearAmount, 0));
+  const a = b + c;
+
+  if (currentOnly || b <= 0) {
+    return `${a}`;
+  }
+  return `${a}(${c}/${b})`;
 }
 
 function inferYearFromRevenue(course: ProcessedCourseData, year: number): boolean {
@@ -401,11 +423,17 @@ export function calculateInstitutionStats(
       carriedOverCompleted = Math.round(toFiniteNumber(carriedOverCompleted, 0));
     }
 
-    const completedDisplay = (() => {
-      const total = currentYearCompleted + carriedOverCompleted;
-      if (carriedOverCompleted > 0) return `${total}(${carriedOverCompleted})`;
-      return `${total}`;
-    })();
+    const completedCurrentYearStart = Math.round(toFiniteNumber(currentYearCompletedStudents, 0));
+    const completedPrevYearStart =
+      month !== undefined || isCumulativeAllYears || year === undefined
+        ? 0
+        : Math.round(toFiniteNumber(prevYearCompletedStudents, 0));
+    const currentOnlyFlag = month !== undefined || isCumulativeAllYears;
+    const completedDisplay = formatAbcDisplay(
+      completedCurrentYearStart,
+      completedPrevYearStart,
+      currentOnlyFlag
+    );
 
     const completionRate =
       totalValidStudentsForCompletion > 0
@@ -465,10 +493,15 @@ export function calculateInstitutionStats(
               0
             )
           : undefined,
-      total_courses_display: formatXyDisplay(currentYearCoursesCount, prevYearCoursesCount),
-      total_students_display: formatXyDisplay(
+      total_courses_display: formatAbcDisplay(
+        currentYearCoursesCount,
+        prevYearCoursesCount,
+        currentOnlyFlag
+      ),
+      total_students_display: formatAbcDisplay(
         Math.round(currentYearStudents),
-        Math.round(prevYearStudents)
+        Math.round(prevYearStudents),
+        currentOnlyFlag
       ),
       completed_students_display: completedDisplay,
       current_year_completed: currentYearCompleted,
