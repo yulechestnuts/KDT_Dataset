@@ -393,9 +393,15 @@ export function calculateRevenueShare(
   groupInstitutionsAdvanced: (name: string) => string
 ): number {
   const trainingInstitution = groupInstitutionsAdvanced(course.훈련기관);
+  const partnerRaw = String(
+    course.leadingCompanyPartnerInstitution ?? course.파트너기관 ?? ''
+  ).trim();
+  const isLeading =
+    Boolean(course.isLeadingCompanyCourse && partnerRaw && partnerRaw !== '0') ||
+    (partnerRaw !== '' && partnerRaw !== '0');
 
-  if (course.isLeadingCompanyCourse && course.leadingCompanyPartnerInstitution) {
-    const partnerInstitution = groupInstitutionsAdvanced(course.leadingCompanyPartnerInstitution);
+  if (isLeading && partnerRaw && partnerRaw !== '0') {
+    const partnerInstitution = groupInstitutionsAdvanced(partnerRaw);
 
     // 훈련기관과 파트너기관이 같으면 훈련기관이 100% 흡수
     if (trainingInstitution === partnerInstitution) {
@@ -423,6 +429,43 @@ export function calculateRevenueShare(
     }
     return 0.0;
   }
+}
+
+/**
+ * 과정 수주금액(매출 최대)을 기관별로 배분
+ * - 선도기업: 파트너 90% / 훈련기관 10%
+ * - 동일기관이거나 일반과정: 훈련기관 100%
+ */
+export function allocateContractRevenueByInstitution(
+  course: ProcessedCourseData,
+  contractRevenue: number,
+  groupInstitutionsAdvanced: (name: string) => string
+): Array<{ institution: string; amount: number }> {
+  const candidates = new Set<string>();
+  const training = String(course.훈련기관 ?? '').trim();
+  if (training) {
+    candidates.add(groupInstitutionsAdvanced(training));
+  }
+  if (course.isLeadingCompanyCourse && course.leadingCompanyPartnerInstitution) {
+    candidates.add(groupInstitutionsAdvanced(String(course.leadingCompanyPartnerInstitution)));
+  }
+
+  const allocated: Array<{ institution: string; amount: number }> = [];
+  for (const institution of candidates) {
+    const share = calculateRevenueShare(course, institution, groupInstitutionsAdvanced);
+    if (share > 0) {
+      allocated.push({ institution, amount: contractRevenue * share });
+    }
+  }
+
+  if (allocated.length === 0) {
+    allocated.push({
+      institution: training ? groupInstitutionsAdvanced(training) : '미상',
+      amount: contractRevenue,
+    });
+  }
+
+  return allocated;
 }
 
 /**

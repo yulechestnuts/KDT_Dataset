@@ -29,6 +29,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatCurrency, formatNumber } from "@/utils/formatters";
+import { allocateContractRevenueByInstitution } from '@/lib/backend/revenue-engine';
+import { groupInstitutionsAdvanced } from '@/lib/backend/institution-grouping';
 
 function toFiniteNumber(value: unknown, fallback: number = 0): number {
   if (value === null || value === undefined) return fallback;
@@ -240,11 +242,19 @@ export default function MonthlyAnalysisPage() {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10);
 
+  // 기관별 수주금액: institution-analysis와 동일 (선도기업 파트너 90% / 훈련기관 10%)
   const topInstitutionsByContract = Object.entries(
     selectedMonthDetails.reduce((acc: Record<string, number>, course: any) => {
-      const institution = String(course.훈련기관 ?? '미상').trim() || '미상';
       const contract = toFiniteNumber(course.월별수주매출 ?? course['매출 최대'] ?? 0, 0);
-      acc[institution] = (acc[institution] ?? 0) + contract;
+      const allocated = allocateContractRevenueByInstitution(
+        course,
+        contract,
+        groupInstitutionsAdvanced
+      );
+      for (const { institution, amount } of allocated) {
+        const key = String(institution ?? '미상').trim() || '미상';
+        acc[key] = (acc[key] ?? 0) + amount;
+      }
       return acc;
     }, {})
   )
@@ -692,6 +702,7 @@ export default function MonthlyAnalysisPage() {
             <DialogTitle>{selectedMonth} 상세 과정</DialogTitle>
             <DialogDescription>
               수주금액 중심으로 해당 월의 과정/기관 성과를 확인합니다.
+              선도기업 아카데미는 파트너기관 90% · 훈련기관 10%로 기관 귀속합니다.
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-3 gap-3">
@@ -743,7 +754,7 @@ export default function MonthlyAnalysisPage() {
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">수주금액 상위 훈련기관 Top 10</CardTitle>
+                <CardTitle className="text-sm">수주금액 상위 훈련기관 Top 10 (선도 90/10 반영)</CardTitle>
               </CardHeader>
               <CardContent className="pt-0 space-y-2">
                 {topInstitutionsByContract.length === 0 ? (

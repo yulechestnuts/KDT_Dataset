@@ -8,6 +8,7 @@ import { formatNumber, formatRevenue } from '@/utils/formatters';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, Legend, CartesianGrid } from 'recharts';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { groupInstitutionsAdvanced } from '@/lib/backend/institution-grouping';
+import { calculateRevenueShare } from '@/lib/backend/revenue-engine';
 import {
   Dialog,
   DialogContent,
@@ -17,6 +18,37 @@ import {
 } from "@/components/ui/dialog";
 
 type ViewRevenueMode = RevenueMode | 'contract';
+
+/** 기관 귀속 수주매출: 선도기업은 파트너 90% / 훈련기관 10% (매출 최대 전액 금지) */
+function getAttributedContractRevenue(course: any, institutionName: string): number {
+  const attributed = Number(course?.기관귀속수주매출);
+  if (Number.isFinite(attributed)) {
+    return attributed;
+  }
+  const maxRevenue = Number(course?.['매출 최대'] ?? 0) || 0;
+  const share = getInstitutionRevenueShare(course, institutionName);
+  return maxRevenue * share;
+}
+
+/** 배분율 조회 (응답 필드 우선, 없으면 동일 산식 재계산) */
+function getInstitutionRevenueShare(course: any, institutionName: string): number {
+  const saved = Number(course?.기관매출배분율);
+  if (Number.isFinite(saved) && saved >= 0) {
+    return saved;
+  }
+  // isLeadingCompanyCourse 플래그 누락 시 파트너기관 문자열로도 선도기업 판정
+  const partnerRaw = String(
+    course?.leadingCompanyPartnerInstitution ?? course?.파트너기관 ?? ''
+  ).trim();
+  const normalized = {
+    ...course,
+    isLeadingCompanyCourse: Boolean(course?.isLeadingCompanyCourse) || (partnerRaw !== '' && partnerRaw !== '0'),
+    leadingCompanyPartnerInstitution:
+      course?.leadingCompanyPartnerInstitution ||
+      (partnerRaw !== '' && partnerRaw !== '0' ? partnerRaw : undefined),
+  };
+  return calculateRevenueShare(normalized, institutionName, groupInstitutionsAdvanced);
+}
 
 function renderRateWithCount(numer: number | null, denom: number | null, digits: number = 1): string {
   // null 체크: 데이터 없음 vs 계산 실패
@@ -95,7 +127,7 @@ type CourseGroup = {
 // 연도별 추이 한 지점
 type TrendPoint = {
   year: number;
-  contractRevenue: number;   // 수주매출(=매출 최대 합)
+  contractRevenue: number;   // 수주매출(기관 귀속분 = 매출 최대 × 배분율)
   maxRevenue: number;        // 최대매출(총누적매출 합)
   students: number;          // 훈련생 수 합
 };
@@ -141,7 +173,7 @@ export default function InstitutionAnalysisClient() {
   // 매출 기준 설명 (모달 안내 배너용)
   const revenueModeDescription =
     revenueMode === 'contract'
-      ? '해당 연도에 실제 수주받은 물량의 총액 (수주 시점 전액 귀속)'
+      ? '수주 시점 전액 귀속 + 선도기업은 파트너 90%/훈련기관 10%만 기관에 반영'
       : revenueMode === 'max'
         ? '연도별 매출을 구분하여 집계한 최대 매출'
         : '연도별 비율로 분배된 현재 계산 매출';
@@ -219,6 +251,13 @@ export default function InstitutionAnalysisClient() {
       const partnerGroup = partnerRaw ? groupInstitutionsAdvanced(partnerRaw) : undefined;
       const isLeadingWithPartner = Boolean(c?.isLeadingCompanyCourse && partnerRaw);
 
+      // 매출/수주: 기관 배분율 반영 (선도기업 파트너 90% / 훈련기관 10%)
+      // selectedInstitutionCourses는 이미 share>0 과정만 포함
+      const revenue = Number(c?.총누적매출 ?? c?.누적매출 ?? 0) || 0;
+      revenueSum += revenue;
+      contractRevenueSum += getAttributedContractRevenue(c, institution);
+
+      // 인원·회차 등 성과지표: 선도기업은 파트너기관만 집계
       const belongsForCounts = isLeadingWithPartner
         ? partnerGroup === institution
         : trainingGroup === institution;
@@ -240,16 +279,11 @@ export default function InstitutionAnalysisClient() {
       const empData = getSafeEmploymentData(c);
       const { employed: integratedEmployed, targetPop } = empData;
       const satisfaction = Number(c?.만족도 ?? 0) || 0;
-      const revenue = Number(c?.총누적매출 ?? c?.누적매출 ?? 0) || 0;
-      // ★ 수주 매출: '매출 최대' 필드 사용 (분배 없이 수주 시점 전액). 없으면 매출액으로 대체
-      const contractRevenue = Number(c?.['매출 최대'] ?? c?.총누적매출 ?? c?.누적매출 ?? 0) || 0;
 
       enrolledSum += enrolled;
       capacitySum += capacity;
       completedSum += completed;
       employedSum += integratedEmployed;
-      revenueSum += revenue;
-      contractRevenueSum += contractRevenue;
       if (typeof targetPop === 'number' && Number.isFinite(targetPop) && targetPop > 0) {
         targetPopSum += targetPop;
         integratedEmployedSum += integratedEmployed;
@@ -299,14 +333,14 @@ export default function InstitutionAnalysisClient() {
       const y = extractCourseYear(c);
       if (y === null) continue;
       const point = byYear.get(y) ?? { year: y, contractRevenue: 0, maxRevenue: 0, students: 0 };
-      // 수주매출 = 매출 최대(수주 시점 전액). 최대매출 = 총누적매출(=백엔드 max 집계값)
-      point.contractRevenue += Number(c?.['매출 최대'] ?? 0) || 0;
+      // 수주매출 = 기관 귀속분(선도 90/10). 최대매출 = 총누적매출(이미 배분 반영)
+      point.contractRevenue += getAttributedContractRevenue(c, selectedInstitutionName);
       point.maxRevenue += Number(c?.총누적매출 ?? c?.누적매출 ?? 0) || 0;
       point.students += Number(c?.['수강신청 인원'] ?? 0) || 0;
       byYear.set(y, point);
     }
     return Array.from(byYear.values()).sort((a, b) => a.year - b.year);
-  }, [allYearCourses]);
+  }, [allYearCourses, selectedInstitutionName]);
 
   // ★ 과정 그룹핑: 훈련과정 ID 우선, 없으면 과정명으로 묶음. 매출 높은 순.
   //   groupYearFilter가 특정 연도면 그 해 개강 과정만 대상으로 하되,
@@ -346,9 +380,9 @@ export default function InstitutionAnalysisClient() {
         g.employedSum += emp.employed;
       }
 
-      // 매출: 선택 기준(수주=매출 최대 / 그 외=총누적매출)
+      // 매출: 선택 기준(수주=기관귀속 수주매출 / 그 외=총누적매출)
       const rev = isContractMode
-        ? Number(c?.['매출 최대'] ?? c?.총누적매출 ?? c?.누적매출 ?? 0) || 0
+        ? getAttributedContractRevenue(c, selectedInstitutionName)
         : Number(c?.총누적매출 ?? c?.누적매출 ?? 0) || 0;
       g.revenueSum += rev;
 
@@ -361,7 +395,7 @@ export default function InstitutionAnalysisClient() {
     groups.forEach((g) => g.years.sort((a, b) => a - b));
     // 매출 높은 순 정렬
     return groups.sort((a, b) => b.revenueSum - a.revenueSum);
-  }, [allYearCourses, isContractMode, groupYearFilter]);
+  }, [allYearCourses, isContractMode, groupYearFilter, selectedInstitutionName]);
 
   // ★ 그룹 뷰 연도 드롭다운 옵션: allYearCourses에 실제 존재하는 연도만
   const groupAvailableYears = useMemo<number[]>(() => {
@@ -491,7 +525,7 @@ export default function InstitutionAnalysisClient() {
 
       <div className="mb-4 text-sm text-foreground bg-muted border border-border rounded px-4 py-2 space-y-1">
         <div>※ 매출액: 과정이 2개년도에 걸쳐있는 경우, 각 년도에 차지하는 비율에 맞추어 매출이 분배됩니다.</div>
-        <div>※ 수주 매출: 과정시작일(=위탁계약 수주 시점)이 선택 연·월에 속한 과정의 매출 최대 합계입니다. 분배되지 않고 수주 연도에 전액 귀속됩니다.</div>
+        <div>※ 수주 매출: 과정시작일(=위탁계약 수주 시점)이 선택 연·월에 속한 과정의 매출 최대를 기관 배분율로 합산합니다. 선도기업 아카데미는 파트너기관 90% · 훈련기관 10%만 귀속됩니다(연도 pro-rata 분배는 하지 않음).</div>
       </div>
 
       <div className="bg-card text-card-foreground rounded-lg shadow p-6 mt-6">
@@ -683,6 +717,11 @@ export default function InstitutionAnalysisClient() {
                 <div className="text-lg font-semibold text-foreground">
                   {formatRevenue(isContractMode ? selectedInstitutionKpis.contractRevenueSum : selectedInstitutionKpis.revenueSum)}
                 </div>
+                {isContractMode && (
+                  <div className="text-xs text-muted-foreground mt-1">
+                    = 아래 과정 기관귀속 수주 합 (선도기업: 파트너 90% / 훈련기관 10%)
+                  </div>
+                )}
               </div>
               <div className="bg-muted p-4 rounded-lg border border-border">
                 <div className="text-sm text-muted-foreground">평균 만족도</div>
@@ -880,15 +919,21 @@ export default function InstitutionAnalysisClient() {
               <table className="min-w-full divide-y divide-border">
                 <thead className="bg-muted sticky top-0">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[26%]">과정명</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[10%]">훈련유형</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[12%]">모집률</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[8%]">훈련생</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[8%]">수료인원</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[12%]">수료율</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[12%]">취업대상자 대비 취업률</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[10%]">{revenueColumnLabel}</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[8%]">만족도</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[24%]">과정명</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[8%]">훈련유형</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[10%]">모집률</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[6%]">훈련생</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[6%]">수료인원</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[10%]">수료율</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[10%]">취업대상자 대비 취업률</th>
+                    {isContractMode && (
+                      <>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[8%]">매출 최대</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[6%]">배분율</th>
+                      </>
+                    )}
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[8%]">{revenueColumnLabel}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[6%]">만족도</th>
                   </tr>
                 </thead>
                 <tbody className="bg-card divide-y divide-border">
@@ -899,9 +944,15 @@ export default function InstitutionAnalysisClient() {
                         const capacity = Number(course?.정원 ?? 0) || 0;
                         const completed = Number(course?.수료인원 ?? 0) || 0;
                         const satisfaction = Number(course?.만족도 ?? 0) || 0;
+                        const maxRevenue = Number(course?.['매출 최대'] ?? 0) || 0;
+                        const share = getInstitutionRevenueShare(course, selectedInstitutionName);
                         // ★ 매출 기준에 따라 표시 값 전환 (대시보드와 동일 기준)
+                        // 수주 모드: 기관 귀속분(선도 90/10). 절대 매출 최대 전액 사용 금지
                         const revenue = Number(course?.총누적매출 ?? course?.누적매출 ?? 0) || 0;
-                        const contractRevenue = Number(course?.['매출 최대'] ?? course?.총누적매출 ?? course?.누적매출 ?? 0) || 0;
+                        const contractRevenue = getAttributedContractRevenue(
+                          course,
+                          selectedInstitutionName
+                        );
                         const displayRevenue = isContractMode ? contractRevenue : revenue;
 
                         const recruitStr = renderRateWithCount(enrolled, capacity, 1);
@@ -937,6 +988,16 @@ export default function InstitutionAnalysisClient() {
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{formatNumber(completed)}</td>
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{completionStr}</td>
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{employmentStr}</td>
+                            {isContractMode && (
+                              <>
+                                <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">
+                                  {formatRevenue(maxRevenue)}
+                                </td>
+                                <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">
+                                  {`${Math.round(share * 100)}%`}
+                                </td>
+                              </>
+                            )}
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{formatRevenue(displayRevenue)}</td>
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{satisfaction > 0 ? satisfaction.toFixed(1) : '-'}</td>
                           </>

@@ -63,6 +63,10 @@ const institutionGroupingMasterData = {
       keywords: ['솔데스크강남학원', '(주)솔데스크', '솔데스크'],
       examples: ['(주)솔데스크', '솔데스크강남학원', '솔데스크'],
     },
+    대한상공회의소: {
+      keywords: ['상공회의소', '대한상공'],
+      examples: ['대한상공회의소', '부산상공회의소', '인천상공회의소'],
+    },
   },
   grouping_rules: {
     matching_method: 'keyword_inclusion',

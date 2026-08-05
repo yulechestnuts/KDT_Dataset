@@ -195,6 +195,10 @@ export function calculateInstitutionDetailedRevenue(
       const courseCopy = {
         ...course,
         총누적매출: selected,
+        // 기관 귀속 수주매출: 매출 최대 × 배분율 (선도기업 파트너 90% / 훈련기관 10%)
+        // 수주 시점(시작일)이 선택 연·월에 속할 때만 값 부여
+        기관귀속수주매출: startMatchesPeriod(course) ? courseMaxRevenue : 0,
+        기관매출배분율: revenueShare,
         취업대상인원: empData.targetPop,
         통합취업인원: empData.employed,
         취업인원: empData.employed,
@@ -705,7 +709,10 @@ export function calculateMonthlyStatistics(
       stats.total_students += toFiniteNumber(course['수강신청 인원'] || 0, 0);
       stats.completed_students += toFiniteNumber(course.수료인원 || 0, 0);
       stats.course_count += 1;
-      // 수주 매출: 과정시작일이 해당 월인 과정에 매출 최대 전액 귀속 (institution-analysis와 동일 정의)
+      // 수주 매출(월 합계): 과정시작일이 해당 월인 과정의 매출 최대 합
+      // - 과정 단위로는 전액(매출 최대)
+      // - 기관 귀속은 institution-analysis와 동일하게 선도기업 파트너 90%/훈련기관 10%
+      //   (FE/기관 랭킹에서 allocateContractRevenueByInstitution 사용)
       stats.contract_revenue += contractRevenueForCourse;
       if (!stats.courses) stats.courses = [];
       stats.courses.push({
