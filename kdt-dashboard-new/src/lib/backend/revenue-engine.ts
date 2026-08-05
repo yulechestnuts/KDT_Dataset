@@ -2,6 +2,37 @@
 
 import { ProcessedCourseData, RevenueMode } from './types';
 import { parseNumber, parsePercentage } from './parsers';
+import {
+  retentionWeights,
+  getCourseDurationMonths,
+  getMonthIndexInCourse,
+} from './retention-curve';
+
+/**
+ * 연·월 튜플 표기 (1-indexed month). API 파라미터 YYYY-MM에서 파싱한 값과 동일 형태.
+ */
+export interface YearMonth {
+  year: number;
+  month: number; // 1..12
+}
+
+export interface PeriodRange {
+  from: YearMonth;
+  to: YearMonth;
+}
+
+export function ymToNumber(ym: YearMonth): number {
+  return ym.year * 12 + (ym.month - 1);
+}
+
+export function isYearMonthInRange(
+  y: number,
+  m: number,
+  range: PeriodRange
+): boolean {
+  const v = y * 12 + (m - 1);
+  return v >= ymToNumber(range.from) && v <= ymToNumber(range.to);
+}
 
 function getMonthOverlapCountInYear(params: {
   courseStart: Date;
@@ -466,6 +497,89 @@ export function allocateContractRevenueByInstitution(
   }
 
   return allocated;
+}
+
+/**
+ * 과정의 연 단위 매출(현재/최대)을 잔존율 곡선으로 월별 분배한 뒤,
+ * [from, to] 구간에 속하는 월들의 매출만 합산해서 반환한다.
+ *
+ * - 연도 내 총합은 기존 산식(computeCourseRevenue / computeCourseRevenueByMode)과
+ *   보존된다. 즉 range가 그 연도를 완전히 포함하면 결과는 기존 연도값과 동일.
+ * - range가 연도 경계를 부분적으로 자르면, 그 연도의 활동 월들 중
+ *   구간에 속하는 월들의 sqrt-shape 가중합 / 그 연도 전체 가중합 만큼만 잘라 냄.
+ * - 수료율(수료율 필드) 결측 시 uniform fallback(곡선 없이 균등).
+ */
+export function computeCourseRevenueForRange(
+  course: ProcessedCourseData,
+  range: PeriodRange,
+  revenueMode: RevenueMode
+): number {
+  const courseStart = new Date(course.과정시작일);
+  const courseEnd = new Date(course.과정종료일);
+
+  if (!Number.isFinite(courseStart.getTime()) || !Number.isFinite(courseEnd.getTime())) {
+    return 0;
+  }
+
+  const durationMonths = getCourseDurationMonths(courseStart, courseEnd);
+  const completionRate01 = Math.max(0, Math.min(1, (course.수료율 || 0) / 100));
+  const weights = retentionWeights(completionRate01, durationMonths);
+
+  const startYear = courseStart.getFullYear();
+  const endYear = courseEnd.getFullYear();
+
+  // 과정 활동 연 × 연도 내 활동 월 목록을 순회
+  let total = 0;
+
+  for (let y = startYear; y <= endYear; y++) {
+    // range와 겹치지 않는 연도는 skip
+    if (y < range.from.year || y > range.to.year) continue;
+
+    // 연도 내 과정 활동 월 범위
+    const monthStart = y === startYear ? courseStart.getMonth() + 1 : 1;
+    const monthEnd = y === endYear ? courseEnd.getMonth() + 1 : 12;
+
+    // 연 단위 매출 (기존 산식 그대로)
+    const yearRevenue =
+      revenueMode === 'max'
+        ? computeCourseRevenueByMode(course, y, 'max')
+        : computeCourseRevenue(course, y);
+
+    if (!(yearRevenue > 0)) continue;
+
+    // 연 내 각 활동 월의 가중치 및 range 내 여부 판단
+    let yearWeightSum = 0;
+    let inRangeWeightSum = 0;
+
+    for (let m = monthStart; m <= monthEnd; m++) {
+      const t = getMonthIndexInCourse(courseStart, y, m);
+      if (t === null) continue;
+      const w = weights[Math.min(t, weights.length - 1)] ?? 0;
+      yearWeightSum += w;
+      if (isYearMonthInRange(y, m, range)) {
+        inRangeWeightSum += w;
+      }
+    }
+
+    if (yearWeightSum > 0) {
+      total += yearRevenue * (inRangeWeightSum / yearWeightSum);
+    }
+  }
+
+  return total;
+}
+
+/**
+ * 수주매출(과정시작일 기준) 범위 필터.
+ * 과정시작일의 (year, month)가 [from, to]에 속하면 true.
+ */
+export function isCourseStartInRange(
+  course: ProcessedCourseData,
+  range: PeriodRange
+): boolean {
+  const start = new Date(course.과정시작일);
+  if (!Number.isFinite(start.getTime())) return false;
+  return isYearMonthInRange(start.getFullYear(), start.getMonth() + 1, range);
 }
 
 /**

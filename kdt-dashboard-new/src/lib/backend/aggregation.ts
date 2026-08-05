@@ -12,8 +12,11 @@ import {
   computeCourseRevenue,
   computeCourseRevenueByMode,
   computeCourseRevenueForMonth,
+  computeCourseRevenueForRange,
+  isCourseStartInRange,
   calculateRevenueShare,
   calculateStudentShare,
+  PeriodRange,
 } from './revenue-engine';
 import {
   getPreferredEmploymentCount,
@@ -106,13 +109,18 @@ function getStartYearMonthOrFallback(course: ProcessedCourseData): { year: numbe
 
 /**
  * 기관별 상세 매출 계산
+ *
+ * - range가 지정되면: 매출은 잔존율 곡선으로 월별 분배 후 [from,to] 구간만 합산.
+ *   수주매출은 과정시작일이 range에 속한 과정만 귀속.
+ * - range 없이 year/month만 지정된 경우: 기존 산식(연 단위) 그대로.
  */
 export function calculateInstitutionDetailedRevenue(
   allCourses: ProcessedCourseData[],
   institutionName: string,
   year?: number,
   month?: number,
-  revenueMode: RevenueMode = 'current'
+  revenueMode: RevenueMode = 'current',
+  range?: PeriodRange
 ): {
   courses: ProcessedCourseData[];
   totalRevenue: number;
@@ -140,8 +148,18 @@ export function calculateInstitutionDetailedRevenue(
     return start <= yearEnd && end >= yearStart;
   };
 
-  // 수주 매출: 과정시작일(=계약/수주 시점)이 선택 연·월에 속한 과정에만 매출 최대 전액 귀속
+  const overlapsRange = (course: ProcessedCourseData, r: PeriodRange): boolean => {
+    const start = parseDate(course.과정시작일);
+    const end = parseDate(course.과정종료일);
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return false;
+    const rangeStart = new Date(r.from.year, r.from.month - 1, 1);
+    const rangeEnd = new Date(r.to.year, r.to.month, 0); // 해당 월 말일
+    return start <= rangeEnd && end >= rangeStart;
+  };
+
+  // 수주 매출: 과정시작일(=계약/수주 시점)이 선택 연·월/범위에 속한 과정에만 매출 최대 전액 귀속
   const startMatchesPeriod = (course: ProcessedCourseData): boolean => {
+    if (range) return isCourseStartInRange(course, range);
     if (year === undefined && month === undefined) return true;
     const ym = extractYearMonth(course.과정시작일);
     if (year !== undefined) {
@@ -158,7 +176,9 @@ export function calculateInstitutionDetailedRevenue(
     const revenueShare = calculateRevenueShare(course, institutionName, groupInstitutionsAdvanced);
 
     if (revenueShare > 0) {
-      if (year !== undefined && !overlapsYear(course, year)) {
+      if (range) {
+        if (!overlapsRange(course, range)) continue;
+      } else if (year !== undefined && !overlapsYear(course, year)) {
         continue;
       }
 
@@ -173,6 +193,14 @@ export function calculateInstitutionDetailedRevenue(
       }
 
       const selected = (() => {
+        // 범위 모드: 잔존 곡선 기반 월별 분배 후 [from,to] 구간 합산
+        if (range) {
+          if (revenueMode === 'max') {
+            return computeCourseRevenueForRange(course, range, 'max') * revenueShare;
+          }
+          return computeCourseRevenueForRange(course, range, 'current') * revenueShare;
+        }
+
         if (revenueMode === 'max') return courseMaxRevenue;
 
         // 월 필터(수주 기준)일 때는 pro-rata만 제외하고 기존 current 산식 유지
@@ -196,7 +224,7 @@ export function calculateInstitutionDetailedRevenue(
         ...course,
         총누적매출: selected,
         // 기관 귀속 수주매출: 매출 최대 × 배분율 (선도기업 파트너 90% / 훈련기관 10%)
-        // 수주 시점(시작일)이 선택 연·월에 속할 때만 값 부여
+        // 수주 시점(시작일)이 선택 연·월/범위에 속할 때만 값 부여
         기관귀속수주매출: startMatchesPeriod(course) ? courseMaxRevenue : 0,
         기관매출배분율: revenueShare,
         취업대상인원: empData.targetPop,
@@ -220,12 +248,16 @@ export function calculateInstitutionDetailedRevenue(
 
 /**
  * 기관별 통계 계산
+ *
+ * range 파라미터가 지정되면 매출 계산은 잔존율 곡선 기반 월별 분배 후
+ * [from,to] 구간 합산으로 진행되며, 표시(a(b/c)) 는 currentOnly (a만) 모드로 동작한다.
  */
 export function calculateInstitutionStats(
   allCourses: ProcessedCourseData[],
   year?: number,
   revenueMode: RevenueMode = 'current',
-  month?: number
+  month?: number,
+  range?: PeriodRange
 ): InstitutionStat[] {
   const institutionToCourses = new Map<string, ProcessedCourseData[]>();
   const institutionToCourseKeys = new Map<string, Set<string>>();
@@ -265,7 +297,8 @@ export function calculateInstitutionStats(
 
   const result: InstitutionStat[] = [];
   const targetYear = year || new Date().getFullYear();
-  const isCumulativeAllYears = year === undefined && month === undefined;
+  // range 모드에서도 a(b/c)의 b는 무의미하므로 currentOnly 취급
+  const isCumulativeAllYears = (year === undefined && month === undefined) || range !== undefined;
 
   for (const [institutionName, relevantCourses] of institutionToCourses.entries()) {
 
@@ -276,7 +309,8 @@ export function calculateInstitutionStats(
       institutionName,
       month !== undefined ? undefined : year,
       month,
-      revenueMode
+      revenueMode,
+      range
     );
 
     const courses = detailed.courses;

@@ -206,6 +206,9 @@ export class KDTStatsAPI {
 
   /**
    * 기관별 통계 조회
+   *
+   * options.from / options.to (YYYY-MM 형태 또는 {year, month})가 하나라도 있으면
+   * 기간 범위 모드로 요청한다. 이 경우 매출은 잔존율 곡선 기반 월별 분배 후 합산.
    */
   async getInstitutionStats(
     year?: number,
@@ -215,13 +218,32 @@ export class KDTStatsAPI {
       trainingType?: 'all' | 'leading' | 'tech';
       institutionName?: string;
       noCache?: boolean;
+      from?: string | { year: number; month: number };
+      to?: string | { year: number; month: number };
     }
   ): Promise<InstitutionStatsResponse> {
     const params = new URLSearchParams();
-    if (year) params.append('year', year.toString());
+
+    const toYm = (v: string | { year: number; month: number } | undefined): string | undefined => {
+      if (!v) return undefined;
+      if (typeof v === 'string') return v;
+      return `${v.year}-${String(v.month).padStart(2, '0')}`;
+    };
+    const fromYm = toYm(options?.from);
+    const toYmStr = toYm(options?.to);
+    const isRange = Boolean(fromYm || toYmStr);
+
+    // range 모드가 활성화되면 year/month 단일 파라미터는 무시(백엔드 정책과 일치)
+    if (!isRange) {
+      if (year) params.append('year', year.toString());
+      if (options?.month !== undefined) params.append('month', String(options.month));
+    } else {
+      if (fromYm) params.append('from_year_month', fromYm);
+      if (toYmStr) params.append('to_year_month', toYmStr);
+    }
+
     if (revenueMode) params.append('revenue_mode', revenueMode);
 
-    if (options?.month !== undefined) params.append('month', String(options.month));
     if (options?.trainingType && options.trainingType !== 'all') {
       params.append('training_type', options.trainingType);
     }

@@ -132,10 +132,26 @@ type TrendPoint = {
   students: number;          // 훈련생 수 합
 };
 
+const MIN_YEAR = 2021;
+
+/** (Y,M) 튜플을 정렬용 정수로. */
+function ymValue(y: number, m: number): number {
+  return y * 12 + (m - 1);
+}
+
 export default function InstitutionAnalysisClient() {
   const [institutionStats, setInstitutionStats] = useState<InstitutionStat[]>([]);
-  const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
-  const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all');
+
+  // ★ 기간 필터: 시작(Y,M) ~ 종료(Y,M). isFullPeriod=true면 필터 없이 전체 기간.
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  const [isFullPeriod, setIsFullPeriod] = useState<boolean>(true);
+  const [fromYear, setFromYear] = useState<number>(MIN_YEAR);
+  const [fromMonth, setFromMonth] = useState<number>(1);
+  const [toYear, setToYear] = useState<number>(currentYear);
+  const [toMonth, setToMonth] = useState<number>(12);
+
   const [filterType, setFilterType] = useState<'all' | 'leading' | 'tech'>('all');
   const [revenueMode, setRevenueMode] = useState<ViewRevenueMode>('current');
   const [searchTerm, setSearchTerm] = useState('');
@@ -155,9 +171,84 @@ export default function InstitutionAnalysisClient() {
   const [availableYears] = useState<number[]>(() =>
     Array.from({ length: new Date().getFullYear() - 2020 }, (_, i) => 2021 + i)
   );
-  const [availableMonths, setAvailableMonths] = useState<number[]>(() =>
-    Array.from({ length: 12 }, (_, i) => i + 1)
-  );
+  const availableMonths = useMemo(() => Array.from({ length: 12 }, (_, i) => i + 1), []);
+
+  // ★ 사용자가 from > to로 입력해도 스왑해서 정규화 (필터 로직 단일화)
+  const normalizedRange = useMemo(() => {
+    const fromV = ymValue(fromYear, fromMonth);
+    const toV = ymValue(toYear, toMonth);
+    if (fromV <= toV) return { fromY: fromYear, fromM: fromMonth, toY: toYear, toM: toMonth };
+    return { fromY: toYear, fromM: toMonth, toY: fromYear, toM: fromMonth };
+  }, [fromYear, fromMonth, toYear, toMonth]);
+
+  // 단일 월 / 단일 연 전체 케이스는 기존 백엔드 경로(year/month 파라미터)로 라우팅
+  const isSingleMonth =
+    !isFullPeriod &&
+    normalizedRange.fromY === normalizedRange.toY &&
+    normalizedRange.fromM === normalizedRange.toM;
+  const isSingleWholeYear =
+    !isFullPeriod &&
+    normalizedRange.fromY === normalizedRange.toY &&
+    normalizedRange.fromM === 1 &&
+    normalizedRange.toM === 12;
+
+  const applyPreset = (
+    preset: 'full' | 'h1' | 'h2' | 'q1' | 'q2' | 'q3' | 'q4' | 'last6'
+  ) => {
+    const y = currentYear;
+    switch (preset) {
+      case 'full':
+        setIsFullPeriod(true);
+        setFromYear(MIN_YEAR); setFromMonth(1);
+        setToYear(currentYear); setToMonth(12);
+        return;
+      case 'h1':
+        setIsFullPeriod(false);
+        setFromYear(y); setFromMonth(1);
+        setToYear(y); setToMonth(6);
+        return;
+      case 'h2':
+        setIsFullPeriod(false);
+        setFromYear(y); setFromMonth(7);
+        setToYear(y); setToMonth(12);
+        return;
+      case 'q1':
+        setIsFullPeriod(false);
+        setFromYear(y); setFromMonth(1);
+        setToYear(y); setToMonth(3);
+        return;
+      case 'q2':
+        setIsFullPeriod(false);
+        setFromYear(y); setFromMonth(4);
+        setToYear(y); setToMonth(6);
+        return;
+      case 'q3':
+        setIsFullPeriod(false);
+        setFromYear(y); setFromMonth(7);
+        setToYear(y); setToMonth(9);
+        return;
+      case 'q4':
+        setIsFullPeriod(false);
+        setFromYear(y); setFromMonth(10);
+        setToYear(y); setToMonth(12);
+        return;
+      case 'last6': {
+        setIsFullPeriod(false);
+        // 오늘 기준 5개월 전 ~ 이번 달 (합 6개월)
+        const to = new Date(currentYear, currentMonth - 1, 1);
+        const from = new Date(to.getFullYear(), to.getMonth() - 5, 1);
+        setFromYear(from.getFullYear()); setFromMonth(from.getMonth() + 1);
+        setToYear(to.getFullYear()); setToMonth(to.getMonth() + 1);
+        return;
+      }
+    }
+  };
+
+  // 사용자가 드롭다운을 조작하면 자동으로 전체 기간 프리셋 해제
+  const updateFromYear = (y: number) => { setIsFullPeriod(false); setFromYear(y); };
+  const updateFromMonth = (m: number) => { setIsFullPeriod(false); setFromMonth(m); };
+  const updateToYear = (y: number) => { setIsFullPeriod(false); setToYear(y); };
+  const updateToMonth = (m: number) => { setIsFullPeriod(false); setToMonth(m); };
 
   // ★ contract 모드 여부를 한 곳에서 파생 (테이블/차트/상세 보기가 동일 기준을 공유하도록)
   // ★ 매출 기준(current / max / contract)에 따른 표시 파생값을 한 곳에서 결정
@@ -182,32 +273,53 @@ export default function InstitutionAnalysisClient() {
     let cancelled = false;
     (async () => {
       try {
-        const yearParam = selectedYear === 'all' ? undefined : selectedYear;
-        const monthParam = selectedMonth === 'all' ? undefined : selectedMonth;
         const apiRevenueMode: RevenueMode = revenueMode === 'contract' ? 'max' : revenueMode;
-        const res = await kdtAPI.getInstitutionStats(yearParam, apiRevenueMode, {
-          month: monthParam,
-          trainingType: filterType,
-        });
+
+        let res;
+        if (isFullPeriod) {
+          res = await kdtAPI.getInstitutionStats(undefined, apiRevenueMode, {
+            trainingType: filterType,
+          });
+        } else if (isSingleWholeYear) {
+          res = await kdtAPI.getInstitutionStats(normalizedRange.fromY, apiRevenueMode, {
+            trainingType: filterType,
+          });
+        } else if (isSingleMonth) {
+          res = await kdtAPI.getInstitutionStats(normalizedRange.fromY, apiRevenueMode, {
+            month: normalizedRange.fromM,
+            trainingType: filterType,
+          });
+        } else {
+          res = await kdtAPI.getInstitutionStats(undefined, apiRevenueMode, {
+            from: { year: normalizedRange.fromY, month: normalizedRange.fromM },
+            to: { year: normalizedRange.toY, month: normalizedRange.toM },
+            trainingType: filterType,
+          });
+        }
+
         if (cancelled) return;
         setInstitutionStats(res.data ?? []);
-        if (Array.isArray((res as any)?.meta?.available_months) && (res as any).meta.available_months.length > 0) {
-          setAvailableMonths((res as any).meta.available_months);
-        } else {
-          setAvailableMonths(Array.from({ length: 12 }, (_, i) => i + 1));
-        }
       } catch (error) {
         console.error('기관별 통계 API 호출 실패:', error);
         if (cancelled) return;
         setInstitutionStats([]);
-        setAvailableMonths(Array.from({ length: 12 }, (_, i) => i + 1));
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [selectedYear, selectedMonth, filterType, revenueMode]);
+  }, [
+    isFullPeriod,
+    isSingleMonth,
+    isSingleWholeYear,
+    normalizedRange.fromY,
+    normalizedRange.fromM,
+    normalizedRange.toY,
+    normalizedRange.toM,
+    filterType,
+    revenueMode,
+  ]);
 
   const filteredInstitutionStats = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
@@ -445,7 +557,7 @@ export default function InstitutionAnalysisClient() {
     <div className="p-6 bg-background text-foreground">
       <h1 className="text-2xl font-bold mb-6 text-foreground">훈련기관별 분석</h1>
 
-      <div className="mb-10 relative z-10 flex gap-6 items-end">
+      <div className="mb-6 relative z-10 flex gap-6 items-end flex-wrap">
         <div>
           <label className="block text-sm font-medium text-foreground/80 mb-2">매출 기준</label>
           <Select value={revenueMode} onValueChange={(v) => setRevenueMode(v as ViewRevenueMode)}>
@@ -461,39 +573,53 @@ export default function InstitutionAnalysisClient() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-foreground/80 mb-2">연도 선택</label>
-          <Select
-            value={selectedYear.toString()}
-            onValueChange={(value) => setSelectedYear(value === 'all' ? 'all' : parseInt(value))}
-          >
-            <SelectTrigger className="w-[180px] bg-background text-foreground border-border">
-              <SelectValue placeholder="연도 선택" />
-            </SelectTrigger>
-            <SelectContent className="bg-popover text-popover-foreground z-20">
-              <SelectItem value="all">전체 연도</SelectItem>
-              {availableYears.map((year) => (
-                <SelectItem key={year} value={year.toString()}>{year}년</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-foreground/80 mb-2">월 선택</label>
-          <Select
-            value={selectedMonth.toString()}
-            onValueChange={(value) => setSelectedMonth(value === 'all' ? 'all' : parseInt(value))}
-          >
-            <SelectTrigger className="w-[180px] bg-background text-foreground border-border">
-              <SelectValue placeholder="월 선택" />
-            </SelectTrigger>
-            <SelectContent className="bg-popover text-popover-foreground z-20">
-              <SelectItem value="all">전체 월</SelectItem>
-              {availableMonths.map((m) => (
-                <SelectItem key={m} value={String(m)}>{m}월</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <label className="block text-sm font-medium text-foreground/80 mb-2">
+            기간 (시작 ~ 종료)
+            {isFullPeriod && <span className="ml-2 text-xs text-muted-foreground">전체 기간</span>}
+          </label>
+          <div className="flex items-center gap-2">
+            <Select value={String(fromYear)} onValueChange={(v) => updateFromYear(parseInt(v, 10))}>
+              <SelectTrigger className="w-[100px] bg-background text-foreground border-border">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-popover text-popover-foreground z-20">
+                {availableYears.map((y) => (
+                  <SelectItem key={y} value={String(y)}>{y}년</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={String(fromMonth)} onValueChange={(v) => updateFromMonth(parseInt(v, 10))}>
+              <SelectTrigger className="w-[90px] bg-background text-foreground border-border">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-popover text-popover-foreground z-20">
+                {availableMonths.map((m) => (
+                  <SelectItem key={m} value={String(m)}>{m}월</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className="text-muted-foreground">~</span>
+            <Select value={String(toYear)} onValueChange={(v) => updateToYear(parseInt(v, 10))}>
+              <SelectTrigger className="w-[100px] bg-background text-foreground border-border">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-popover text-popover-foreground z-20">
+                {availableYears.map((y) => (
+                  <SelectItem key={y} value={String(y)}>{y}년</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={String(toMonth)} onValueChange={(v) => updateToMonth(parseInt(v, 10))}>
+              <SelectTrigger className="w-[90px] bg-background text-foreground border-border">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-popover text-popover-foreground z-20">
+                {availableMonths.map((m) => (
+                  <SelectItem key={m} value={String(m)}>{m}월</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <div>
@@ -523,9 +649,38 @@ export default function InstitutionAnalysisClient() {
         </div>
       </div>
 
+      {/* 프리셋 버튼: 자주 쓰이는 반기/분기/최근 6개월 */}
+      <div className="mb-6 flex gap-2 flex-wrap">
+        {[
+          { key: 'full',  label: '전체 기간' },
+          { key: 'h1',    label: `${currentYear} 상반기` },
+          { key: 'h2',    label: `${currentYear} 하반기` },
+          { key: 'q1',    label: `${currentYear} Q1` },
+          { key: 'q2',    label: `${currentYear} Q2` },
+          { key: 'q3',    label: `${currentYear} Q3` },
+          { key: 'q4',    label: `${currentYear} Q4` },
+          { key: 'last6', label: '최근 6개월' },
+        ].map((p) => (
+          <button
+            key={p.key}
+            type="button"
+            onClick={() => applyPreset(p.key as any)}
+            className="text-xs px-3 py-1.5 rounded-md border border-border bg-background text-foreground hover:bg-muted"
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
       <div className="mb-4 text-sm text-foreground bg-muted border border-border rounded px-4 py-2 space-y-1">
         <div>※ 매출액: 과정이 2개년도에 걸쳐있는 경우, 각 년도에 차지하는 비율에 맞추어 매출이 분배됩니다.</div>
-        <div>※ 수주 매출: 과정시작일(=위탁계약 수주 시점)이 선택 연·월에 속한 과정의 매출 최대를 기관 배분율로 합산합니다. 선도기업 아카데미는 파트너기관 90% · 훈련기관 10%만 귀속됩니다(연도 pro-rata 분배는 하지 않음).</div>
+        <div>※ 수주 매출: 과정시작일(=위탁계약 수주 시점)이 선택 기간에 속한 과정의 매출 최대를 기관 배분율로 합산합니다. 선도기업 아카데미는 파트너기관 90% · 훈련기관 10%만 귀속됩니다(pro-rata 분배는 하지 않음).</div>
+        {!isFullPeriod && !isSingleWholeYear && !isSingleMonth && (
+          <div>
+            ※ 기간 범위({normalizedRange.fromY}-{String(normalizedRange.fromM).padStart(2, '0')} ~ {normalizedRange.toY}-{String(normalizedRange.toM).padStart(2, '0')}) 조회 시,
+            {' '}현재 계산된 매출·최대 매출은 <span className="font-semibold">잔존율 곡선(수료율 기반 √ 감쇠)</span>을 적용해 월별로 분배한 뒤 구간 합계를 낸 근사값입니다.
+          </div>
+        )}
       </div>
 
       <div className="bg-card text-card-foreground rounded-lg shadow p-6 mt-6">
@@ -578,9 +733,9 @@ export default function InstitutionAnalysisClient() {
         </div>
       </div>
 
-      {selectedYear !== 'all' && (
+      {isSingleWholeYear && (
         <div className="mb-4 text-sm text-muted-foreground bg-muted border border-border rounded px-4 py-3">
-          <div>* 수료율은 과정 종료일 기준으로 계산하였으며, 분자는 {selectedYear}년 기준 {selectedYear}년의 수료생, 분모는 {selectedYear}년 기준 {selectedYear}년에 끝나는 과정이 있는 모든 과정의 입과생입니다.</div>
+          <div>* 수료율은 과정 종료일 기준으로 계산하였으며, 분자는 {normalizedRange.fromY}년 기준 {normalizedRange.fromY}년의 수료생, 분모는 {normalizedRange.fromY}년 기준 {normalizedRange.fromY}년에 끝나는 과정이 있는 모든 과정의 입과생입니다.</div>
           <div>* ()는 전 해년 입과, 당 해년 수료 인원을 표기하였습니다.</div>
         </div>
       )}
@@ -625,7 +780,7 @@ export default function InstitutionAnalysisClient() {
                   <td className="px-6 py-4 whitespace-nowrap font-semibold text-foreground">
                     {isContractMode
                       ? formatRevenue(stat.total_contract_revenue ?? 0)
-                      : selectedMonth !== 'all' && Number.isFinite(stat.expected_attribution_percent)
+                      : isSingleMonth && Number.isFinite(stat.expected_attribution_percent)
                         ? `${formatRevenue(stat.total_revenue)} (${(stat.expected_attribution_percent ?? 0).toFixed(1)}%)`
                         : formatRevenue(stat.total_revenue)}
                   </td>
@@ -665,7 +820,13 @@ export default function InstitutionAnalysisClient() {
           <DialogHeader className="p-6 border-b border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
             <DialogTitle className="text-lg font-medium leading-6 text-gray-950 dark:text-gray-100">
               {selectedInstitutionName} - 훈련과정 상세
-              {selectedYear !== 'all' && ` (${selectedYear}년)`}
+              {!isFullPeriod && (
+                isSingleWholeYear
+                  ? ` (${normalizedRange.fromY}년)`
+                  : isSingleMonth
+                    ? ` (${normalizedRange.fromY}년 ${normalizedRange.fromM}월)`
+                    : ` (${normalizedRange.fromY}-${String(normalizedRange.fromM).padStart(2, '0')} ~ ${normalizedRange.toY}-${String(normalizedRange.toM).padStart(2, '0')})`
+              )}
             </DialogTitle>
             <DialogDescription className="text-gray-700 dark:text-gray-400">
               {selectedInstitutionName}의 전체 기간 훈련과정과 연도별 추이입니다.

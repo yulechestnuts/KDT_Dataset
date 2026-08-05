@@ -11,14 +11,32 @@ import { extractYearMonth } from '@/lib/backend/parsers';
 import {
   calculateRevenueShare,
   calculateStudentShare,
+  isCourseStartInRange,
+  isYearMonthInRange,
+  PeriodRange,
+  YearMonth,
 } from '@/lib/backend/revenue-engine';
 import { groupInstitutionsAdvanced } from '@/lib/backend/institution-grouping';
+
+/** "YYYY-MM" → { year, month } (1-indexed). 실패 시 null. */
+function parseYearMonth(input: string | null): YearMonth | null {
+  if (!input) return null;
+  const m = input.trim().match(/^(\d{4})-(\d{1,2})$/);
+  if (!m) return null;
+  const year = parseInt(m[1], 10);
+  const month = parseInt(m[2], 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return null;
+  if (month < 1 || month > 12) return null;
+  return { year, month };
+}
 
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const yearParam = searchParams.get('year');
     const monthParam = searchParams.get('month');
+    const fromYmParam = searchParams.get('from_year_month');
+    const toYmParam = searchParams.get('to_year_month');
     const trainingTypeParam = searchParams.get('training_type');
     const traceParam = searchParams.get('trace');
     const noCacheParam = searchParams.get('no_cache');
@@ -28,6 +46,21 @@ export async function GET(request: NextRequest) {
 
     const year = yearParam ? parseInt(yearParam, 10) : undefined;
     const month = monthParam ? parseInt(monthParam, 10) : undefined;
+
+    // 기간 범위 파싱 (from/to 모두 있을 때만 유효)
+    // 단일 값만 있으면 상대편은 자기 자신으로 세팅한다 (한 달 조회).
+    // 정합성 검증: from <= to 아니면 스왑.
+    const fromYmRaw = parseYearMonth(fromYmParam);
+    const toYmRaw = parseYearMonth(toYmParam);
+    let range: PeriodRange | undefined;
+    if (fromYmRaw || toYmRaw) {
+      const from = fromYmRaw ?? toYmRaw!;
+      const to = toYmRaw ?? fromYmRaw!;
+      const fromN = from.year * 12 + (from.month - 1);
+      const toN = to.year * 12 + (to.month - 1);
+      range = fromN <= toN ? { from, to } : { from: to, to: from };
+    }
+
     const revenueMode = revenueModeParam || 'current';
     const bypassCache = noCacheParam === '1' || noCacheParam === 'true';
     const trace = traceParam === '1' || traceParam === 'true';
@@ -40,6 +73,8 @@ export async function GET(request: NextRequest) {
     const cacheKey = generateCacheKey('institution-stats', {
       year: year || 'all',
       month: month || 'all',
+      from_ym: range ? `${range.from.year}-${String(range.from.month).padStart(2, '0')}` : 'all',
+      to_ym: range ? `${range.to.year}-${String(range.to.month).padStart(2, '0')}` : 'all',
       training_type: trainingTypeParam || 'all',
       revenue_mode: revenueMode,
       institution_name: institutionNameParam || 'all',
@@ -104,6 +139,16 @@ export async function GET(request: NextRequest) {
     };
 
     const matchesYearMonth = (c: any): boolean => {
+      // 범위 모드: 과정 활동 기간이 [from, to]와 겹치는지 판정
+      if (range) {
+        const start = parseDate(c.과정시작일);
+        const end = parseDate(c.과정종료일);
+        if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return false;
+        const rangeStart = new Date(range.from.year, range.from.month - 1, 1);
+        const rangeEnd = new Date(range.to.year, range.to.month, 0); // 해당 월 말일
+        return start <= rangeEnd && end >= rangeStart;
+      }
+
       if (year === undefined && month === undefined) return true;
 
       if (month !== undefined) {
@@ -162,7 +207,7 @@ export async function GET(request: NextRequest) {
     })();
 
     // 기관별 통계 계산
-    const stats = calculateInstitutionStats(filteredCourses, year, revenueMode, month);
+    const stats = calculateInstitutionStats(filteredCourses, year, revenueMode, month, range);
 
     // 특정 기관 필터링 (선택사항)
     let filteredStats = stats;
@@ -276,6 +321,12 @@ export async function GET(request: NextRequest) {
         applied_filters: {
           year,
           month,
+          from_year_month: range
+            ? `${range.from.year}-${String(range.from.month).padStart(2, '0')}`
+            : undefined,
+          to_year_month: range
+            ? `${range.to.year}-${String(range.to.month).padStart(2, '0')}`
+            : undefined,
           training_type: trainingTypeParam || 'all',
         },
         trace: traceReport,
