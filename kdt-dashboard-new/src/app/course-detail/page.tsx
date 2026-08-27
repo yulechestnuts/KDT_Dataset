@@ -1,9 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import Papa from 'papaparse';
 import { CourseData } from '@/lib/data-utils';
-import { loadDataFromGithub, preprocessData } from '@/utils/data-utils';
+import { kdtAPI } from '@/lib/api-client';
 
 const CourseDetail = () => {
   const [courseData, setCourseData] = useState<CourseData | null>(null);
@@ -14,9 +13,10 @@ const CourseDetail = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const data = await loadDataFromGithub();
-        const parsedData = Papa.parse(data, { header: true });
-        const processedData = preprocessData(parsedData.data);
+        // GitHub CSV(result_kdtdata_202512.csv)는 리포지토리에서 사라져 404 였다.
+        // 다른 분석 페이지와 같은 Supabase 기반 API 로 통일한다.
+        const res = await kdtAPI.getCourseAnalysis({});
+        const processedData = (res?.data ?? []) as unknown as CourseData[];
         setAllCourses(processedData);
 
         // URL에서 과정 ID 가져오기

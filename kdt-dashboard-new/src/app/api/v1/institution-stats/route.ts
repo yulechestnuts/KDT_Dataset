@@ -1,6 +1,7 @@
 // 기관별 통계 조회 API
 
 import { NextRequest, NextResponse } from 'next/server';
+import { jsonResponse } from '@/lib/backend/json-response';
 import { calculateInstitutionStats } from '@/lib/backend/aggregation';
 import { RevenueMode } from '@/lib/backend/types';
 import { getProcessedCourses } from '@/lib/backend/supabase-service';
@@ -17,6 +18,7 @@ import {
   YearMonth,
 } from '@/lib/backend/revenue-engine';
 import { groupInstitutionsAdvanced } from '@/lib/backend/institution-grouping';
+import { isAiCampusCourse, matchesAiCampusFilter, parseAiCampusFilter } from '@/lib/course-category';
 
 /** "YYYY-MM" → { year, month } (1-indexed). 실패 시 null. */
 function parseYearMonth(input: string | null): YearMonth | null {
@@ -43,6 +45,16 @@ export async function GET(request: NextRequest) {
     const flushCacheParam = searchParams.get('flush_cache');
     const revenueModeParam = searchParams.get('revenue_mode') as RevenueMode | null;
     const institutionNameParam = searchParams.get('institution_name');
+    // AI캠퍼스 축은 training_type(파트너기관 기준)과 독립적인 별도 필터다.
+    const aiCampusFilter = parseAiCampusFilter(searchParams.get('ai_campus'));
+    // 기관별 stat 에 딸린 courses 배열은 응답의 98%(약 12MB)를 차지하는데
+    // 목록 화면은 쓰지 않는다. 기본은 빼고, 필요한 쪽(상세 모달)만 켜서 받는다.
+    // institution_name 으로 특정 기관을 조회하면 상세 목적이므로 자동으로 포함한다.
+    const includeCoursesParam = searchParams.get('include_courses');
+    const includeCourses =
+      includeCoursesParam === '1' ||
+      includeCoursesParam === 'true' ||
+      Boolean(institutionNameParam);
 
     const year = yearParam ? parseInt(yearParam, 10) : undefined;
     const month = monthParam ? parseInt(monthParam, 10) : undefined;
@@ -78,16 +90,15 @@ export async function GET(request: NextRequest) {
       training_type: trainingTypeParam || 'all',
       revenue_mode: revenueMode,
       institution_name: institutionNameParam || 'all',
+      ai_campus: aiCampusFilter,
+      include_courses: includeCourses ? '1' : '0',
     });
 
     // 캐시에서 조회
     if (!bypassCache) {
       const cachedResult = cacheManager.get<any>(cacheKey);
       if (cachedResult) {
-        return NextResponse.json({
-          ...cachedResult,
-          cached: true,
-        });
+        return jsonResponse(request, { ...cachedResult, cached: true });
       }
     }
 
@@ -181,20 +192,28 @@ export async function GET(request: NextRequest) {
       return y === year;
     };
 
-    const filteredCourses = adjustedCourses.filter((c) => matchesTrainingType(c) && matchesYearMonth(c));
+    const filteredCourses = adjustedCourses.filter(
+      (c) => matchesTrainingType(c) && matchesYearMonth(c) && matchesAiCampusFilter(c, aiCampusFilter)
+    );
 
     const filterMeta = (() => {
       const years = new Set<number>();
       const months = new Set<number>();
       let leading = 0;
       let tech = 0;
+      let aiCampus = 0;
       for (const c of adjustedCourses) {
         const ym = extractYearMonth(c.과정시작일);
         if (ym.year !== null) years.add(ym.year);
         if (ym.month !== null) months.add(ym.month);
+        // 종료 연도도 포함해야 한다. 기간 필터는 [시작일, 종료일] 겹침으로 판정하므로
+        // 연말 개강해 다음 해에 끝나는 과정의 종료 연도가 빠지면 그 해를 아예 못 고른다.
+        const endYm = extractYearMonth(c.과정종료일);
+        if (endYm.year !== null) years.add(endYm.year);
         const hasPartner = String((c as any).파트너기관 ?? '').trim() !== '';
         if (hasPartner) leading += 1;
         else tech += 1;
+        if (isAiCampusCourse(c)) aiCampus += 1;
       }
       return {
         available_years: Array.from(years).sort((a, b) => a - b),
@@ -203,6 +222,7 @@ export async function GET(request: NextRequest) {
           leading,
           tech,
         },
+        ai_campus_courses: aiCampus,
       };
     })();
 
@@ -303,15 +323,21 @@ export async function GET(request: NextRequest) {
           year,
           month,
           training_type: trainingTypeParam || 'all',
+          ai_campus: aiCampusFilter,
+          include_courses: includeCourses,
           revenue_mode: revenueMode,
         },
         relevant_course_count: relevant.length,
       };
     })();
 
+    const responseStats = includeCourses
+      ? filteredStats
+      : filteredStats.map(({ courses: _courses, ...rest }) => rest);
+
     const result = {
       status: 'success',
-      data: filteredStats,
+      data: responseStats,
       year: year,
       revenue_mode: revenueMode,
       cached: false,
@@ -328,6 +354,8 @@ export async function GET(request: NextRequest) {
             ? `${range.to.year}-${String(range.to.month).padStart(2, '0')}`
             : undefined,
           training_type: trainingTypeParam || 'all',
+          ai_campus: aiCampusFilter,
+          include_courses: includeCourses,
         },
         trace: traceReport,
       },
@@ -344,10 +372,7 @@ export async function GET(request: NextRequest) {
       cacheManager.set(cacheKey, result);
     }
 
-    return NextResponse.json({
-      ...result,
-      cached: false,
-    });
+    return jsonResponse(request, { ...result, cached: false });
   } catch (error) {
     console.error('기관별 통계 조회 오류:', error);
     return NextResponse.json(

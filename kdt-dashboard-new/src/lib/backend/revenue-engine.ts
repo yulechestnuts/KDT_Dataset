@@ -2,6 +2,7 @@
 
 import { ProcessedCourseData, RevenueMode } from './types';
 import { parseNumber, parsePercentage } from './parsers';
+import { extractRevenueYears } from '@/lib/revenue-years';
 import {
   retentionWeights,
   getCourseDurationMonths,
@@ -94,24 +95,8 @@ export function computeCourseRevenueForMonth(
 }
 
 function getAvailableRevenueYears(course: ProcessedCourseData): number[] {
-  const years = new Set<number>();
-
-  for (const key of Object.keys(course)) {
-    // 조정_2026년, 2026년
-    const m1 = key.match(/^(?:조정_)?(\d{4})년$/);
-    if (m1) {
-      years.add(parseInt(m1[1], 10));
-      continue;
-    }
-
-    // 2026
-    const m2 = key.match(/^\d{4}$/);
-    if (m2) {
-      years.add(parseInt(key, 10));
-    }
-  }
-
-  return Array.from(years).sort((a, b) => a - b);
+  // 연도 목록은 course 의 키에서 뽑는다. 리터럴 배열 금지 — @/lib/revenue-years 참고.
+  return extractRevenueYears(course);
 }
 
 function calculateOverallCompletionRatePercent(courses: ProcessedCourseData[]): number {

@@ -1,12 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import {
-  loadDataFromGithub,
-  preprocessData,
-  applyRevenueAdjustment,
-  calculateCompletionRate,
-} from '@/utils/data-utils';
+import { kdtAPI } from '@/lib/api-client';
 import {
   calculateLeadingCompanyStats,
   aggregateCoursesByCourseNameForLeadingCompany,
@@ -30,7 +25,6 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { parse as parseCsv } from 'papaparse';
 import {
   BarChart,
   Bar,
@@ -48,68 +42,70 @@ export default function LeadingCompanyAnalysis() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState('');
   const [selectedCourses, setSelectedCourses] = useState<AggregatedCourseData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  // 전체 과정 목록. 연도 필터는 클라이언트에서 적용한다(재조회 불필요).
+  const [allCourses, setAllCourses] = useState<CourseData[]>([]);
 
   // helper
   const formatRevenue = (v: number) => `${(v / 1e8).toFixed(1)}억`;
 
   // load data
+  //
+  // 이전에는 GitHub 의 result_kdtdata_202512.csv 를 받았는데 그 파일이 리포지토리에서
+  // 사라져 404 였다. 다른 분석 페이지와 같은 Supabase 기반 API 로 통일한다.
+  // (매출 보정은 서버에서 이미 적용된 값이 내려온다)
   useEffect(() => {
+    let cancelled = false;
     const fetchData = async () => {
       try {
-        const rawStr = await loadDataFromGithub();
-        const parsed: any = parseCsv(rawStr as string, {
-          header: true,
-          skipEmptyLines: true,
-          dynamicTyping: false,
-        });
-        const processed = preprocessData(parsed.data as RawCourseData[]);
-        const overallCompletion = calculateCompletionRate(processed);
-        const adjusted = applyRevenueAdjustment(processed, overallCompletion);
+        setLoading(true);
+        setError(null);
+        const res = await kdtAPI.getCourseAnalysis({});
+        if (cancelled) return;
 
-        const yrs = Array.from(new Set(adjusted.map((c) => c.훈련연도)))
-          .filter((y) => y !== 0)
-          .sort((a, b) => a - b);
-        setYears(yrs);
-
-        setStats(calculateLeadingCompanyStats(adjusted));
+        const courses = (res?.data ?? []) as unknown as CourseData[];
+        setAllCourses(courses);
+        setYears((res?.meta?.available_years ?? []).filter((y) => y !== 0));
+        setStats(calculateLeadingCompanyStats(courses));
       } catch (e) {
+        if (cancelled) return;
         console.error('data load error:', e);
+        setError('데이터를 불러오는 중 오류가 발생했습니다.');
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     };
     fetchData();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // reload on year change
+  // 연도만 바뀌는데 데이터를 다시 받을 이유가 없다. 받아둔 목록으로 재계산한다.
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const rawStr = await loadDataFromGithub();
-        const parsed: any = parseCsv(rawStr as string, {
-          header: true,
-          skipEmptyLines: true,
-          dynamicTyping: false,
-        });
-        const processed = preprocessData(parsed.data as RawCourseData[]);
-        const overallCompletion = calculateCompletionRate(processed);
-        const adjusted = applyRevenueAdjustment(processed, overallCompletion);
-
-        setStats(
-          calculateLeadingCompanyStats(
-            adjusted,
-            selectedYear === 'all' ? undefined : selectedYear,
-          ),
-        );
-      } catch (e) {
-        console.error('data load error:', e);
-      }
-    };
-    fetchData();
-  }, [selectedYear]);
+    if (allCourses.length === 0) return;
+    setStats(
+      calculateLeadingCompanyStats(allCourses, selectedYear === 'all' ? undefined : selectedYear)
+    );
+  }, [selectedYear, allCourses]);
 
   const handleViewDetails = (company: string, courses: CourseData[]) => {
     setSelectedCompany(company);
     const year = selectedYear === 'all' ? undefined : selectedYear;
-    const agg = aggregateCoursesByCourseNameForLeadingCompany(courses, company, year);
+    // 이 함수는 인자가 1개다. company/year 를 넘겨도 무시되므로 필터링은 여기서 한다.
+    const scoped = year
+      ? courses.filter((c) => {
+          const start = new Date(c.과정시작일);
+          const end = new Date(c.과정종료일);
+          return (
+            start.getFullYear() === year ||
+            (start.getFullYear() < year && end.getFullYear() >= year)
+          );
+        })
+      : courses;
+    const agg = aggregateCoursesByCourseNameForLeadingCompany(scoped);
     setSelectedCourses(agg);
     setIsModalOpen(true);
   };

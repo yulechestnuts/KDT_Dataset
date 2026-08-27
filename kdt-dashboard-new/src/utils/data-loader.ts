@@ -1,3 +1,4 @@
+import { resolveRevenueYears, resolveRevenueYearsFrom, resolveYearColumns } from '@/lib/revenue-years';
 // Use internal API route to avoid external fetch failures and ensure fast, reliable data access
 const GITHUB_URL = '/api/data';
 
@@ -40,7 +41,7 @@ export async function loadDataFromGithub() {
 
 // 금액 계산 유틸리티 함수들
 export const calculateTotalRevenue = (course: any): number => {
-  const yearColumns = ['2021년', '2022년', '2023년', '2024년', '2025년', '2026년'];
+  const yearColumns = resolveYearColumns(course);
   return yearColumns.reduce((total, year) => {
     const value = course[year];
     return total + (Number(value) || 0);
@@ -69,7 +70,7 @@ export function calculateInstitutionYearlyRevenue(courses: any[], year: number):
 }
 
 export function getInstitutionYearlyRevenues(courses: any[]): { year: number; revenue: number }[] {
-  const years = [2021, 2022, 2023, 2024, 2025, 2026];
+  const years = resolveRevenueYearsFrom(courses);
   return years.map(year => ({
     year,
     revenue: calculateInstitutionYearlyRevenue(courses, year)
@@ -83,14 +84,9 @@ export const preprocessData = (data: any[]): any[] => {
     const course: any = { ...raw };
 
     // 원본 CSV는 연도 컬럼이 '2021' 형태일 수 있으므로, 'YYYY'와 'YYYY년' 모두 인식하여 정규화한다.
-    const yearPairs: Array<{ unified: string; variants: string[] }> = [
-      { unified: '2021년', variants: ['2021년', '2021'] },
-      { unified: '2022년', variants: ['2022년', '2022'] },
-      { unified: '2023년', variants: ['2023년', '2023'] },
-      { unified: '2024년', variants: ['2024년', '2024'] },
-      { unified: '2025년', variants: ['2025년', '2025'] },
-      { unified: '2026년', variants: ['2026년', '2026'] },
-    ];
+    const yearPairs: Array<{ unified: string; variants: string[] }> = resolveRevenueYears(raw).map(
+      (year) => ({ unified: `${year}년`, variants: [`${year}년`, `${year}`] })
+    );
 
     // 정규화된 연도 키에 숫자 값 채우기
     yearPairs.forEach(({ unified, variants }) => {

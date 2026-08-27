@@ -23,6 +23,10 @@ import {
   formatRateDetail,
   calculateEmploymentRate,
   getSafeEmploymentData,
+  // 아래 둘은 calculateYearlyStats 가 쓰는데 import 가 빠져 있었다.
+  // 그 탓에 yearly-stats API 가 'calculateCompletionRate is not defined' 로 통째로 죽어 있었다.
+  calculateCompletionRate,
+  calculateWeightedSatisfaction,
 } from './performance-engine';
 import { extractYearMonth, parseDate } from './parsers';
 

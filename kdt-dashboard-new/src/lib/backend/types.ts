@@ -79,7 +79,11 @@ export interface ProcessedCourseData {
   조정_2024년: number;
   조정_2025년: number;
   조정_2026년: number;
+  /** DB에 컬럼이 늦게 추가돼 기존 객체 리터럴에는 없을 수 있다 */
+  조정_2027년?: number;
   조정_실매출대비: number;
+  /** 자비부담금(원). AI캠퍼스 과정 판정에 사용 — src/lib/course-category.ts */
+  자비부담금?: number;
   [key: string]: any;
 }
 
@@ -120,6 +124,9 @@ export interface YearlyStat {
   total_employed: number;
   overall_completion_rate: number;
   overall_employment_rate: number;
+  /** calculateYearlyStats 가 실제로 채우는 값인데 타입에 빠져 있었다 */
+  total_target_pop?: number;
+  total_integrated_employed?: number;
   avg_satisfaction: number;
   course_count: number;
   institution_count: number;

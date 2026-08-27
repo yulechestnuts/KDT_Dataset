@@ -9,6 +9,8 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, L
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { groupInstitutionsAdvanced } from '@/lib/backend/institution-grouping';
 import { calculateRevenueShare } from '@/lib/backend/revenue-engine';
+import { AI_CAMPUS_FILTER_LABELS, type AiCampusFilter } from '@/lib/course-category';
+import { getFallbackRevenueYears } from '@/lib/revenue-years';
 import {
   Dialog,
   DialogContent,
@@ -18,6 +20,54 @@ import {
 } from "@/components/ui/dialog";
 
 type ViewRevenueMode = RevenueMode | 'contract';
+
+/**
+ * getInstitutionStats 호출 인자를 한 곳에서 조립한다.
+ * 목록 조회와 상세 모달이 같은 기간/필터 기준을 공유해야 KPI 숫자가 어긋나지 않는다.
+ */
+type StatsQueryInput = {
+  isFullPeriod: boolean;
+  isSingleWholeYear: boolean;
+  isSingleMonth: boolean;
+  range: { fromY: number; fromM: number; toY: number; toM: number };
+  trainingType: 'all' | 'leading' | 'tech';
+  aiCampus: AiCampusFilter;
+  institutionName?: string;
+  includeCourses?: boolean;
+};
+
+function buildStatsArgs(input: StatsQueryInput): {
+  year: number | undefined;
+  options: {
+    month?: number;
+    trainingType: 'all' | 'leading' | 'tech';
+    aiCampus: AiCampusFilter;
+    institutionName?: string;
+    includeCourses?: boolean;
+    from?: { year: number; month: number };
+    to?: { year: number; month: number };
+  };
+} {
+  const base = {
+    trainingType: input.trainingType,
+    aiCampus: input.aiCampus,
+    ...(input.institutionName ? { institutionName: input.institutionName } : {}),
+    ...(input.includeCourses ? { includeCourses: true } : {}),
+  };
+  const { range } = input;
+
+  if (input.isFullPeriod) return { year: undefined, options: base };
+  if (input.isSingleWholeYear) return { year: range.fromY, options: base };
+  if (input.isSingleMonth) return { year: range.fromY, options: { ...base, month: range.fromM } };
+  return {
+    year: undefined,
+    options: {
+      ...base,
+      from: { year: range.fromY, month: range.fromM },
+      to: { year: range.toY, month: range.toM },
+    },
+  };
+}
 
 /** 기관 귀속 수주매출: 선도기업은 파트너 90% / 훈련기관 10% (매출 최대 전액 금지) */
 function getAttributedContractRevenue(course: any, institutionName: string): number {
@@ -153,6 +203,8 @@ export default function InstitutionAnalysisClient() {
   const [toMonth, setToMonth] = useState<number>(12);
 
   const [filterType, setFilterType] = useState<'all' | 'leading' | 'tech'>('all');
+  // AI캠퍼스 축: 유형 필터(파트너기관 기준)와 독립적으로 동작한다.
+  const [aiCampusFilter, setAiCampusFilter] = useState<AiCampusFilter>('all');
   const [revenueMode, setRevenueMode] = useState<ViewRevenueMode>('current');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -168,9 +220,20 @@ export default function InstitutionAnalysisClient() {
   // ★ 그룹 뷰 전용 연도 필터: 'all'=전체 기간, 또는 특정 연도
   const [groupYearFilter, setGroupYearFilter] = useState<number | 'all'>('all');
 
-  const [availableYears] = useState<number[]>(() =>
-    Array.from({ length: new Date().getFullYear() - 2020 }, (_, i) => 2021 + i)
-  );
+  // 기간 드롭다운 연도 목록.
+  // 정적으로 '올해'까지 끊으면 안 된다 — 연말 개강 과정은 다음 해에 끝나고
+  // 매출도 다음 해로 분배되므로, 그 해를 고를 수 없으면 조회 자체가 막힌다.
+  // 실제 데이터가 알려주는 연도(API meta.available_years)를 우선하고,
+  // 응답 전이거나 비어 있으면 폴백(2021 ~ 올해+1)을 쓴다.
+  const [metaYears, setMetaYears] = useState<number[]>([]);
+  const availableYears = useMemo<number[]>(() => {
+    const set = new Set<number>(getFallbackRevenueYears());
+    for (const y of metaYears) set.add(y);
+    return Array.from(set)
+      .filter((y) => y >= MIN_YEAR)
+      .sort((a, b) => a - b);
+  }, [metaYears]);
+  const lastAvailableYear = availableYears[availableYears.length - 1] ?? currentYear;
   const availableMonths = useMemo(() => Array.from({ length: 12 }, (_, i) => i + 1), []);
 
   // ★ 사용자가 from > to로 입력해도 스왑해서 정규화 (필터 로직 단일화)
@@ -200,7 +263,7 @@ export default function InstitutionAnalysisClient() {
       case 'full':
         setIsFullPeriod(true);
         setFromYear(MIN_YEAR); setFromMonth(1);
-        setToYear(currentYear); setToMonth(12);
+        setToYear(lastAvailableYear); setToMonth(12);
         return;
       case 'h1':
         setIsFullPeriod(false);
@@ -245,6 +308,14 @@ export default function InstitutionAnalysisClient() {
   };
 
   // 사용자가 드롭다운을 조작하면 자동으로 전체 기간 프리셋 해제
+  // 아직 '전체 기간'인 동안(= 사용자가 범위를 직접 만지기 전)에는 종료 연도를
+  // 실제 데이터의 마지막 연도에 맞춰 둔다. 그래야 전체 기간을 해제하는 순간
+  // 마지막 연도(예: 2027)가 범위에서 잘려나가지 않는다.
+  useEffect(() => {
+    if (!isFullPeriod) return;
+    setToYear((prev) => (prev < lastAvailableYear ? lastAvailableYear : prev));
+  }, [isFullPeriod, lastAvailableYear]);
+
   const updateFromYear = (y: number) => { setIsFullPeriod(false); setFromYear(y); };
   const updateFromMonth = (m: number) => { setIsFullPeriod(false); setFromMonth(m); };
   const updateToYear = (y: number) => { setIsFullPeriod(false); setToYear(y); };
@@ -275,30 +346,21 @@ export default function InstitutionAnalysisClient() {
       try {
         const apiRevenueMode: RevenueMode = revenueMode === 'contract' ? 'max' : revenueMode;
 
-        let res;
-        if (isFullPeriod) {
-          res = await kdtAPI.getInstitutionStats(undefined, apiRevenueMode, {
-            trainingType: filterType,
-          });
-        } else if (isSingleWholeYear) {
-          res = await kdtAPI.getInstitutionStats(normalizedRange.fromY, apiRevenueMode, {
-            trainingType: filterType,
-          });
-        } else if (isSingleMonth) {
-          res = await kdtAPI.getInstitutionStats(normalizedRange.fromY, apiRevenueMode, {
-            month: normalizedRange.fromM,
-            trainingType: filterType,
-          });
-        } else {
-          res = await kdtAPI.getInstitutionStats(undefined, apiRevenueMode, {
-            from: { year: normalizedRange.fromY, month: normalizedRange.fromM },
-            to: { year: normalizedRange.toY, month: normalizedRange.toM },
-            trainingType: filterType,
-          });
-        }
+        // 목록은 courses 없이 받는다 (응답 12MB -> 수백 KB)
+        const { year: qYear, options: qOptions } = buildStatsArgs({
+          isFullPeriod,
+          isSingleWholeYear,
+          isSingleMonth,
+          range: normalizedRange,
+          trainingType: filterType,
+          aiCampus: aiCampusFilter,
+        });
+        const res = await kdtAPI.getInstitutionStats(qYear, apiRevenueMode, qOptions);
 
         if (cancelled) return;
         setInstitutionStats(res.data ?? []);
+        const years = res?.meta?.available_years;
+        if (Array.isArray(years) && years.length > 0) setMetaYears(years);
       } catch (error) {
         console.error('기관별 통계 API 호출 실패:', error);
         if (cancelled) return;
@@ -318,6 +380,7 @@ export default function InstitutionAnalysisClient() {
     normalizedRange.toY,
     normalizedRange.toM,
     filterType,
+    aiCampusFilter,
     revenueMode,
   ]);
 
@@ -524,30 +587,57 @@ export default function InstitutionAnalysisClient() {
     setIsGroupedView(false); // 열 때마다 개별 뷰로 초기화
     setGroupYearFilter('all'); // 그룹 연도 필터도 전체로 초기화
 
-    // 현재 대시보드 필터 기준 course (KPI 카드 계산에 계속 사용)
-    const stat = institutionStats.find((s) => s.institution_name === institutionName);
-    const courses = stat?.courses ?? [];
-    setSelectedInstitutionCourses(courses);
-    setIsModalOpen(true);
-
-    // ★ 방법 A: 전체 연도(2021~현재) 데이터를 별도 요청 — 추이 차트/그룹핑용
-    //   대시보드 연도 필터와 독립적으로 항상 전체 기간을 확보한다.
-    //   getInstitutionStats는 특정 기관 필터 파라미터가 없으므로 전체를 받아 find로 골라낸다.
-    setIsModalDataLoading(true);
+    // 목록 응답에는 courses 가 없다(페이로드 절감). 모달이 필요한 만큼만 직접 받는다.
+    // 두 요청 모두 institution_name 으로 한 기관에 한정되므로 전체를 받아 find 하던 것보다
+    // 응답이 수십 배 작다.
+    setSelectedInstitutionCourses([]);
     setAllYearCourses([]);
-    try {
-      const apiRevenueMode: RevenueMode = revenueMode === 'contract' ? 'max' : revenueMode;
-      const res = await kdtAPI.getInstitutionStats(undefined, apiRevenueMode, {
-        month: undefined,
-        trainingType: filterType,
-      });
+    setIsModalOpen(true);
+    setIsModalDataLoading(true);
+
+    const apiRevenueMode: RevenueMode = revenueMode === 'contract' ? 'max' : revenueMode;
+    const pickCourses = (res: any): any[] => {
       const list = (res?.data ?? []) as InstitutionStat[];
-      const matched = list.find((s) => s.institution_name === institutionName);
-      setAllYearCourses((matched?.courses ?? []) as any[]);
+      const matched = list.find((s) => s.institution_name === institutionName) ?? list[0];
+      return (matched?.courses ?? []) as any[];
+    };
+
+    try {
+      // (1) 현재 대시보드 기간 필터 기준 — KPI 카드용
+      const scoped = buildStatsArgs({
+        isFullPeriod,
+        isSingleWholeYear,
+        isSingleMonth,
+        range: normalizedRange,
+        trainingType: filterType,
+        aiCampus: aiCampusFilter,
+        institutionName,
+        includeCourses: true,
+      });
+      // (2) 전체 기간 — 추이 차트/그룹핑용 (대시보드 연도 필터와 독립)
+      const allTime = buildStatsArgs({
+        isFullPeriod: true,
+        isSingleWholeYear: false,
+        isSingleMonth: false,
+        range: normalizedRange,
+        trainingType: filterType,
+        aiCampus: aiCampusFilter,
+        institutionName,
+        includeCourses: true,
+      });
+
+      const [scopedRes, allTimeRes] = await Promise.all([
+        kdtAPI.getInstitutionStats(scoped.year, apiRevenueMode, scoped.options),
+        kdtAPI.getInstitutionStats(allTime.year, apiRevenueMode, allTime.options),
+      ]);
+
+      const scopedCourses = pickCourses(scopedRes);
+      setSelectedInstitutionCourses(scopedCourses);
+      setAllYearCourses(pickCourses(allTimeRes));
     } catch (error) {
-      console.error('전체 연도 상세 데이터 로드 실패:', error);
-      // 실패 시 현재 필터 course로라도 추이/그룹을 구성 (부정확할 수 있으나 빈 화면 방지)
-      setAllYearCourses(courses);
+      console.error('기관 상세 데이터 로드 실패:', error);
+      setSelectedInstitutionCourses([]);
+      setAllYearCourses([]);
     } finally {
       setIsModalDataLoading(false);
     }
@@ -632,6 +722,20 @@ export default function InstitutionAnalysisClient() {
               <SelectItem value="all">전체</SelectItem>
               <SelectItem value="leading">선도기업 과정만</SelectItem>
               <SelectItem value="tech">신기술 과정만</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-foreground/80 mb-2">AI캠퍼스</label>
+          <Select value={aiCampusFilter} onValueChange={(v) => setAiCampusFilter(v as AiCampusFilter)}>
+            <SelectTrigger className="w-[180px] bg-background text-foreground border-border">
+              <SelectValue placeholder="AI캠퍼스" />
+            </SelectTrigger>
+            <SelectContent className="bg-popover text-popover-foreground z-20">
+              <SelectItem value="all">{AI_CAMPUS_FILTER_LABELS.all}</SelectItem>
+              <SelectItem value="only">{AI_CAMPUS_FILTER_LABELS.only}</SelectItem>
+              <SelectItem value="exclude">{AI_CAMPUS_FILTER_LABELS.exclude}</SelectItem>
             </SelectContent>
           </Select>
         </div>

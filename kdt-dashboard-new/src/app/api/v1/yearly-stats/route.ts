@@ -1,6 +1,7 @@
 // 연도별 통계 조회 API
 
 import { NextRequest, NextResponse } from 'next/server';
+import { jsonResponse } from '@/lib/backend/json-response';
 import { calculateYearlyStats } from '@/lib/backend/aggregation';
 import { getProcessedCourses } from '@/lib/backend/supabase-service';
 import { cacheManager, generateCacheKey } from '@/lib/backend/cache';
@@ -23,10 +24,7 @@ export async function GET(request: NextRequest) {
     // 캐시에서 조회
     const cachedResult = cacheManager.get<any>(cacheKey);
     if (cachedResult) {
-      return NextResponse.json({
-        ...cachedResult,
-        cached: true,
-      });
+      return jsonResponse(request, { ...cachedResult, cached: true });
     }
 
     // 데이터 조회
@@ -71,10 +69,7 @@ export async function GET(request: NextRequest) {
     // 캐시에 저장 (1시간)
     cacheManager.set(cacheKey, result);
 
-    return NextResponse.json({
-      ...result,
-      cached: false,
-    });
+    return jsonResponse(request, { ...result, cached: false });
   } catch (error) {
     console.error('연도별 통계 조회 오류:', error);
     return NextResponse.json(

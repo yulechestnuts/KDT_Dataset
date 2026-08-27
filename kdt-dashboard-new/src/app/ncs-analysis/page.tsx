@@ -1,12 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import {
-  loadDataFromGithub,
-  preprocessData,
-  applyRevenueAdjustment,
-  calculateCompletionRate,
-} from '@/utils/data-utils';
+import { kdtAPI } from '@/lib/api-client';
 import {
   calculateNcsStats,
   aggregateCoursesByCourseNameForNcs,
@@ -25,7 +20,6 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { formatCurrency, formatNumber } from '@/utils/formatters';
-import { parse as parseCsv } from 'papaparse';
 import {
   BarChart,
   Bar,
@@ -43,65 +37,69 @@ export default function NcsAnalysis() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedNcsName, setSelectedNcsName] = useState('');
   const [selectedNcsCourses, setSelectedNcsCourses] = useState<AggregatedCourseData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  // 원본 과정 목록 (연도 필터는 클라이언트에서 적용 — API 는 전체를 한 번만 받는다)
+  const [allCourses, setAllCourses] = useState<CourseData[]>([]);
 
   // Fetch initial data
+  //
+  // 이전에는 GitHub 의 result_kdtdata_202512.csv 를 받아 클라이언트에서 파싱·보정했는데,
+  // 그 파일이 리포지토리에서 사라져 404 가 나면서 페이지가 통째로 오류였다.
+  // 지금은 다른 분석 페이지와 같은 Supabase 기반 API 를 쓴다.
+  // (매출 보정은 서버의 applyRevenueAdjustmentIfMissing 이 이미 적용해 내려준다)
   useEffect(() => {
+    let cancelled = false;
     const fetchData = async () => {
       try {
-        const csvStr = await loadDataFromGithub();
-        const parsed: any = parseCsv(csvStr as string, {
-          header: true,
-          skipEmptyLines: true,
-          dynamicTyping: false,
-        });
-        const processed = preprocessData(parsed.data as RawCourseData[]);
-        const overallCompletion = calculateCompletionRate(processed);
-        const adjusted = applyRevenueAdjustment(processed, overallCompletion);
+        setLoading(true);
+        setError(null);
+        const res = await kdtAPI.getCourseAnalysis({});
+        if (cancelled) return;
 
-        // year list
-        const years = Array.from(new Set(adjusted.map((c) => c.훈련연도)))
-          .filter((y) => y !== 0)
-          .sort((a, b) => a - b);
+        const courses = (res?.data ?? []) as unknown as CourseData[];
+        setAllCourses(courses);
+
+        const years = (res?.meta?.available_years ?? []).filter((y) => y !== 0);
         setAvailableYears(years);
-
-        setNcsStats(calculateNcsStats(adjusted));
+        setNcsStats(calculateNcsStats(courses));
       } catch (e) {
+        if (cancelled) return;
         console.error('데이터 로드 오류:', e);
+        setError('데이터를 불러오는 중 오류가 발생했습니다.');
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     };
     fetchData();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Update when year changes
+  // 연도만 바뀌는데 데이터를 다시 받을 이유가 없다. 이미 받아둔 목록으로 재계산한다.
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const csvStr = await loadDataFromGithub();
-        const parsed: any = parseCsv(csvStr as string, {
-          header: true,
-          skipEmptyLines: true,
-          dynamicTyping: false,
-        });
-        const processed = preprocessData(parsed.data as RawCourseData[]);
-        const overallCompletion = calculateCompletionRate(processed);
-        const adjusted = applyRevenueAdjustment(processed, overallCompletion);
-        setNcsStats(
-          calculateNcsStats(
-            adjusted,
-            selectedYear === 'all' ? undefined : selectedYear,
-          ),
-        );
-      } catch (e) {
-        console.error('데이터 로드 오류:', e);
-      }
-    };
-    fetchData();
-  }, [selectedYear]);
+    if (allCourses.length === 0) return;
+    setNcsStats(calculateNcsStats(allCourses, selectedYear === 'all' ? undefined : selectedYear));
+  }, [selectedYear, allCourses]);
 
   const handleViewDetails = (ncsName: string, courses: CourseData[]) => {
     setSelectedNcsName(ncsName);
     const year = selectedYear === 'all' ? undefined : selectedYear;
-    const aggregated = aggregateCoursesByCourseNameForNcs(courses, ncsName, year);
+    // aggregateCoursesByCourseNameForNcs 는 인자가 1개다. ncsName/year 를 넘겨도 무시되므로
+    // 필터링은 여기서 직접 한다.
+    const scoped = year
+      ? courses.filter((c) => {
+          const start = new Date(c.과정시작일);
+          const end = new Date(c.과정종료일);
+          return (
+            start.getFullYear() === year ||
+            (start.getFullYear() < year && end.getFullYear() >= year)
+          );
+        })
+      : courses;
+    const aggregated = aggregateCoursesByCourseNameForNcs(scoped);
     setSelectedNcsCourses(aggregated);
     setIsModalOpen(true);
   };

@@ -3,6 +3,7 @@
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { CourseData } from "@/lib/data-utils";
 import React from 'react';
+import { resolveRevenueYears } from '@/lib/revenue-years';
 
 interface CourseDetailModalProps {
   course: CourseData;
@@ -187,7 +188,7 @@ export default function CourseDetailModal({ course, onClose }: CourseDetailModal
           <div className="space-y-6">
             <h3 className="text-2xl font-semibold mb-6">연도별 매출</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {[2021, 2022, 2023, 2024, 2025, 2026].map(year => {
+              {resolveRevenueYears(course).map(year => {
                 const yearRevenue = course[`${year}년` as keyof CourseData];
                 const yearCumulative = course[`${year}년_누적` as keyof CourseData];
                 const hasData = getNumericValue(yearRevenue) > 0 || getNumericValue(yearCumulative) > 0;

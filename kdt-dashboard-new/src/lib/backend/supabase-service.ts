@@ -3,6 +3,11 @@
 import { supabase } from '@/lib/supabaseClient';
 import { ProcessedCourseData } from './types';
 import { executeWithRetry, SupabaseConnectionError } from '@/lib/supabase-wrapper';
+import { resolveRevenueYears } from '@/lib/revenue-years';
+import { normalizeCourseLink } from '@/lib/course-link';
+
+/** 진단용 __raw_* 필드를 응답에 포함할지. 켜면 페이로드가 커진다. */
+const DEBUG_RAW = process.env.DEBUG_SUPABASE === '1';
 
 const TABLE_NAME = process.env.SUPABASE_TABLE_NAME || 'kdt_data';
 
@@ -219,10 +224,19 @@ export async function getProcessedCourses(): Promise<ProcessedCourseData[]> {
         const rawPartnerInstitution = String(row.leading_company_partner_institution ?? row.파트너기관 ?? '').trim();
         const derivedIsLeading = rawPartnerInstitution !== '' && rawPartnerInstitution !== '0';
 
+        const yearRevenueFields: Record<string, number> = {};
+        for (const year of resolveRevenueYears(row)) {
+          yearRevenueFields[`${year}년`] = parseNumeric(pickRowValue(row, [`${year}년`]), 0);
+          yearRevenueFields[`조정_${year}년`] = parseNumeric(
+            pickRowValue(row, [`조정_${year}년`, `조정 ${year}년`]),
+            0
+          );
+        }
+
         return ({
         고유값: row.고유값 || '',
         과정명: row.과정명 || '',
-        '훈련과정 ID': row.훈련과정_ID || '',
+        '훈련과정 ID': String(pickRowValue(row, ['훈련과정_ID', '훈련과정 ID', '훈련과정ID']) ?? ''),
         회차: row.회차 || '',
         훈련기관: row.훈련기관 || '',
         원본훈련기관: row.원본훈련기관 || '',
@@ -242,6 +256,7 @@ export async function getProcessedCourses(): Promise<ProcessedCourseData[]> {
         '취업률 (6개월)': parseNumericNullable(row['취업률 (6개월)'] ?? row['취업률_6개월']),
         만족도: parseNumeric(pickRowValue(row, ['만족도']), 0),
         훈련비: parseNumeric(pickRowValue(row, ['훈련비']), 0),
+        자비부담금: parseNumeric(pickRowValue(row, ['자비부담금', '자비_부담금', '자비 부담금']), 0),
         정원: parseNumeric(pickRowValue(row, ['정원']), 0),
         총훈련일수: parseNumeric(pickRowValue(row, ['총훈련일수', '총 훈련일수']), 0),
         총훈련시간: parseNumeric(pickRowValue(row, ['총훈련시간', '총 훈련시간']), 0),
@@ -249,39 +264,48 @@ export async function getProcessedCourses(): Promise<ProcessedCourseData[]> {
         '실 매출 대비': parseNumeric(pickRowValue(row, ['실_매출_대비', '실 매출 대비', '실매출대비']), 0),
         '매출 최대': parseNumeric(pickRowValue(row, ['매출_최대', '매출 최대', '매출최대']), 0),
         '매출 최소': parseNumeric(pickRowValue(row, ['매출_최소', '매출 최소', '매출최소']), 0),
-        '2021년': parseNumeric(pickRowValue(row, ['2021년']), 0),
-        '2022년': parseNumeric(pickRowValue(row, ['2022년']), 0),
-        '2023년': parseNumeric(pickRowValue(row, ['2023년']), 0),
-        '2024년': parseNumeric(pickRowValue(row, ['2024년']), 0),
-        '2025년': parseNumeric(pickRowValue(row, ['2025년']), 0),
-        '2026년': parseNumeric(pickRowValue(row, ['2026년']), 0),
-        '조정_2021년': parseNumeric(pickRowValue(row, ['조정_2021년', '조정 2021년']), 0),
-        '조정_2022년': parseNumeric(pickRowValue(row, ['조정_2022년', '조정 2022년']), 0),
-        '조정_2023년': parseNumeric(pickRowValue(row, ['조정_2023년', '조정 2023년']), 0),
-        '조정_2024년': parseNumeric(pickRowValue(row, ['조정_2024년', '조정 2024년']), 0),
-        '조정_2025년': parseNumeric(pickRowValue(row, ['조정_2025년', '조정 2025년']), 0),
-        '조정_2026년': parseNumeric(pickRowValue(row, ['조정_2026년', '조정 2026년']), 0),
+        // 연도 키는 row 에서 동적으로 뽑아 펼친다 (리터럴 나열 금지 — @/lib/revenue-years)
+        ...yearRevenueFields,
         조정_실매출대비: parseNumeric(pickRowValue(row, ['조정_실매출대비', '조정 실매출대비', '조정_실_매출_대비']), 0),
         훈련유형: row.훈련유형 || '',
         NCS명: row.NCS명 || '',
         NCS코드: row.NCS코드 || '',
+        // DB 컬럼은 '과정페이지 링크'(공백 포함), 코드 전반은 '과정페이지링크'(공백 없음)를 쓴다.
+        // 폐지된 구 도메인 링크가 섞여 있어 정규화한다 (@/lib/course-link)
+        과정페이지링크: normalizeCourseLink(
+          pickRowValue(row, ['과정페이지_링크', '과정페이지 링크', '과정페이지링크'])
+        ),
         선도기업: row.선도기업 || '',
         파트너기관: row.파트너기관 || '',
         isLeadingCompanyCourse: Boolean(row.is_leading_company_course) || derivedIsLeading,
         leadingCompanyPartnerInstitution: rawPartnerInstitution !== '' && rawPartnerInstitution !== '0'
           ? rawPartnerInstitution
           : undefined,
-        __raw_매출_최대: pickRowValue(row, ['매출_최대', '매출 최대', '매출최대']),
-        __raw_조정_실매출대비: pickRowValue(row, ['조정_실매출대비', '조정 실매출대비', '조정_실_매출_대비']),
-        __raw_2026년: pickRowValue(row, ['2026년']),
-        __raw_조정_2026년: pickRowValue(row, ['조정_2026년', '조정 2026년']),
-        __raw_수료인원: pickRowValue(row, ['수료인원', '수료 인원', '수료_인원', '수료인원(명)', '수료 인원(명)']),
-        __raw_파트너기관: pickRowValue(row, ['파트너기관', '파트너 기관']),
-        __raw_leading_company_partner_institution: pickRowValue(row, [
-          'leading_company_partner_institution',
-          'leading company partner institution',
-        ]),
-        __raw_is_leading_company_course: pickRowValue(row, ['is_leading_company_course']),
+        // 진단용 원본값. 응답 페이로드를 약 1MB 부풀리므로 DEBUG_SUPABASE=1 일 때만 싣는다.
+        // (institution-stats 의 ?trace=1 출력이 이 값을 쓴다)
+        ...(DEBUG_RAW
+          ? {
+              __raw_매출_최대: pickRowValue(row, ['매출_최대', '매출 최대', '매출최대']),
+              __raw_조정_실매출대비: pickRowValue(row, [
+                '조정_실매출대비',
+                '조정 실매출대비',
+                '조정_실_매출_대비',
+              ]),
+              __raw_수료인원: pickRowValue(row, [
+                '수료인원',
+                '수료 인원',
+                '수료_인원',
+                '수료인원(명)',
+                '수료 인원(명)',
+              ]),
+              __raw_파트너기관: pickRowValue(row, ['파트너기관', '파트너 기관']),
+              __raw_leading_company_partner_institution: pickRowValue(row, [
+                'leading_company_partner_institution',
+                'leading company partner institution',
+              ]),
+              __raw_is_leading_company_course: pickRowValue(row, ['is_leading_company_course']),
+            }
+          : {}),
       });
       });
     });

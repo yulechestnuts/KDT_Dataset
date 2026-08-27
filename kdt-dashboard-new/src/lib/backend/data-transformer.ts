@@ -15,6 +15,7 @@ import {
   classifyTrainingType,
 } from './institution-grouping';
 import { calculateRevenueAdjustmentFactor } from './revenue-engine';
+import { resolveYearColumns } from '@/lib/revenue-years';
 
 /**
  * 원본 데이터를 처리된 데이터로 변환
@@ -170,7 +171,7 @@ export function transformRawDataToCourseData(rawData: RawCourseData): ProcessedC
   }
 
   // 연도별 매출 파싱
-  const yearColumns = ['2021년', '2022년', '2023년', '2024년', '2025년', '2026년'] as const;
+  const yearColumns = resolveYearColumns(rawData);
   const yearlyRevenues: Record<string, number> = {};
   const adjustedYearlyRevenues: Record<string, number> = {};
 
@@ -238,18 +239,9 @@ export function transformRawDataToCourseData(rawData: RawCourseData): ProcessedC
     '실 매출 대비': 실매출대비,
     '매출 최대': parseNumber((rawData as any).매출최대 || (rawData as any)['매출 최대'] || 0),
     '매출 최소': parseNumber((rawData as any).매출최소 || (rawData as any)['매출 최소'] || 0),
-    '2021년': yearlyRevenues['2021년'],
-    '2022년': yearlyRevenues['2022년'],
-    '2023년': yearlyRevenues['2023년'],
-    '2024년': yearlyRevenues['2024년'],
-    '2025년': yearlyRevenues['2025년'],
-    '2026년': yearlyRevenues['2026년'],
-    '조정_2021년': adjustedYearlyRevenues['조정_2021년'],
-    '조정_2022년': adjustedYearlyRevenues['조정_2022년'],
-    '조정_2023년': adjustedYearlyRevenues['조정_2023년'],
-    '조정_2024년': adjustedYearlyRevenues['조정_2024년'],
-    '조정_2025년': adjustedYearlyRevenues['조정_2025년'],
-    '조정_2026년': adjustedYearlyRevenues['조정_2026년'],
+    // 연도 키는 yearColumns 에서 동적으로 펼친다 (리터럴 나열 금지)
+    ...yearlyRevenues,
+    ...adjustedYearlyRevenues,
     조정_실매출대비: 조정_실매출대비,
     훈련유형: trainingType,
     NCS명: String(rawData.NCS명 || '').trim(),

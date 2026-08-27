@@ -1,3 +1,4 @@
+import { resolveRevenueYears, toAdjustedYearColumns } from '@/lib/revenue-years';
 import { formatNumber } from "@/utils/formatters";
 import { parsePercentageNullable } from "@/lib/backend/parsers";
 
@@ -479,12 +480,10 @@ export const transformRawDataToCourseData = (rawData: RawCourseData): CourseData
     '실 매출 대비': parseNumber(rawData.실매출대비),
     '매출 최대': parseNumber(rawData.매출최대),
     '매출 최소': parseNumber(rawData.매출최소),
-    '2021년': parseNumber(rawData['2021년']),
-    '2022년': parseNumber(rawData['2022년']),
-    '2023년': parseNumber(rawData['2023년']),
-    '2024년': parseNumber(rawData['2024년']),
-    '2025년': parseNumber(rawData['2025년']),
-    '2026년': parseNumber(rawData['2026년']),
+    // 연도 키는 rawData 에서 동적으로 (리터럴 나열 금지 — @/lib/revenue-years)
+    ...Object.fromEntries(
+      resolveRevenueYears(rawData).map((y) => [`${y}년`, parseNumber((rawData as any)[`${y}년`])])
+    ),
   };
 };
 
@@ -575,7 +574,8 @@ export const computeCourseRevenue = (course: CourseData, year?: number): number 
     return baseRevenue;
   }
 
-  const adjustedCols = ['조정_2021년', '조정_2022년', '조정_2023년', '조정_2024년', '조정_2025년', '조정_2026년'];
+  // 리터럴 나열 금지 — 2026 에서 끊겨 2027년 매출이 통째로 빠졌었다 (@/lib/revenue-years)
+  const adjustedCols = toAdjustedYearColumns(resolveRevenueYears(course));
   let baseRevenue = adjustedCols.reduce((sum, key) => sum + (course[key] || 0), 0);
   
   if (baseRevenue === 0) {
@@ -860,7 +860,11 @@ export const calculateNcsStats = (courses: CourseData[], year?: number): NcsStat
       });
     }
     const stat = ncsMap.get(key)!;
-    stat.totalRevenue += (c.조정_누적매출 ?? c.누적매출 ?? 0);
+    // 조정_누적매출/누적매출 은 폐기된 GitHub CSV 경로에서만 채워지던 값이라
+    // Supabase 경로에서는 비어 있어 NCS 매출이 전부 0 으로 나왔다.
+    // 모달 집계(aggregateCoursesByCourseNameForNcs)와 선도기업 분석이 이미 쓰는
+    // 공용 매출 엔진으로 통일한다.
+    stat.totalRevenue += computeCourseRevenue(c as any, year);
     stat.totalCourses += 1;
     
     const empData = getSafeEmploymentData(c);

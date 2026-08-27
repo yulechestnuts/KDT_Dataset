@@ -1,3 +1,4 @@
+import { resolveRevenueYearsFrom, toYearColumns } from '@/lib/revenue-years';
 import { CourseData, YearlyStats, MonthlyStats, parseNumber, parsePercentage, parseDate, transformRawDataToCourseData, transformRawDataArray, calculateRevenueAdjustmentFactor, computeCourseRevenue, calculateMonthlyStatistics as libCalculateMonthlyStatistics, calculateCompletionRate as libCalculateCompletionRate, groupInstitutionsAdvanced, calculateInstitutionStats as libCalculateInstitutionStats, aggregateCoursesByCourseIdWithLatestInfo, calculateInstitutionDetailedRevenue, getPreferredEmploymentCount, calculateCompletionRate, calculateInstitutionStats, getIndividualInstitutionsInGroup } from "@/lib/data-utils";
 import Papa from 'papaparse';
 
@@ -47,7 +48,7 @@ export const preprocessData = (rawData: unknown): CourseData[] => {
 
 export const generateYearlyStats = (data: CourseData[]): YearlyStats[] => {
   const yearlyMap = new Map<number, YearlyStats>();
-  const yearColumns = ['2021년', '2022년', '2023년', '2024년', '2025년', '2026년'];
+  const yearColumns = toYearColumns(resolveRevenueYearsFrom(data));
 
   // 모든 관련 연도에 대해 yearlyMap 초기화
   yearColumns.forEach(yearCol => {
@@ -219,7 +220,7 @@ export const applyRevenueAdjustment = (
   });
 
   // 1차: 기존 보정 로직으로 코스별 조정 매출 산출
-  const yearColumns = ['2021년', '2022년', '2023년', '2024년', '2025년', '2026년'] as const;
+  const yearColumns = toYearColumns(resolveRevenueYearsFrom(courses));
 
   // 1차 결과를 저장하고, 2차 스케일링 단계에서 재사용
   const intermediate = courses.map(course => {

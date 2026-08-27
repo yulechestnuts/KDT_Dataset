@@ -1,6 +1,7 @@
 // 월별 통계 조회 API
 
 import { NextRequest, NextResponse } from 'next/server';
+import { jsonResponse } from '@/lib/backend/json-response';
 import { calculateMonthlyStatistics } from '@/lib/backend/aggregation';
 import { getProcessedCourses } from '@/lib/backend/supabase-service';
 import { cacheManager, generateCacheKey } from '@/lib/backend/cache';
@@ -62,10 +63,7 @@ export async function GET(request: NextRequest) {
     if (!bypassCache) {
       const cachedResult = cacheManager.get<any>(cacheKey);
       if (cachedResult) {
-        return NextResponse.json({
-          ...cachedResult,
-          cached: true,
-        });
+        return jsonResponse(request, { ...cachedResult, cached: true });
       }
     }
 
@@ -196,10 +194,7 @@ export async function GET(request: NextRequest) {
       cacheManager.set(cacheKey, result);
     }
 
-    return NextResponse.json({
-      ...result,
-      cached: false,
-    });
+    return jsonResponse(request, { ...result, cached: false });
   } catch (error) {
     console.error('월별 통계 조회 오류:', error);
     return NextResponse.json(

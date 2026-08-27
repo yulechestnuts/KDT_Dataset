@@ -1,9 +1,12 @@
 // 과정 분석 데이터 조회 API (DB/Supabase 기반)
 
 import { NextRequest, NextResponse } from 'next/server';
+import { jsonResponse } from '@/lib/backend/json-response';
 import { getProcessedCourses } from '@/lib/backend/supabase-service';
 import { applyRevenueAdjustmentIfMissing, computeCourseRevenueByMode } from '@/lib/backend/revenue-engine';
 import { extractYearMonth, parseDate } from '@/lib/backend/parsers';
+import { isAiCampusCourse, matchesAiCampusFilter, parseAiCampusFilter } from '@/lib/course-category';
+import { cacheManager, generateCacheKey } from '@/lib/backend/cache';
 
 function toFiniteNumber(value: unknown, fallback: number = 0): number {
   if (value === null || value === undefined) return fallback;
@@ -29,14 +32,31 @@ export async function GET(request: NextRequest) {
     const yearParam = searchParams.get('year');
     const trainingTypeParam = searchParams.get('training_type');
     const revenueModeParam = (searchParams.get('revenue_mode') as RevenueMode | null) ?? 'current';
+    // AI캠퍼스 축은 training_type(파트너기관 기준)과 독립적인 별도 필터다.
+    const aiCampusFilter = parseAiCampusFilter(searchParams.get('ai_campus'));
 
     const year = yearParam ? parseInt(yearParam, 10) : undefined;
     const revenueMode: RevenueMode = revenueModeParam === 'max' ? 'max' : 'current';
+
+    // 이 라우트에만 캐시가 없어 매 요청마다 7천여 건을 다시 받아 재계산하고 있었다.
+    const noCache = searchParams.get('no_cache') === '1' || searchParams.get('no_cache') === 'true';
+    const cacheKey = generateCacheKey('course-analysis', {
+      year: year ?? 'all',
+      training_type: trainingTypeParam || 'all',
+      ai_campus: aiCampusFilter,
+      revenue_mode: revenueMode,
+    });
+    if (!noCache) {
+      const cached = cacheManager.get<any>(cacheKey);
+      if (cached) return jsonResponse(request, { ...cached, cached: true });
+    }
 
     const courses = await getProcessedCourses();
     const adjustedCourses = applyRevenueAdjustmentIfMissing(courses);
 
     const filtered = adjustedCourses.filter((c: any) => {
+      if (!matchesAiCampusFilter(c, aiCampusFilter)) return false;
+
       if (trainingTypeParam && trainingTypeParam !== 'all') {
         const hasPartner = String(c.파트너기관 ?? '').trim() !== '';
         if (trainingTypeParam === 'leading' && !hasPartner) return false;
@@ -82,6 +102,7 @@ export async function GET(request: NextRequest) {
       return {
         total_rows: adjustedCourses.length,
         filtered_rows: enriched.length,
+        ai_campus_courses: (adjustedCourses as any[]).filter(isAiCampusCourse).length,
         available_years: Array.from(years).sort((a, b) => a - b),
         year_range:
           minYear !== Number.POSITIVE_INFINITY && maxYear !== Number.NEGATIVE_INFINITY
@@ -90,16 +111,20 @@ export async function GET(request: NextRequest) {
         applied_filters: {
           year,
           training_type: trainingTypeParam || 'all',
+          ai_campus: aiCampusFilter,
           revenue_mode: revenueMode,
         },
       };
     })();
 
-    return NextResponse.json({
+    const result = {
       status: 'success',
       data: enriched,
       meta,
-    });
+      cached: false,
+    };
+    cacheManager.set(cacheKey, result);
+    return jsonResponse(request, result);
   } catch (error) {
     console.error('과정 분석 데이터 조회 오류:', error);
     return NextResponse.json(

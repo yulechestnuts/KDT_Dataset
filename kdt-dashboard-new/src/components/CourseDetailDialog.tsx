@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { CourseData } from "@/lib/data-utils";
+import { resolveRevenueYears } from '@/lib/revenue-years';
 
 // 포맷팅 함수들
 const formatNumber = (value: number | string | null | undefined): string => {
@@ -154,7 +155,7 @@ export function CourseDetailDialog({ course, isOpen, onClose }: CourseDetailDial
             <div className="bg-purple-50 dark:bg-purple-900/20 p-5 rounded-lg border border-purple-200 dark:border-purple-800">
               <h3 className="font-semibold mb-3 text-lg text-purple-800 dark:text-purple-300">연도별 매출</h3>
               <div className="space-y-3">
-                {[2021, 2022, 2023, 2024, 2025, 2026].map(year => {
+                {resolveRevenueYears(course).map(year => {
                   const yearCol = `${year}년` as keyof CourseData;
                   const revenue = course[yearCol] as number;
                   
@@ -171,7 +172,7 @@ export function CourseDetailDialog({ course, isOpen, onClose }: CourseDetailDial
                 })}
                 
                 {/* 매출 데이터가 없는 경우 메시지 표시 */}
-                {![2021, 2022, 2023, 2024, 2025, 2026].some(year => {
+                {!resolveRevenueYears(course).some(year => {
                   const yearCol = `${year}년` as keyof CourseData;
                   const revenue = course[yearCol] as number;
                   return revenue && Number(revenue) > 0;

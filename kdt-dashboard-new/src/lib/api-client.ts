@@ -1,5 +1,7 @@
 // KDT 통계 API 클라이언트
 
+import type { AiCampusFilter } from '@/lib/course-category';
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 export interface InstitutionStatsResponse {
@@ -216,6 +218,10 @@ export class KDTStatsAPI {
     options?: {
       month?: number;
       trainingType?: 'all' | 'leading' | 'tech';
+      /** AI캠퍼스 축 (파트너기관 기준 trainingType 과 독립) */
+      aiCampus?: AiCampusFilter;
+      /** stat.courses 를 응답에 포함할지. 목록 화면은 끄는 게 맞다(페이로드 98% 절감). */
+      includeCourses?: boolean;
       institutionName?: string;
       noCache?: boolean;
       from?: string | { year: number; month: number };
@@ -247,6 +253,10 @@ export class KDTStatsAPI {
     if (options?.trainingType && options.trainingType !== 'all') {
       params.append('training_type', options.trainingType);
     }
+    if (options?.aiCampus && options.aiCampus !== 'all') {
+      params.append('ai_campus', options.aiCampus);
+    }
+    if (options?.includeCourses) params.append('include_courses', '1');
     if (options?.institutionName) params.append('institution_name', options.institutionName);
     if (options?.noCache) params.append('no_cache', '1');
 
@@ -271,12 +281,17 @@ export class KDTStatsAPI {
   async getCourseAnalysis(options?: {
     year?: number;
     trainingType?: 'all' | 'leading' | 'tech';
+    /** AI캠퍼스 축 (파트너기관 기준 trainingType 과 독립) */
+    aiCampus?: AiCampusFilter;
     revenueMode?: 'current' | 'max';
   }): Promise<CourseAnalysisResponse> {
     const params = new URLSearchParams();
     if (options?.year !== undefined) params.append('year', String(options.year));
     if (options?.trainingType && options.trainingType !== 'all') {
       params.append('training_type', options.trainingType);
+    }
+    if (options?.aiCampus && options.aiCampus !== 'all') {
+      params.append('ai_campus', options.aiCampus);
     }
     if (options?.revenueMode) params.append('revenue_mode', options.revenueMode);
 

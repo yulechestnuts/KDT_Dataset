@@ -1,3 +1,4 @@
+import { resolveYearColumns } from '@/lib/revenue-years';
 // 데이터 파싱 유틸리티 함수들
 
 /**
@@ -266,7 +267,7 @@ export function calculateTotalTrainingHours(
  * 누적 매출 계산
  */
 export function calculateCumulativeRevenue(rawData: Record<string, any>): number {
-  const yearColumns = ['2021년', '2022년', '2023년', '2024년', '2025년', '2026년'];
+  const yearColumns = resolveYearColumns(rawData);
   let total = 0.0;
 
   for (const yearCol of yearColumns) {

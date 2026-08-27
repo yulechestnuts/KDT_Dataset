@@ -16,6 +16,8 @@ import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@
 import { formatCurrency, formatNumber } from "@/utils/formatters";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { useGlobalFilters } from "@/contexts/FilterContext";
+import { AI_CAMPUS_FILTER_LABELS, type AiCampusFilter } from '@/lib/course-category';
+import { getFallbackRevenueYears } from '@/lib/revenue-years';
 
 interface CourseStats {
   totalRevenue: number;
@@ -98,6 +100,8 @@ function CourseAnalysisContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'leading' | 'tech'>('all');
+  // AI캠퍼스 축: 유형 필터(파트너기관 기준)와 독립적으로 동작한다.
+  const [aiCampusFilter, setAiCampusFilter] = useState<AiCampusFilter>('all');
   // 훈련기관 검색 상태 추가
   const [institutionSearch, setInstitutionSearch] = useState('');
   // 검색 상태 추가
@@ -126,6 +130,7 @@ function CourseAnalysisContent() {
         const result = await kdtAPI.getCourseAnalysis({
           year,
           trainingType: filterType,
+          aiCampus: aiCampusFilter,
           revenueMode: apiRevenueMode,
         });
 
@@ -141,7 +146,7 @@ function CourseAnalysisContent() {
     };
 
     fetchData();
-  }, [revenueMode, filterType, selectedYear]);
+  }, [revenueMode, filterType, aiCampusFilter, selectedYear]);
 
   // 필터링된 courseData 반환
   const getFilteredCourseData = () => {
@@ -471,7 +476,7 @@ const CourseCard = React.memo(({
             </SelectTrigger>
             <SelectContent className="bg-white z-20">
               <SelectItem value="all">전체 연도</SelectItem>
-              {(availableYears.length > 0 ? availableYears : [2021, 2022, 2023, 2024, 2025, 2026]).map((y) => (
+              {(availableYears.length > 0 ? availableYears : getFallbackRevenueYears()).map((y) => (
                 <SelectItem key={y} value={y.toString()}>
                   {y}년
                 </SelectItem>
@@ -491,6 +496,21 @@ const CourseCard = React.memo(({
               <SelectItem value="all">전체</SelectItem>
               <SelectItem value="leading">선도기업 과정만</SelectItem>
               <SelectItem value="tech">신기술 과정만</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* AI캠퍼스 토글 */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">AI캠퍼스</label>
+          <Select value={aiCampusFilter} onValueChange={(v) => setAiCampusFilter(v as AiCampusFilter)}>
+            <SelectTrigger className="w-[180px] bg-white">
+              <SelectValue placeholder="AI캠퍼스" />
+            </SelectTrigger>
+            <SelectContent className="bg-white z-20">
+              <SelectItem value="all">{AI_CAMPUS_FILTER_LABELS.all}</SelectItem>
+              <SelectItem value="only">{AI_CAMPUS_FILTER_LABELS.only}</SelectItem>
+              <SelectItem value="exclude">{AI_CAMPUS_FILTER_LABELS.exclude}</SelectItem>
             </SelectContent>
           </Select>
         </div>
