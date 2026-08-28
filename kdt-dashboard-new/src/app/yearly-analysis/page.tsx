@@ -76,12 +76,13 @@ export default function YearlyAnalysisPage() {
         setLoading(true);
         setError(null);
 
-        // 현재 계산된 매출 데이터 조회
-        const resultCurrent = await kdtAPI.getCourseAnalysis({ revenueMode: 'current' });
-        const currentCourses = resultCurrent.data || [];
+        // 두 요청은 서로 독립적이라 직렬로 기다릴 이유가 없다 (체감 로딩 시간 절반).
+        const [resultCurrent, resultMax] = await Promise.all([
+          kdtAPI.getCourseAnalysis({ revenueMode: 'current' }), // 현재 계산된 매출
+          kdtAPI.getCourseAnalysis({ revenueMode: 'max' }),     // 수주 매출
+        ]);
 
-        // 수주 매출 데이터 조회
-        const resultMax = await kdtAPI.getCourseAnalysis({ revenueMode: 'max' });
+        const currentCourses = resultCurrent.data || [];
         const maxCourses = resultMax.data || [];
 
         setData(currentCourses);

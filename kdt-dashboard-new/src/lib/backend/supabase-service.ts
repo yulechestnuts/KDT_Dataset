@@ -135,9 +135,11 @@ export async function saveProcessedCourses(
 }
 
 /**
- * Supabase에서 처리된 과정 데이터 조회
+ * Supabase에서 처리된 과정 데이터 조회 (실제 fetch 본체)
+ *
+ * 직접 호출하지 말 것 — 동시 요청 중복 제거를 거치는 `getProcessedCourses` 를 쓴다.
  */
-export async function getProcessedCourses(): Promise<ProcessedCourseData[]> {
+async function fetchProcessedCourses(): Promise<ProcessedCourseData[]> {
   try {
     return await executeWithRetry(async () => {
       const pageSize = parseInt(process.env.SUPABASE_PAGE_SIZE || '1000', 10);
@@ -156,11 +158,15 @@ export async function getProcessedCourses(): Promise<ProcessedCourseData[]> {
         const from = offset;
         const to = offset + pageSize - 1;
 
-        const { data, error, count } = await supabase
+        // count:'exact' 는 매 페이지마다 full COUNT(*) 를 유발한다.
+        // exactCount 는 DEBUG 로그에만 쓰이므로 첫 페이지에서만 요청한다.
+        const query = supabase
           .from(TABLE_NAME)
-          .select('*', { count: 'exact' })
+          .select('*', offset === 0 ? { count: 'exact' } : undefined)
           .order('과정시작일', { ascending: false })
           .range(from, to);
+
+        const { data, error, count } = await query;
 
         if (process.env.DEBUG_SUPABASE === '1') {
           console.log('[getProcessedCourses] table:', TABLE_NAME);
@@ -319,6 +325,28 @@ export async function getProcessedCourses(): Promise<ProcessedCourseData[]> {
     
     return [];
   }
+}
+
+/**
+ * 진행 중인 fetch 를 공유하기 위한 핸들.
+ *
+ * 한 페이지가 revenue_mode 만 다른 요청을 동시에 쏘면(예: 연도별 분석의 current/max)
+ * 같은 전체 스캔이 인스턴스 안에서 2번 돌았다. 진행 중인 Promise 를 재사용해 1번으로 줄인다.
+ * 완료 즉시 핸들을 비우므로 스테일 데이터를 만들지 않는다(TTL 캐시가 아님).
+ */
+let inFlightFetch: Promise<ProcessedCourseData[]> | null = null;
+
+/**
+ * Supabase에서 처리된 과정 데이터 조회
+ */
+export function getProcessedCourses(): Promise<ProcessedCourseData[]> {
+  if (inFlightFetch) return inFlightFetch;
+
+  inFlightFetch = fetchProcessedCourses().finally(() => {
+    inFlightFetch = null;
+  });
+
+  return inFlightFetch;
 }
 
 /**
