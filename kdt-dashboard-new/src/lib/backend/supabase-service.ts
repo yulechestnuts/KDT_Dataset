@@ -135,6 +135,46 @@ export async function saveProcessedCourses(
 }
 
 /**
+ * 같은 고유값이 여러 행으로 들어온 경우 하나만 남긴다.
+ *
+ * `kdt_data.고유값` 에 UNIQUE 제약이 없어서 upsert(onConflict:'고유값') 가 update 로
+ * 동작한다는 보장이 없다. 실제로 완전히 동일한 행이 두 벌 들어와 있는 과정이 있었다
+ * (id 94380/94382, 94381/94383). 제약이 붙기 전까지는 재업로드마다 늘어날 수 있고,
+ * 중복 1건은 수료인원·취업인원·매출을 그대로 두 번 더한다.
+ *
+ * 어느 쪽을 남길지는 id 가 큰 쪽 — 나중에 삽입된 행이다.
+ * `updated_at` 같은 시각 컬럼이 없어 "최신"을 판별할 근거가 serial id 뿐이다.
+ * (근본 해결은 supabase-dedupe-고유값.sql 참고)
+ */
+function dedupeByUniqueKey(rows: any[]): any[] {
+  const latestByKey = new Map<string, any>();
+  const keyless: any[] = [];
+
+  for (const row of rows) {
+    const key = String(row?.고유값 ?? '').trim();
+    if (key === '') {
+      // 고유값이 비면 서로 구분할 수단이 없다. 묶지 말고 그대로 둔다.
+      keyless.push(row);
+      continue;
+    }
+    const existing = latestByKey.get(key);
+    if (!existing || Number(row?.id ?? 0) > Number(existing?.id ?? 0)) {
+      latestByKey.set(key, row);
+    }
+  }
+
+  const deduped = [...latestByKey.values(), ...keyless];
+  const dropped = rows.length - deduped.length;
+  if (dropped > 0) {
+    console.warn(
+      `[getProcessedCourses] 고유값 중복 ${dropped}건 제거 (${rows.length} → ${deduped.length}). ` +
+        'kdt_data.고유값 에 UNIQUE 제약이 없어 재업로드 시 누적된다 — supabase-dedupe-고유값.sql 참고.'
+    );
+  }
+  return deduped;
+}
+
+/**
  * Supabase에서 처리된 과정 데이터 조회 (실제 fetch 본체)
  *
  * 직접 호출하지 말 것 — 동시 요청 중복 제거를 거치는 `getProcessedCourses` 를 쓴다.
@@ -160,10 +200,15 @@ async function fetchProcessedCourses(): Promise<ProcessedCourseData[]> {
 
         // count:'exact' 는 매 페이지마다 full COUNT(*) 를 유발한다.
         // exactCount 는 DEBUG 로그에만 쓰이므로 첫 페이지에서만 요청한다.
+        //
+        // 과정시작일은 유일하지 않아 같은 날짜 행들의 순서가 페이지마다 뒤바뀔 수 있고,
+        // 그러면 range() 페이징이 어떤 행은 두 번 담고 어떤 행은 건너뛴다.
+        // 고유값을 2차 정렬키로 넣어 전 페이지에 걸쳐 순서를 고정한다.
         const query = supabase
           .from(TABLE_NAME)
           .select('*', offset === 0 ? { count: 'exact' } : undefined)
           .order('과정시작일', { ascending: false })
+          .order('고유값', { ascending: true })
           .range(from, to);
 
         const { data, error, count } = await query;
@@ -226,7 +271,7 @@ async function fetchProcessedCourses(): Promise<ProcessedCourseData[]> {
       }
 
       // Supabase 데이터를 ProcessedCourseData 형식으로 변환
-      return allRows.map((row: any) => {
+      return dedupeByUniqueKey(allRows).map((row: any) => {
         const rawPartnerInstitution = String(row.leading_company_partner_institution ?? row.파트너기관 ?? '').trim();
         const derivedIsLeading = rawPartnerInstitution !== '' && rawPartnerInstitution !== '0';
 

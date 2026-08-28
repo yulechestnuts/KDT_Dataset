@@ -22,7 +22,9 @@ const STORAGE_KEY = "kdt-dashboard-global-filters";
 const DEFAULT_FILTERS: GlobalFilters = {
   selectedYear: null,
   yearType: "ended",
-  periodOption: "3개월",
+  // 고용노동부 취업률 산정 기준은 6개월이다. 3개월은 조기 지표로만 쓴다.
+  // (현재 periodOption 을 읽는 화면은 employment-analysis 뿐이다)
+  periodOption: "6개월",
   filterZero: false,
 };
 
