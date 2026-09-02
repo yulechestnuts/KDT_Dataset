@@ -1,6 +1,8 @@
 import { resolveRevenueYears, toAdjustedYearColumns } from '@/lib/revenue-years';
 import { formatNumber } from "@/utils/formatters";
-import { parsePercentageNullable } from "@/lib/backend/parsers";
+import { parsePercentageNullable, parseDate as parseDateStrict } from "@/lib/backend/parsers";
+import { isCompletionCountable } from "@/lib/completion-rule";
+import { getSatisfactionSample } from "@/lib/satisfaction-rule";
 
 // ============================================================================
 // 취업대상자 역산 로직: 절대 명제
@@ -532,19 +534,16 @@ export const csvParseOptions = {
 };
 
 // 수료율 계산
+// 집계 기준은 @/lib/completion-rule 단일 정의를 따른다 (백엔드 aggregation.ts,
+// InstitutionAnalysisClient.tsx 와 같은 규칙이어야 화면마다 값이 갈리지 않는다).
 export function calculateCompletionRate(data: CourseData[], year?: number): number {
   let filteredData = data;
   if (year) {
-    filteredData = data.filter(course => new Date(course.과정종료일).getFullYear() === year);
+    filteredData = data.filter(course => parseDateStrict(course.과정종료일).getFullYear() === year);
   }
 
   const today = new Date();
-  const threeWeeksAgo = new Date(today.getTime() - (21 * 24 * 60 * 60 * 1000));
-
-  const validData = filteredData.filter(course => {
-    const endDate = new Date(course.과정종료일);
-    return course['수료인원'] > 0 && course['수강신청 인원'] > 0 && endDate <= threeWeeksAgo;
-  });
+  const validData = filteredData.filter(course => isCompletionCountable(course, today));
 
   if (validData.length === 0) return 0;
 
@@ -749,7 +748,9 @@ export const aggregateCoursesByCourseIdWithLatestInfo = (courses: CourseData[], 
     let satSum = 0, satWeight = 0, compSum = 0, compEnroll = 0, targetPop = 0, integratedEmp = 0;
     cList.forEach(c => {
       const empData = getSafeEmploymentData(c);
-      if (c.만족도 > 0 && c['수료인원'] > 0) { satSum += c.만족도 * c['수료인원']; satWeight += c['수료인원']; }
+      // 만족도 산식은 @/lib/satisfaction-rule 단일 정의 (5점 척도, 평가인원 가중)
+      const satSample = getSatisfactionSample(c);
+      if (satSample.score !== null) { satSum += satSample.score * satSample.weight; satWeight += satSample.weight; }
       if (c['수료인원'] > 0 && c['수강신청 인원'] > 0) { compSum += c['수료인원']; compEnroll += c['수강신청 인원']; }
       if (empData.targetPop !== null && empData.targetPop > 0) {
         targetPop += empData.targetPop;
@@ -1020,7 +1021,9 @@ export const aggregateCoursesByCourseNameForLeadingCompany = (courses: CourseDat
     let satSum = 0, satWeight = 0, compSum = 0, compEnroll = 0, targetPop = 0, integratedEmp = 0;
     cList.forEach(c => {
       const empData = getSafeEmploymentData(c);
-      if (c.만족도 > 0 && c['수료인원'] > 0) { satSum += c.만족도 * c['수료인원']; satWeight += c['수료인원']; }
+      // 만족도 산식은 @/lib/satisfaction-rule 단일 정의 (5점 척도, 평가인원 가중)
+      const satSample = getSatisfactionSample(c);
+      if (satSample.score !== null) { satSum += satSample.score * satSample.weight; satWeight += satSample.weight; }
       if (c['수료인원'] > 0 && c['수강신청 인원'] > 0) { compSum += c['수료인원']; compEnroll += c['수강신청 인원']; }
       if (empData.targetPop !== null && empData.targetPop > 0) {
         targetPop += empData.targetPop;
@@ -1069,7 +1072,9 @@ export const aggregateCoursesByCourseNameForNcs = (courses: CourseData[]): Aggre
     let satSum = 0, satWeight = 0, compSum = 0, compEnroll = 0, targetPop = 0, integratedEmp = 0;
     cList.forEach(c => {
       const empData = getSafeEmploymentData(c);
-      if (c.만족도 > 0 && c['수료인원'] > 0) { satSum += c.만족도 * c['수료인원']; satWeight += c['수료인원']; }
+      // 만족도 산식은 @/lib/satisfaction-rule 단일 정의 (5점 척도, 평가인원 가중)
+      const satSample = getSatisfactionSample(c);
+      if (satSample.score !== null) { satSum += satSample.score * satSample.weight; satWeight += satSample.weight; }
       if (c['수료인원'] > 0 && c['수강신청 인원'] > 0) { compSum += c['수료인원']; compEnroll += c['수강신청 인원']; }
       if (empData.targetPop !== null && empData.targetPop > 0) {
         targetPop += empData.targetPop;

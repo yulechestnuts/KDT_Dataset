@@ -1,7 +1,32 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(curl -s -o /dev/null -H 'Accept-Encoding: gzip' -w 'ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\\\\n' \"https://kdt-dataset-svth.vercel.app/api/v1/institution-stats?revenue_mode=current\")",
+      "Bash(curl -s -D - -o /dev/null -H 'Accept-Encoding: gzip' \"https://kdt-dataset-svth.vercel.app/api/v1/institution-stats?revenue_mode=current\")",
+      "Bash(curl -s -o /dev/null -w 'ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\\\\n' \"https://kdt-dataset-svth.vercel.app/api/health\")",
+      "Bash(git stash *)",
+      "Bash(npm run *)",
+      "Bash(curl -s -D /dev/stdout -o /tmp/ca1.json -H 'Accept-Encoding: gzip' -w '\\\\nTIMING total=%{time_total} size=%{size_download}\\\\n' \"http://localhost:3000/api/v1/course-analysis?revenue_mode=current\")",
+      "Bash(curl -s -D /dev/stdout -o /dev/null -H 'Accept-Encoding: gzip' \"http://localhost:3000/api/v1/course-analysis?revenue_mode=current&no_cache=1\")",
+      "Bash(curl -sS -D - -o /tmp/ca1.json -H 'Accept-Encoding: gzip' -w 'TIMING total=%{time_total} size=%{size_download}\\\\n' \"http://127.0.0.1:3000/api/v1/course-analysis?revenue_mode=current\")",
+      "Bash(curl -sS -D - -o /dev/null -H 'Accept-Encoding: gzip' \"http://127.0.0.1:3000/api/v1/course-analysis?revenue_mode=current&no_cache=1\")",
+      "Bash(node -e ' *)",
+      "Bash(curl -sS -o __TRACKED_VAR__/ca_current.json -H 'Accept-Encoding: gzip' 'http://127.0.0.1:3000/api/v1/course-analysis?revenue_mode=current&no_cache=1')",
+      "Bash(curl -sS -o __TRACKED_VAR__/ca_prod.json -H 'Accept-Encoding: gzip' 'https://kdt-dataset-svth.vercel.app/api/v1/course-analysis?revenue_mode=current&no_cache=1')",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(curl -sI \"https://kdt-dataset-svth.vercel.app/api/v1/course-analysis?revenue_mode=current\")",
+      "Bash(curl -sI \"https://kdt-dataset-svth.vercel.app/api/v1/institution-stats\")",
+      "Bash(curl -sI \"https://kdt-dataset-svth.vercel.app/api/v1/institution-stats?revenue_mode=current\")",
+      "Bash(curl -sS -D - -o /dev/null -H 'Accept-Encoding: gzip' -w 'TIMING ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\\\\n' \"https://kdt-dataset-svth.vercel.app/api/v1/institution-stats?revenue_mode=current\")",
+      "Bash(curl -sS -D - -o /dev/null -H 'Accept-Encoding: gzip' -w 'TIMING ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\\\\n' \"https://kdt-dataset-svth.vercel.app/api/v1/course-analysis?revenue_mode=current\")",
+      "Bash(curl -sS -o /dev/null -w 'status=%{http_code} redirect=%{redirect_url}\\\\n' 'https://docs.google.com/spreadsheets/d/1uC4ttSGn0HX_ByV-rTktIK5X_ziqOmElJGlNRE-K9vE/gviz/tq?tqx=out:csv&sheet=%EA%B3%BC%EC%A0%95%EC%8B%AC%EC%82%AC_%EC%B7%A8%EC%97%85%EB%A5%A0')",
+      "Bash(curl -sSL 'https://docs.google.com/spreadsheets/d/1uC4ttSGn0HX_ByV-rTktIK5X_ziqOmElJGlNRE-K9vE/gviz/tq?tqx=out:csv&sheet=%EA%B3%BC%EC%A0%95%EC%8B%AC%EC%82%AC_%EC%B7%A8%EC%97%85%EB%A5%A0')",
+      "Bash(node *)",
+      "Bash(curl -sS -o C:/Users/오유현/AppData/Local/Temp/claude/C--Users-----Documents-github-KDT-Dataset-kdt-dashboard-new/d2e63e20-5c41-41be-96f2-c74b70a98738/scratchpad/ca_local.json -H 'Accept-Encoding: gzip' http://127.0.0.1:3000/api/v1/course-analysis?no_cache=1)",
+      "Bash(curl -sS -o C:/Users/오유현/AppData/Local/Temp/claude/C--Users-----Documents-github-KDT-Dataset-kdt-dashboard-new/d2e63e20-5c41-41be-96f2-c74b70a98738/scratchpad/dedup.json -H 'Accept-Encoding: gzip' http://127.0.0.1:3000/api/v1/course-analysis?no_cache=1)"
     ]
   }
 }

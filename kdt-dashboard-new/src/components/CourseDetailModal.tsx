@@ -1,5 +1,7 @@
 "use client";
 
+import { formatSatisfaction } from '@/lib/satisfaction-rule';
+
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { CourseData } from "@/lib/data-utils";
 import React from 'react';
@@ -148,7 +150,7 @@ export default function CourseDetailModal({ course, onClose }: CourseDetailModal
               </div>
               <div>
                 <p className="text-base text-gray-600 dark:text-gray-400 mb-2 font-medium">만족도</p>
-                <p className="text-lg font-semibold text-gray-950 dark:text-gray-100">{course.만족도 ? `${getNumericValue(course.만족도).toFixed(1)}점` : '-'}</p>
+                <p className="text-lg font-semibold text-gray-950 dark:text-gray-100">{formatSatisfaction(getNumericValue(course.만족도))}</p>
               </div>
             </div>
           </div>

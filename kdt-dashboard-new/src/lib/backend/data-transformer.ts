@@ -230,7 +230,9 @@ export function transformRawDataToCourseData(rawData: RawCourseData): ProcessedC
     '취업률 (6개월)': employmentRate6m,
     취업대상인원: targetPop,
     통합취업인원: integratedEmployed,
+    // 만족도는 이제 5점 척도(회차별 실측). parsePercentage 는 숫자만 뽑으므로 척도와 무관하다.
     만족도: parsePercentage(rawData.만족도 || 0),
+    평가인원: parseNumber((rawData as any).평가인원 || (rawData as any)['평가 인원'] || 0),
     훈련비: parseNumber(rawData.훈련비 || 0),
     정원: parseNumber(rawData.정원 || 0),
     총훈련일수: totalDays,

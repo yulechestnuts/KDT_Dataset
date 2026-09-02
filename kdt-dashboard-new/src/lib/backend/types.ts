@@ -52,6 +52,8 @@ export interface ProcessedCourseData {
   과정종료일: string;
   '수강신청 인원': number;
   수료인원: number;
+  /** 만족도 설문 응답자 수. 만족도 가중평균의 가중치 (@/lib/satisfaction-rule) */
+  평가인원?: number;
   취업인원: number;
   취업률: number;
   취업대상인원: number;
@@ -106,6 +108,14 @@ export interface InstitutionStat {
   total_target_pop?: number;
   total_integrated_employed?: number;
   avg_satisfaction: number;
+  /** 수료인원 반영 유예로 수료율 집계에서 빠진 과정 수 (@/lib/completion-rule) */
+  completion_pending_courses?: number;
+  /** 위 과정들의 수강신청 인원 합 — 수료율 분모가 '훈련생 수'와 다른 이유 */
+  completion_pending_students?: number;
+  /** 취업 통계 미집계로 취업률 분모에서 빠진 과정 수 */
+  employment_pending_courses?: number;
+  /** 위 과정들의 수강신청 인원 합 */
+  employment_pending_students?: number;
   completion_rate_detail: string;
   employment_rate_detail: string;
   recruitment_rate_detail?: string;

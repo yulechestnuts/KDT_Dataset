@@ -8,6 +8,8 @@ import {
   RevenueMode,
 } from './types';
 import { groupInstitutionsAdvanced } from './institution-grouping';
+import { isCompletionCountable } from '@/lib/completion-rule';
+import { getSatisfactionSample } from '@/lib/satisfaction-rule';
 import {
   computeCourseRevenue,
   computeCourseRevenueByMode,
@@ -344,6 +346,9 @@ export function calculateInstitutionStats(
 
     let totalValidStudentsForCompletion = 0;
     let totalValidGraduatesForCompletion = 0;
+    // 수료인원 반영 유예로 수료율 집계에서 빠진 과정 — 화면에서 분모 차이를 설명하는 데 쓴다.
+    let completionPendingCourses = 0;
+    let completionPendingStudents = 0;
     let totalWeightedSatisfaction = 0;
     let totalWeightSatisfaction = 0;
 
@@ -378,8 +383,14 @@ export function calculateInstitutionStats(
       totalEmployed += employed;
       employmentCourses.push(course);
 
+      // 수료인원 x(y) 표시용: 실제로 올라온 수료인원은 그대로 보여준다.
       const canUseForCompletion = completed > 0 && enrollment > 0;
-      const canUseForSatisfaction = satisfaction > 0 && completed > 0;
+      // 수료율 계산용: 반영 유예 중인 과정을 분모·분자에서 뺀다 (@/lib/completion-rule).
+      // 표시용 플래그와 일부러 분리했다 — 같은 플래그를 쓰면 아직 유예 중인 과정의
+      // 실제 수료인원까지 화면에서 사라진다.
+      const canUseForCompletionRate = isCompletionCountable(course);
+      // 만족도 표본. 가중치는 수료인원이 아니라 평가인원(실제 응답자) — @/lib/satisfaction-rule
+      const satSample = getSatisfactionSample(course);
 
       // year-specific 경로에서 사용할 시작/종료 연도 (cumulative/월 필터 경로에선 불필요)
       let startYear: number | null = null;
@@ -429,24 +440,33 @@ export function calculateInstitutionStats(
       }
 
       if (month !== undefined || isCumulativeAllYears) {
-        if (canUseForCompletion) {
+        if (canUseForCompletionRate) {
           totalValidStudentsForCompletion += enrollment;
           totalValidGraduatesForCompletion += completed;
+        } else {
+          completionPendingCourses += 1;
+          completionPendingStudents += enrollment;
         }
-        if (canUseForSatisfaction) {
-          totalWeightedSatisfaction += satisfaction * completed;
-          totalWeightSatisfaction += completed;
+        if (satSample.score !== null) {
+          totalWeightedSatisfaction += satSample.score * satSample.weight;
+          totalWeightSatisfaction += satSample.weight;
         }
       } else {
-        // ★ x(y) 합계와 동일하게 종료 연도 = targetYear 인 과정만 분자/분모에 포함
-        // (이전 3주 정산 룰은 x(y) 합계와의 불일치를 유발해 폐지)
-        if (canUseForCompletion && endYear !== null && endYear === targetYear) {
-          totalValidStudentsForCompletion += enrollment;
-          totalValidGraduatesForCompletion += completed;
+        // 종료 연도 = targetYear 인 과정만 분자/분모에 포함하되, 반영 유예 중인
+        // 과정은 뺀다. 그래서 수료율 분자는 x(y) 합계보다 작을 수 있다 —
+        // 그 차이를 completion_pending_* 로 함께 내보내 화면에서 설명한다.
+        if (endYear !== null && endYear === targetYear) {
+          if (canUseForCompletionRate) {
+            totalValidStudentsForCompletion += enrollment;
+            totalValidGraduatesForCompletion += completed;
+          } else {
+            completionPendingCourses += 1;
+            completionPendingStudents += enrollment;
+          }
         }
-        if (canUseForSatisfaction) {
-          totalWeightedSatisfaction += satisfaction * completed;
-          totalWeightSatisfaction += completed;
+        if (satSample.score !== null) {
+          totalWeightedSatisfaction += satSample.score * satSample.weight;
+          totalWeightSatisfaction += satSample.weight;
         }
       }
     }
@@ -482,8 +502,9 @@ export function calculateInstitutionStats(
         ? (totalValidGraduatesForCompletion / totalValidStudentsForCompletion) * 100
         : 0.0;
 
+    // 표본이 없으면 null. 0.0 을 내보내면 '만족도 0점'으로 오독된다.
     const avgSatisfaction =
-      totalWeightSatisfaction > 0 ? totalWeightedSatisfaction / totalWeightSatisfaction : 0.0;
+      totalWeightSatisfaction > 0 ? totalWeightedSatisfaction / totalWeightSatisfaction : null;
 
     const totalCapacity = courses.reduce((sum, c) => {
       const studentShare = calculateStudentShare(c, institutionName, groupInstitutionsAdvanced);
@@ -496,10 +517,18 @@ export function calculateInstitutionStats(
     let totalTargetPop = 0;
     let totalIntegratedEmployed = 0;
 
+    // 취업 통계가 아직 안 잡혀 분모에서 빠진 과정 — 산식은 그대로 두고 표기만 맞춘다.
+    let employmentPendingCourses = 0;
+    let employmentPendingStudents = 0;
+
     courses.forEach((c) => {
       const empData = getSafeEmploymentData(c);
       // ★ 절대 명제 1 적용: targetPop이 0이면 분모에서 제외
-      if (empData.targetPop === 0) return;
+      if (!empData.targetPop) {
+        employmentPendingCourses += 1;
+        employmentPendingStudents += toFiniteNumber(c['수강신청 인원'] ?? 0, 0);
+        return;
+      }
       totalTargetPop += empData.targetPop;
       totalIntegratedEmployed += empData.employed;
     });
@@ -511,7 +540,8 @@ export function calculateInstitutionStats(
     const safeTotalEmployed = Math.round(toFiniteNumber(totalIntegratedEmployed, 0));
     const safeCompletionRate = toFiniteNumber(Math.round(completionRate * 10) / 10, 0);
     const safeEmploymentRate = toFiniteNumber(Math.round(employmentRate * 10) / 10, 0);
-    const safeAvgSatisfaction = toFiniteNumber(avgSatisfaction, 0);
+    const safeAvgSatisfaction =
+      avgSatisfaction === null ? null : Math.round(avgSatisfaction * 10) / 10;
     const safeRecruitmentRate = toFiniteNumber(recruitmentRate, 0);
     const safeValidGraduates = Math.round(toFiniteNumber(totalValidGraduatesForCompletion, 0));
     const safeValidStudents = Math.round(toFiniteNumber(totalValidStudentsForCompletion, 0));
@@ -554,6 +584,10 @@ export function calculateInstitutionStats(
       total_target_pop: totalTargetPop,
       total_integrated_employed: totalIntegratedEmployed,
       avg_satisfaction: safeAvgSatisfaction,
+      completion_pending_courses: completionPendingCourses,
+      completion_pending_students: Math.round(toFiniteNumber(completionPendingStudents, 0)),
+      employment_pending_courses: employmentPendingCourses,
+      employment_pending_students: Math.round(toFiniteNumber(employmentPendingStudents, 0)),
       completion_rate_detail: formatRateDetail(
         safeValidGraduates,
         safeValidStudents,

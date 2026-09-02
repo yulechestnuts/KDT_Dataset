@@ -1,5 +1,7 @@
 "use client";
 
+import { formatSatisfaction } from '@/lib/satisfaction-rule';
+
 import React, { useState, useEffect } from 'react';
 import { CourseData } from '@/lib/data-utils';
 import { kdtAPI } from '@/lib/api-client';
@@ -271,7 +273,7 @@ const CourseDetail = () => {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">만족도:</span>
-                    <span>{courseData.만족도.toFixed(1)}%</span>
+                    <span>{formatSatisfaction(courseData.만족도)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">훈련비:</span>

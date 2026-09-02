@@ -2,6 +2,7 @@
 
 import { ProcessedCourseData } from './types';
 import { parseNumber, parsePercentage, parsePercentageNullable, parseDate } from './parsers';
+import { calculateWeightedSatisfaction as weightedSatisfaction } from '@/lib/satisfaction-rule';
 
 // 1. 퍼센트 문자열을 안전하게 숫자로 변환하는 헬퍼 함수
 export const parsePercentageSafe = (value: any): number => {
@@ -232,26 +233,13 @@ export function calculateEmploymentRateLegacy(courses: ProcessedCourseData[]): n
 /**
  * 가중 평균 만족도 계산
  */
+/**
+ * 만족도 가중평균. 산식은 @/lib/satisfaction-rule 단일 정의를 따른다.
+ * 표본이 없을 때 0 을 돌려주던 기존 계약을 유지한다 (호출부가 number 를 기대).
+ * 0 과 '표본 없음'을 구분해야 하는 곳은 calculateWeightedSatisfaction 을 직접 쓴다.
+ */
 export function calculateWeightedSatisfaction(courses: ProcessedCourseData[]): number {
-  let totalWeightedSatisfaction = 0.0;
-  let totalWeight = 0.0;
-
-  for (const course of courses) {
-    const satisfaction = course.만족도 || 0;
-    const completed = course.수료인원 || 0;
-
-    if (satisfaction > 0 && completed > 0) {
-      totalWeightedSatisfaction += satisfaction * completed;
-      totalWeight += completed;
-    }
-  }
-
-  if (totalWeight === 0) {
-    return 0.0;
-  }
-
-  const avgSatisfaction = totalWeightedSatisfaction / totalWeight;
-  return Math.round(avgSatisfaction * 10) / 10; // 소수점 1자리
+  return weightedSatisfaction(courses) ?? 0.0;
 }
 
 /**

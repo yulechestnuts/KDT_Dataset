@@ -1,5 +1,7 @@
 "use client";
 
+import { formatSatisfaction } from '@/lib/satisfaction-rule';
+
 import React from 'react';
 import {
   Dialog,
@@ -123,7 +125,7 @@ export function CourseDetailDialog({ course, isOpen, onClose }: CourseDetailDial
                 </p>
                 <p className="flex justify-between">
                   <span className="font-medium text-blue-600 dark:text-blue-400">만족도:</span> 
-                  <span className="text-blue-900 dark:text-blue-100">{safeFormatNumber(course.만족도)}%</span>
+                  <span className="text-blue-900 dark:text-blue-100">{formatSatisfaction(course.만족도 as number)}</span>
                 </p>
               </div>
             </div>

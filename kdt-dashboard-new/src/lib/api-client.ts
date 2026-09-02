@@ -98,6 +98,14 @@ export interface InstitutionStat {
   completion_rate: number;
   employment_rate: number;
   avg_satisfaction: number;
+  /** 수료인원 반영 유예로 수료율 집계에서 빠진 과정 수 (@/lib/completion-rule) */
+  completion_pending_courses?: number;
+  /** 위 과정들의 수강신청 인원 합 — 수료율 분모가 '훈련생 수'와 다른 이유 */
+  completion_pending_students?: number;
+  /** 취업 통계 미집계로 취업률 분모에서 빠진 과정 수 */
+  employment_pending_courses?: number;
+  /** 위 과정들의 수강신청 인원 합 */
+  employment_pending_students?: number;
   completion_rate_detail: string;
   employment_rate_detail: string;
   recruitment_rate_detail?: string;

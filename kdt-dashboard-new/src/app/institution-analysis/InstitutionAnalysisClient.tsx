@@ -3,6 +3,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { kdtAPI, InstitutionStat } from '@/lib/api-client';
 import { getSafeEmploymentData } from '@/lib/data-utils';
+import {
+  COMPLETION_GRACE_WEEKS,
+  COMPLETION_RULE_TOOLTIP,
+  isCompletionCountable,
+} from '@/lib/completion-rule';
+import { formatSatisfaction, getSatisfactionSample, SATISFACTION_TOOLTIP } from '@/lib/satisfaction-rule';
 import type { RevenueMode } from '@/lib/backend/types';
 import { formatNumber, formatRevenue } from '@/utils/formatters';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, Legend, CartesianGrid } from 'recharts';
@@ -100,6 +106,32 @@ function getInstitutionRevenueShare(course: any, institutionName: string): numbe
   return calculateRevenueShare(normalized, institutionName, groupInstitutionsAdvanced);
 }
 
+const EMPLOYMENT_PENDING_TOOLTIP =
+  '취업률은 6개월(없으면 3개월) 취업 통계가 집계된 과정만으로 계산합니다. ' +
+  '종료 직후 과정은 아직 통계가 나오지 않아 분모·분자 모두에서 빠집니다. ' +
+  '수료율과 달리 유예 기간을 따로 두지 않고, 통계가 올라온 과정만 그대로 집계합니다.';
+
+/**
+ * 선도기업형 과정인지.
+ *
+ * DB 의 훈련유형 컬럼은 비어 있는 행이 많아 그대로 믿을 수 없다. 배분율 계산이
+ * 쓰는 것과 같은 fallback(파트너기관 문자열)으로 판정한다.
+ */
+function isLeadingCourse(course: any): boolean {
+  if (course?.isLeadingCompanyCourse) return true;
+  const partner = String(
+    course?.leadingCompanyPartnerInstitution ?? course?.파트너기관 ?? ''
+  ).trim();
+  return partner !== '' && partner !== '0';
+}
+
+/** 회차 표기. 값이 없으면 '-' (0 회차는 존재하지 않으므로 0도 없음 취급) */
+function formatSession(course: any): string {
+  const raw = String(course?.회차 ?? '').trim();
+  if (raw === '' || raw === '0') return '-';
+  return `${raw}회차`;
+}
+
 function renderRateWithCount(numer: number | null, denom: number | null, digits: number = 1): string {
   // null 체크: 데이터 없음 vs 계산 실패
   if (numer === null || denom === null) {
@@ -168,8 +200,13 @@ type CourseGroup = {
   sessionCount: number;      // 회차 수 (묶인 과정 수)
   enrolledSum: number;       // 훈련생(수강신청) 합
   completedSum: number;      // 수료인원 합
+  // 수료율 전용 분모·분자. enrolledSum/completedSum 과 달리 반영 유예 중인 회차를 뺀다.
+  completionDenom: number;
+  completionNumer: number;
+  completionPending: number; // 유예로 빠진 회차 수
   targetPopSum: number;      // 취업대상 합
   employedSum: number;       // 취업 합
+  employmentPending: number; // 취업 통계 미집계로 빠진 회차 수
   revenueSum: number;        // 매출 합 (선택 기준)
   years: number[];           // 개강 연도 목록 (오름차순 유니크)
 };
@@ -416,6 +453,12 @@ export default function InstitutionAnalysisClient() {
 
     let completionDenom = 0;
     let completionNumer = 0;
+    // 수료인원이 아직 반영되지 않아 수료율 집계에서 빠진 과정 — 화면에 함께 알린다.
+    let completionPendingCourses = 0;
+    let completionPendingStudents = 0;
+    // 취업 통계가 아직 안 잡힌 과정 — 수료율과 같은 방식으로 화면에 알린다.
+    let employmentPendingCourses = 0;
+    let employmentPendingStudents = 0;
 
     let satWeight = 0;
     let satSum = 0;
@@ -462,20 +505,28 @@ export default function InstitutionAnalysisClient() {
       if (typeof targetPop === 'number' && Number.isFinite(targetPop) && targetPop > 0) {
         targetPopSum += targetPop;
         integratedEmployedSum += integratedEmployed;
+      } else {
+        employmentPendingCourses += 1;
+        employmentPendingStudents += enrolled;
       }
 
-      if (enrolled > 0 && completed > 0) {
+      if (isCompletionCountable(c, today)) {
         completionDenom += enrolled;
         completionNumer += completed;
+      } else {
+        completionPendingCourses += 1;
+        completionPendingStudents += enrolled;
       }
 
-      if (satisfaction > 0 && completed > 0) {
-        satSum += satisfaction * completed;
-        satWeight += completed;
+      // 만족도 산식은 @/lib/satisfaction-rule 단일 정의 (5점 척도, 평가인원 가중)
+      const satSample = getSatisfactionSample(c);
+      if (satSample.score !== null) {
+        satSum += satSample.score * satSample.weight;
+        satWeight += satSample.weight;
       }
     }
 
-    const avgSatisfaction = satWeight > 0 ? satSum / satWeight : 0;
+    const avgSatisfaction = satWeight > 0 ? satSum / satWeight : null;
 
     // ★ 명제 1 적용: targetPop이 0이거나 유효하지 않으면 0/0으로 표시 ★
     const displayTargetPop = (typeof targetPopSum === 'number' && targetPopSum > 0) ? targetPopSum : 0;
@@ -496,7 +547,11 @@ export default function InstitutionAnalysisClient() {
       contractRevenueSum,
       recruitmentStr: renderRateWithCount(enrolledSum, capacitySum, 1),
       completionStr: renderRateWithCount(completionNumer, completionDenom, 1),
+      completionPendingCourses,
+      completionPendingStudents,
       employmentStr,
+      employmentPendingCourses,
+      employmentPendingStudents,
       avgSatisfaction,
     };
   }, [selectedInstitutionCourses, selectedInstitutionName]);
@@ -521,6 +576,9 @@ export default function InstitutionAnalysisClient() {
   //   groupYearFilter가 특정 연도면 그 해 개강 과정만 대상으로 하되,
   //   연도 안에서도 같은 ID/과정명은 계속 하나로 묶는다.
   const institutionCourseGroups = useMemo<CourseGroup[]>(() => {
+    // 기준일을 루프 밖에서 한 번만 잡는다. 매 호출마다 new Date() 를 만들면
+    // 유예 경계에 걸친 회차가 행마다 다르게 판정될 수 있다.
+    const groupToday = new Date();
     const byKey = new Map<string, CourseGroup>();
     for (const c of allYearCourses) {
       // 연도 필터: 'all'이 아니면 해당 연도 개강 과정만
@@ -539,20 +597,36 @@ export default function InstitutionAnalysisClient() {
           sessionCount: 0,
           enrolledSum: 0,
           completedSum: 0,
+          completionDenom: 0,
+          completionNumer: 0,
+          completionPending: 0,
           targetPopSum: 0,
           employedSum: 0,
+          employmentPending: 0,
           revenueSum: 0,
           years: [],
         } as CourseGroup);
 
       g.sessionCount += 1;
-      g.enrolledSum += Number(c?.['수강신청 인원'] ?? 0) || 0;
-      g.completedSum += Number(c?.수료인원 ?? 0) || 0;
+      const gEnrolled = Number(c?.['수강신청 인원'] ?? 0) || 0;
+      const gCompleted = Number(c?.수료인원 ?? 0) || 0;
+      g.enrolledSum += gEnrolled;
+      g.completedSum += gCompleted;
+      // 요약 카드와 같은 기준으로 수료율을 낸다. 여기만 기준이 다르면 같은 화면에서
+      // 89.5% 와 2.7% 처럼 크게 어긋난 값이 나란히 표시된다.
+      if (isCompletionCountable(c, groupToday)) {
+        g.completionDenom += gEnrolled;
+        g.completionNumer += gCompleted;
+      } else {
+        g.completionPending += 1;
+      }
 
       const emp = getSafeEmploymentData(c);
       if (typeof emp.targetPop === 'number' && Number.isFinite(emp.targetPop) && emp.targetPop > 0) {
         g.targetPopSum += emp.targetPop;
         g.employedSum += emp.employed;
+      } else {
+        g.employmentPending += 1;
       }
 
       // 매출: 선택 기준(수주=기관귀속 수주매출 / 그 외=총누적매출)
@@ -839,7 +913,7 @@ export default function InstitutionAnalysisClient() {
 
       {isSingleWholeYear && (
         <div className="mb-4 text-sm text-muted-foreground bg-muted border border-border rounded px-4 py-3">
-          <div>* 수료율은 과정 종료일 기준으로 계산하였으며, 분자는 {normalizedRange.fromY}년 기준 {normalizedRange.fromY}년의 수료생, 분모는 {normalizedRange.fromY}년 기준 {normalizedRange.fromY}년에 끝나는 과정이 있는 모든 과정의 입과생입니다.</div>
+          <div>* 수료율은 과정 종료일 기준으로 계산하였으며, 분자는 {normalizedRange.fromY}년 기준 {normalizedRange.fromY}년의 수료생, 분모는 {normalizedRange.fromY}년 기준 {normalizedRange.fromY}년에 끝나는 과정의 입과생입니다. 단, 종료 후 {COMPLETION_GRACE_WEEKS}주가 지나지 않았거나 수료인원이 아직 반영되지 않은 과정은 분모·분자 모두에서 제외합니다(HRD-Net 반영 지연 + 데이터 월 1회 갱신).</div>
           <div>* ()는 전 해년 입과, 당 해년 수료 인원을 표기하였습니다.</div>
         </div>
       )}
@@ -860,9 +934,15 @@ export default function InstitutionAnalysisClient() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   수료인원<InfoTooltip text={AB_NOTATION_TOOLTIP} />
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">수료율</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">취업대상자 대비 취업률</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">평균 만족도</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  수료율<InfoTooltip text={COMPLETION_RULE_TOOLTIP} />
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  취업대상자 대비 취업률<InfoTooltip text={EMPLOYMENT_PENDING_TOOLTIP} />
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  평균 만족도<InfoTooltip text={SATISFACTION_TOOLTIP} />
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">상세</th>
               </tr>
             </thead>
@@ -891,9 +971,24 @@ export default function InstitutionAnalysisClient() {
                   <td className="px-6 py-4 whitespace-nowrap">{stat.total_courses_display}</td>
                   <td className="px-6 py-4 whitespace-nowrap">{stat.total_students_display}</td>
                   <td className="px-6 py-4 whitespace-nowrap">{stat.completed_students_display}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">{stat.completion_rate_detail}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">{stat.employment_rate_detail}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">{Number.isFinite(stat.avg_satisfaction) ? stat.avg_satisfaction.toFixed(1) : '-'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {stat.completion_rate_detail}
+                    {/* 상세 모달 KPI 와 같은 기준(@/lib/completion-rule)이라는 걸 목록에서도 보이게 한다. */}
+                    {(stat.completion_pending_courses ?? 0) > 0 && (
+                      <div className="text-[11px] text-amber-600">
+                        집계 전 {formatNumber(stat.completion_pending_courses ?? 0)}개 과정 제외
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {stat.employment_rate_detail}
+                    {(stat.employment_pending_courses ?? 0) > 0 && (
+                      <div className="text-[11px] text-amber-600">
+                        집계 전 {formatNumber(stat.employment_pending_courses ?? 0)}개 과정 제외
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">{formatSatisfaction(stat.avg_satisfaction)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center space-x-2">
                       <button
@@ -969,12 +1064,30 @@ export default function InstitutionAnalysisClient() {
                 <div className="text-lg font-semibold text-foreground">{formatNumber(selectedInstitutionKpis.completedSum)}</div>
               </div>
               <div className="bg-muted p-4 rounded-lg border border-border">
-                <div className="text-sm text-muted-foreground">평균 수료율</div>
+                <div className="text-sm text-muted-foreground">
+                  평균 수료율<InfoTooltip text={COMPLETION_RULE_TOOLTIP} />
+                </div>
                 <div className="text-lg font-semibold text-foreground">{selectedInstitutionKpis.completionStr}</div>
+                {/* 분모가 '훈련생 수'와 다른 이유를 화면에서 바로 알 수 있게 한다. */}
+                {selectedInstitutionKpis.completionPendingCourses > 0 && (
+                  <div className="text-[11px] text-amber-600 mt-1">
+                    집계 전 {formatNumber(selectedInstitutionKpis.completionPendingCourses)}개 과정
+                    ·훈련생 {formatNumber(selectedInstitutionKpis.completionPendingStudents)}명 제외
+                  </div>
+                )}
               </div>
               <div className="bg-muted p-4 rounded-lg border border-border">
-                <div className="text-sm text-muted-foreground">취업대상자 대비 취업률</div>
+                <div className="text-sm text-muted-foreground">
+                  취업대상자 대비 취업률<InfoTooltip text={EMPLOYMENT_PENDING_TOOLTIP} />
+                </div>
                 <div className="text-lg font-semibold text-foreground">{selectedInstitutionKpis.employmentStr}</div>
+                {/* 수료율 카드와 같은 표기 — 분모가 '훈련생 수'와 다른 이유를 화면에서 바로 알 수 있게 한다. */}
+                {selectedInstitutionKpis.employmentPendingCourses > 0 && (
+                  <div className="text-[11px] text-amber-600 mt-1">
+                    집계 전 {formatNumber(selectedInstitutionKpis.employmentPendingCourses)}개 과정
+                    ·훈련생 {formatNumber(selectedInstitutionKpis.employmentPendingStudents)}명 제외
+                  </div>
+                )}
               </div>
               {/* ★ 매출 기준(revenueMode)에 따라 합계 매출액 표시 값을 전환 */}
               <div className="bg-muted p-4 rounded-lg border border-border">
@@ -989,8 +1102,10 @@ export default function InstitutionAnalysisClient() {
                 )}
               </div>
               <div className="bg-muted p-4 rounded-lg border border-border">
-                <div className="text-sm text-muted-foreground">평균 만족도</div>
-                <div className="text-lg font-semibold text-foreground">{Number.isFinite(selectedInstitutionKpis.avgSatisfaction) ? selectedInstitutionKpis.avgSatisfaction.toFixed(1) : '-'}</div>
+                <div className="text-sm text-muted-foreground">
+                  평균 만족도<InfoTooltip text={SATISFACTION_TOOLTIP} />
+                </div>
+                <div className="text-lg font-semibold text-foreground">{formatSatisfaction(selectedInstitutionKpis.avgSatisfaction)}</div>
               </div>
             </div>
 
@@ -1145,11 +1260,14 @@ export default function InstitutionAnalysisClient() {
                       </tr>
                     ) : (
                       institutionCourseGroups.map((g) => {
-                        const completionStr = renderRateWithCount(g.completedSum, g.enrolledSum, 1);
+                        const completionStr =
+                          g.completionDenom > 0
+                            ? renderRateWithCount(g.completionNumer, g.completionDenom, 1)
+                            : '집계 전';
                         const employmentStr =
                           g.targetPopSum > 0
                             ? renderRateWithCount(g.employedSum, g.targetPopSum, 1)
-                            : '-';
+                            : '집계 전';
                         const yearsLabel =
                           g.years.length === 0
                             ? '-'
@@ -1168,8 +1286,22 @@ export default function InstitutionAnalysisClient() {
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{formatNumber(g.sessionCount)}</td>
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{formatNumber(g.enrolledSum)}</td>
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{formatNumber(g.completedSum)}</td>
-                            <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{completionStr}</td>
-                            <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{employmentStr}</td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">
+                              {completionStr}
+                              {g.completionPending > 0 && (
+                                <span className="ml-1 text-[10px] text-amber-600">
+                                  집계 전 {g.completionPending}회차
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">
+                              {employmentStr}
+                              {g.employmentPending > 0 && g.targetPopSum > 0 && (
+                                <span className="ml-1 text-[10px] text-amber-600">
+                                  집계 전 {g.employmentPending}회차
+                                </span>
+                              )}
+                            </td>
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{formatRevenue(g.revenueSum)}</td>
                           </tr>
                         );
@@ -1185,7 +1317,7 @@ export default function InstitutionAnalysisClient() {
                 <thead className="bg-muted sticky top-0">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[24%]">과정명</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[8%]">훈련유형</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[8%]">회차</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[10%]">모집률</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[6%]">훈련생</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-[6%]">수료인원</th>
@@ -1221,7 +1353,12 @@ export default function InstitutionAnalysisClient() {
                         const displayRevenue = isContractMode ? contractRevenue : revenue;
 
                         const recruitStr = renderRateWithCount(enrolled, capacity, 1);
-                        const completionStr = renderRateWithCount(completed, enrolled, 1);
+                        // 반영 유예 중인 과정에 3.6% 같은 숫자를 보여주면 실제 수료율로 읽힌다.
+                        // 집계에서 빠졌다는 사실을 그대로 표기한다.
+                        const completionCountable = isCompletionCountable(course);
+                        const completionStr = completionCountable
+                          ? renderRateWithCount(completed, enrolled, 1)
+                          : '집계 전';
 
                         // ★ getSafeEmploymentData 단일 호출 (source 뱃지까지 한 번에 사용)
                         const { employed: safeEmployed, targetPop, source } = getSafeEmploymentData(course);
@@ -1229,8 +1366,9 @@ export default function InstitutionAnalysisClient() {
                         let sourceBadge: string = '';
 
                         if (targetPop === null) {
-                          // 데이터 없음
-                          employmentStr = '- / -';
+                          // 6개월·3개월 취업 통계가 둘 다 아직 없음 = 집계 전.
+                          // 수료율 열의 '집계 전'과 같은 뜻이므로 표기를 맞춘다.
+                          employmentStr = '집계 전';
                         } else if (targetPop > 0) {
                           // 정상 역산됨
                           employmentStr = renderRateWithCount(safeEmployed, targetPop, 1);
@@ -1246,8 +1384,15 @@ export default function InstitutionAnalysisClient() {
 
                         return (
                           <>
-                            <td className="px-4 py-2 whitespace-nowrap text-sm text-foreground">{course?.과정명 ?? '-'}</td>
-                            <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{course?.훈련유형 ?? '-'}</td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-foreground">
+                              {course?.과정명 ?? '-'}
+                              {isLeadingCourse(course) && (
+                                <span className="ml-1.5 align-middle text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 border border-indigo-200">
+                                  선도
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{formatSession(course)}</td>
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{recruitStr}</td>
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{formatNumber(enrolled)}</td>
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{formatNumber(completed)}</td>
@@ -1264,7 +1409,7 @@ export default function InstitutionAnalysisClient() {
                               </>
                             )}
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{formatRevenue(displayRevenue)}</td>
-                            <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{satisfaction > 0 ? satisfaction.toFixed(1) : '-'}</td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-muted-foreground">{formatSatisfaction(satisfaction)}</td>
                           </>
                         );
                       })()}

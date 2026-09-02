@@ -76,6 +76,7 @@ export async function saveProcessedCourses(
           취업률_3개월: course['취업률 (3개월)'],
           취업률_6개월: course['취업률 (6개월)'],
           만족도: course.만족도,
+          평가인원: course.평가인원,
           훈련비: course.훈련비,
           정원: course.정원,
           총훈련일수: course.총훈련일수,
@@ -306,6 +307,8 @@ async function fetchProcessedCourses(): Promise<ProcessedCourseData[]> {
         '취업률 (3개월)': parseNumericNullable(row['취업률 (3개월)'] ?? row['취업률_3개월']),
         '취업률 (6개월)': parseNumericNullable(row['취업률 (6개월)'] ?? row['취업률_6개월']),
         만족도: parseNumeric(pickRowValue(row, ['만족도']), 0),
+        // 만족도 가중평균의 가중치. DB 컬럼은 공백 대신 언더스코어라 두 표기를 함께 시도한다.
+        평가인원: parseNumeric(pickRowValue(row, ['평가인원', '평가_인원', '평가 인원']), 0),
         훈련비: parseNumeric(pickRowValue(row, ['훈련비']), 0),
         자비부담금: parseNumeric(pickRowValue(row, ['자비부담금', '자비_부담금', '자비 부담금']), 0),
         정원: parseNumeric(pickRowValue(row, ['정원']), 0),

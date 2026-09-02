@@ -1,5 +1,16 @@
 'use client';
 
+import { formatSatisfaction } from '@/lib/satisfaction-rule';
+/** 만족도가 실측된 과정만 평균낸다. 표본이 없으면 null. */
+function meanObservedSatisfaction(courses: Array<{ 평균만족도?: number }>): number | null {
+  const vals = courses
+    .map((c) => Number(c?.평균만족도 ?? 0))
+    .filter((v) => Number.isFinite(v) && v > 0);
+  if (vals.length === 0) return null;
+  return vals.reduce((s, v) => s + v, 0) / vals.length;
+}
+
+
 import { useEffect, useState } from 'react';
 import { kdtAPI } from '@/lib/api-client';
 import {
@@ -116,7 +127,9 @@ export default function LeadingCompanyAnalysis() {
       totalStudents: courses.reduce((s, c) => s + c.총훈련생수, 0),
       totalCompleted: courses.reduce((s, c) => s + c.총수료인원, 0),
       totalRevenue: courses.reduce((s, c) => s + c.총누적매출, 0),
-      avgSatisfaction: courses.reduce((s, c) => s + c.평균만족도, 0) / courses.length,
+      // 만족도는 실측이 없는 과정이 있어 0 이 섞인다. 그대로 평균내면 0 쪽으로 끌린다.
+      // 관측된 값만 평균한다 (@/lib/satisfaction-rule 의 방침과 동일).
+      avgSatisfaction: meanObservedSatisfaction(courses),
     };
   };
 
@@ -186,7 +199,7 @@ export default function LeadingCompanyAnalysis() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{stat.totalStudents}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{stat.completedStudents}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{stat.completionRate.toFixed(1)}%</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{stat.avgSatisfaction.toFixed(1)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatSatisfaction(stat.avgSatisfaction)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <button className="text-indigo-600 hover:text-indigo-900" onClick={() => handleViewDetails(stat.leadingCompany, stat.courses)}>상세보기</button>
                   </td>
@@ -219,7 +232,7 @@ export default function LeadingCompanyAnalysis() {
                     <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700"><div className="text-sm text-gray-500 dark:text-gray-400">훈련생 수</div><div className="text-lg font-semibold text-gray-900 dark:text-gray-100">{s.totalStudents}</div></div>
                     <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700"><div className="text-sm text-gray-500 dark:text-gray-400">수료인원</div><div className="text-lg font-semibold text-gray-900 dark:text-gray-100">{s.totalCompleted}</div></div>
                     <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700"><div className="text-sm text-gray-500 dark:text-gray-400">매출액</div><div className="text-lg font-semibold text-gray-900 dark:text-gray-100">{formatRevenue(s.totalRevenue)}</div></div>
-                    <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700"><div className="text-sm text-gray-500 dark:text-gray-400">평균 만족도</div><div className="text-lg font-semibold text-gray-900 dark:text-gray-100">{s.avgSatisfaction.toFixed(1)}</div></div>
+                    <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700"><div className="text-sm text-gray-500 dark:text-gray-400">평균 만족도</div><div className="text-lg font-semibold text-gray-900 dark:text-gray-100">{formatSatisfaction(s.avgSatisfaction)}</div></div>
                   </>
                 );
               })()}
@@ -248,7 +261,7 @@ export default function LeadingCompanyAnalysis() {
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.총수료인원}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.총수료인원 === 0 ? '-' : `${((course.총수료인원 / course.총훈련생수) * 100).toFixed(1)}%`}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatRevenue(course.총누적매출)}</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.평균만족도.toFixed(1)}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{formatSatisfaction(course.평균만족도)}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{course.원천과정수}</td>
                     </tr>
                   ))}
