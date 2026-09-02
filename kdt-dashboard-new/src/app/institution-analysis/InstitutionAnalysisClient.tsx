@@ -500,7 +500,9 @@ export default function InstitutionAnalysisClient() {
 
       enrolledSum += enrolled;
       capacitySum += capacity;
-      completedSum += completed;
+      // 수료인원 표시와 수료율 분자는 같은 필터를 써야 한다.
+      // 다르게 두면 같은 화면에서 수료인원 9,111 / 수료율 79.7% (9096/...) 로 어긋난다.
+      if (isCompletionCountable(c, today)) completedSum += completed;
       employedSum += integratedEmployed;
       if (typeof targetPop === 'number' && Number.isFinite(targetPop) && targetPop > 0) {
         targetPopSum += targetPop;
@@ -611,7 +613,8 @@ export default function InstitutionAnalysisClient() {
       const gEnrolled = Number(c?.['수강신청 인원'] ?? 0) || 0;
       const gCompleted = Number(c?.수료인원 ?? 0) || 0;
       g.enrolledSum += gEnrolled;
-      g.completedSum += gCompleted;
+      // 수료인원 열과 수료율 열이 같은 기준이어야 한다 (위 KPI 카드와 동일)
+      if (isCompletionCountable(c, groupToday)) g.completedSum += gCompleted;
       // 요약 카드와 같은 기준으로 수료율을 낸다. 여기만 기준이 다르면 같은 화면에서
       // 89.5% 와 2.7% 처럼 크게 어긋난 값이 나란히 표시된다.
       if (isCompletionCountable(c, groupToday)) {

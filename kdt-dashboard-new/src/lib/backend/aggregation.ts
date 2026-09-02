@@ -383,12 +383,11 @@ export function calculateInstitutionStats(
       totalEmployed += employed;
       employmentCourses.push(course);
 
-      // 수료인원 x(y) 표시용: 실제로 올라온 수료인원은 그대로 보여준다.
-      const canUseForCompletion = completed > 0 && enrollment > 0;
-      // 수료율 계산용: 반영 유예 중인 과정을 분모·분자에서 뺀다 (@/lib/completion-rule).
-      // 표시용 플래그와 일부러 분리했다 — 같은 플래그를 쓰면 아직 유예 중인 과정의
-      // 실제 수료인원까지 화면에서 사라진다.
-      const canUseForCompletionRate = isCompletionCountable(course);
+      // 수료인원 표시와 수료율 분자는 반드시 같은 필터를 써야 한다.
+      // 한때 표시용(completed>0)과 계산용(3주 유예)을 분리했더니, 같은 행에서
+      // 수료인원 9,111 인데 수료율은 79.7% (9096/11414) 처럼 분자가 어긋났다.
+      // 유예로 빠진 과정은 completion_pending_* 로 따로 알린다 (@/lib/completion-rule).
+      const canUseForCompletion = isCompletionCountable(course);
       // 만족도 표본. 가중치는 수료인원이 아니라 평가인원(실제 응답자) — @/lib/satisfaction-rule
       const satSample = getSatisfactionSample(course);
 
@@ -409,8 +408,10 @@ export function calculateInstitutionStats(
       if (month !== undefined || isCumulativeAllYears) {
         currentYearCoursesCount += 1;
         currentYearStudents += enrollment;
-        currentYearCompletedStudents += completed;
-        currentYearCompleted += completed;
+        if (canUseForCompletion) {
+          currentYearCompletedStudents += completed;
+          currentYearCompleted += completed;
+        }
       } else {
         const isCurrentYearStart = startYear === targetYear;
         const isPrevYearStartAndOngoing =
@@ -421,11 +422,11 @@ export function calculateInstitutionStats(
         if (isCurrentYearStart) {
           currentYearCoursesCount += 1;
           currentYearStudents += enrollment;
-          currentYearCompletedStudents += completed;
+          if (canUseForCompletion) currentYearCompletedStudents += completed;
         } else if (isPrevYearStartAndOngoing) {
           prevYearCoursesCount += 1;
           prevYearStudents += enrollment;
-          prevYearCompletedStudents += completed;
+          if (canUseForCompletion) prevYearCompletedStudents += completed;
         }
 
         // ★ 수료인원 x(y)와 수료율 분자(z)가 항상 일치하도록 동일한 필터 적용:
@@ -440,7 +441,7 @@ export function calculateInstitutionStats(
       }
 
       if (month !== undefined || isCumulativeAllYears) {
-        if (canUseForCompletionRate) {
+        if (canUseForCompletion) {
           totalValidStudentsForCompletion += enrollment;
           totalValidGraduatesForCompletion += completed;
         } else {
@@ -456,7 +457,7 @@ export function calculateInstitutionStats(
         // 과정은 뺀다. 그래서 수료율 분자는 x(y) 합계보다 작을 수 있다 —
         // 그 차이를 completion_pending_* 로 함께 내보내 화면에서 설명한다.
         if (endYear !== null && endYear === targetYear) {
-          if (canUseForCompletionRate) {
+          if (canUseForCompletion) {
             totalValidStudentsForCompletion += enrollment;
             totalValidGraduatesForCompletion += completed;
           } else {

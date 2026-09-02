@@ -3,7 +3,7 @@
 import { supabase } from '@/lib/supabaseClient';
 import { ProcessedCourseData } from './types';
 import { executeWithRetry, SupabaseConnectionError } from '@/lib/supabase-wrapper';
-import { resolveRevenueYears } from '@/lib/revenue-years';
+import { resolveRevenueYears, resolveRevenueYearsFrom } from '@/lib/revenue-years';
 import { normalizeCourseLink } from '@/lib/course-link';
 
 /** 진단용 __raw_* 필드를 응답에 포함할지. 켜면 페이로드가 커진다. */
@@ -47,10 +47,31 @@ function pickRowValue(row: any, keys: string[]): any {
 /**
  * 처리된 과정 데이터를 Supabase에 저장
  */
+/**
+ * 저장할 연도 컬럼을 course 객체에서 펼친다.
+ * 값이 없는 연도는 아예 넣지 않는다 — DB 에 그 컬럼이 없을 때 upsert 전체가
+ * 실패하는 것을 피하기 위해서다.
+ */
+function buildYearFields(
+  course: ProcessedCourseData,
+  years: number[]
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const y of years) {
+    const plain = `${y}년`;
+    const adjusted = `조정_${y}년`;
+    if (course[plain] !== undefined) out[plain] = course[plain];
+    if (course[adjusted] !== undefined) out[adjusted] = course[adjusted];
+  }
+  return out;
+}
+
 export async function saveProcessedCourses(
   courses: ProcessedCourseData[]
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    // 실제 데이터에 존재하는 연도의 합집합 + 표준 폴백 범위
+    const saveYears = resolveRevenueYearsFrom(courses);
     return await executeWithRetry(async () => {
       // 기존 데이터 삭제 (선택사항)
       // await supabase.from(TABLE_NAME).delete().neq('id', 0);
@@ -85,18 +106,10 @@ export async function saveProcessedCourses(
           실_매출_대비: course['실 매출 대비'],
           매출_최대: course['매출 최대'],
           매출_최소: course['매출 최소'],
-          '2021년': course['2021년'],
-          '2022년': course['2022년'],
-          '2023년': course['2023년'],
-          '2024년': course['2024년'],
-          '2025년': course['2025년'],
-          '2026년': course['2026년'],
-          조정_2021년: course['조정_2021년'],
-          조정_2022년: course['조정_2022년'],
-          조정_2023년: course['조정_2023년'],
-          조정_2024년: course['조정_2024년'],
-          조정_2025년: course['조정_2025년'],
-          조정_2026년: course['조정_2026년'],
+          // 연도 키는 리터럴로 나열하지 않는다 (@/lib/revenue-years).
+          // 2026년까지만 박혀 있어서 2027년 매출이 저장되지 않았다 — 읽기 경로만
+          // 동적화돼 있고 쓰기 경로에 같은 함정이 남아 있었다.
+          ...buildYearFields(course, saveYears),
           조정_실매출대비: course.조정_실매출대비,
           훈련유형: course.훈련유형,
           NCS명: course.NCS명,
