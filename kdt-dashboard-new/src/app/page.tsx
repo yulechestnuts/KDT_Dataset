@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
-import { Rocket, Calendar, TrendingUp, Building2, BookText, Factory, Users } from "lucide-react";
+import { Rocket, Calendar, TrendingUp, Building2, BookText, Factory, Users, Compass } from "lucide-react";
 
 export default function Home() {
   return (
@@ -65,6 +65,14 @@ export default function Home() {
               <Users className="h-12 w-12 text-indigo-500 mb-4" />
               <h2 className="text-xl font-semibold mb-2">취업률 분석</h2>
               <p className="text-sm text-gray-500">3개월, 6개월, 전체 기준 취업률을 분석합니다.</p>
+            </Card>
+          </Link>
+
+          <Link href="/trend-analysis">
+            <Card className="flex flex-col items-center justify-center p-8 text-center hover:shadow-lg transition-shadow duration-200">
+              <Compass className="h-12 w-12 text-teal-500 mb-4" />
+              <h2 className="text-xl font-semibold mb-2">수요·경쟁력 분석</h2>
+              <p className="text-sm text-gray-500">기술분야별 수요 쏠림과 미래 경쟁력을 분석합니다.</p>
             </Card>
           </Link>
         </div>

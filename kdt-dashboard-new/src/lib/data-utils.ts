@@ -562,27 +562,44 @@ export function calculateRevenueAdjustmentFactor(completionRate: number): number
 }
 
 // 개별 과정 매출 계산
+//
+// 백엔드 revenue-engine.computeCourseRevenue 와 같은 의미여야 한다.
+// 예전엔 두 가지가 어긋나 있었다:
+//   1) 폴백을 ?? 로 이어서 조정_실매출대비 가 0 일 때 거기서 멈췄다.
+//      DB 의 연도 컬럼이 전부 0 인 지금 상태에서 과정별 매출이 통째로 0 억으로
+//      표시된 원인이다 (?? 는 null/undefined 만 건너뛴다).
+//   2) 보정계수 적용 여부를 '조정_ 키가 존재하는가'로 판단했다. 키는 있는데 값이
+//      0 이면 보정이 통째로 빠진다. 실제로 쓴 조정값이 있었는지로 판단해야 한다.
 export const computeCourseRevenue = (course: CourseData, year?: number): number => {
+  const completionRate = course['수료율'] || 0;
+
   if (year) {
-    const adjKey = `조정_${year}년`;
-    const yearlyKey = `${year}년`;
-    let baseRevenue = course[adjKey] ?? course[yearlyKey] ?? 0;
-    if (course[adjKey] === undefined) {
-      baseRevenue *= calculateRevenueAdjustmentFactor(course['수료율'] ?? 0);
-    }
-    return baseRevenue;
+    const adjVal = Number(course[`조정_${year}년`]) || 0;
+    const origVal = Number(course[`${year}년`] ?? (course as any)[String(year)]) || 0;
+    const baseRevenue = adjVal > 0 ? adjVal : origVal;
+    if (adjVal > 0 || baseRevenue <= 0) return baseRevenue;
+    return baseRevenue * calculateRevenueAdjustmentFactor(completionRate);
   }
 
   // 리터럴 나열 금지 — 2026 에서 끊겨 2027년 매출이 통째로 빠졌었다 (@/lib/revenue-years)
-  const adjustedCols = toAdjustedYearColumns(resolveRevenueYears(course));
-  let baseRevenue = adjustedCols.reduce((sum, key) => sum + (course[key] || 0), 0);
-  
-  if (baseRevenue === 0) {
-    baseRevenue = course.조정_실매출대비 ?? course['실 매출 대비'] ?? course.누적매출 ?? 0;
+  const years = resolveRevenueYears(course);
+  let baseRevenue = 0;
+  let usedAdjustedColumn = false;
+  for (const y of years) {
+    const adjVal = Number(course[`조정_${y}년`]) || 0;
+    const origVal = Number(course[`${y}년`] ?? (course as any)[String(y)]) || 0;
+    if (adjVal > 0) usedAdjustedColumn = true;
+    baseRevenue += adjVal > 0 ? adjVal : origVal;
   }
 
-  if (!Object.keys(course).some(k => k.startsWith('조정_'))) {
-    baseRevenue *= calculateRevenueAdjustmentFactor(course['수료율'] ?? 0);
+  if (baseRevenue === 0) {
+    // || 로 이어야 0 을 건너뛴다. ?? 를 쓰면 0 에서 멈춘다.
+    baseRevenue =
+      Number(course.조정_실매출대비 || course['실 매출 대비'] || course.누적매출 || 0) || 0;
+  }
+
+  if (!usedAdjustedColumn && baseRevenue > 0) {
+    return baseRevenue * calculateRevenueAdjustmentFactor(completionRate);
   }
   return baseRevenue;
 };

@@ -1,5 +1,7 @@
 'use client';
 
+import { formatSatisfaction } from '@/lib/satisfaction-rule';
+
 import React, { useState, useEffect, useMemo, useCallback, Suspense, useRef } from 'react';
 import { kdtAPI } from '@/lib/api-client';
 import {
@@ -344,13 +346,14 @@ const CourseCard = React.memo(({
                       <div>총 시간</div>
                     </TableHead>
                     <TableHead>{isContractMode ? '수주매출' : '매출'}</TableHead>
+                    <TableHead className="text-center whitespace-nowrap">만족도</TableHead>
                     <TableHead>과정 페이지</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {courseDetails.length === 0 && isContractMode && selectedYear !== 'all' ? (
                     <TableRow>
-                      <TableCell colSpan={13} className="text-center py-4 text-gray-500">
+                      <TableCell colSpan={14} className="text-center py-4 text-gray-500">
                         {selectedYear}년에 시작한 과정이 없습니다.
                       </TableCell>
                     </TableRow>
@@ -403,6 +406,9 @@ const CourseCard = React.memo(({
                               )
                             )}
                           </TableCell>
+                          <TableCell className="text-center whitespace-nowrap">
+                            {formatSatisfaction(detail.만족도 as number)}
+                          </TableCell>
                           <TableCell>
                             {detail.과정페이지링크 && (
                               <Button
@@ -420,7 +426,7 @@ const CourseCard = React.memo(({
                   )}
                   {courseDetails.length < (agg.allCourseDetails?.length || 0) && (
                     <TableRow>
-                      <TableCell colSpan={13} className="text-center py-2">
+                      <TableCell colSpan={14} className="text-center py-2">
                         <Button
                           variant="outline"
                           size="sm"

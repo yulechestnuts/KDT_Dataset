@@ -1,6 +1,7 @@
 // KDT 통계 API 클라이언트
 
 import type { AiCampusFilter } from '@/lib/course-category';
+import type { DemandAnalysisResult } from '@/lib/backend/demand-engine';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -207,6 +208,11 @@ export interface CourseAnalysisResponse {
   };
 }
 
+export type DemandAnalysisResponse = DemandAnalysisResult & {
+  status: string;
+  cached?: boolean;
+};
+
 export class KDTStatsAPI {
   private baseUrl: string;
 
@@ -309,6 +315,37 @@ export class KDTStatsAPI {
       headers: {
         'Content-Type': 'application/json',
       },
+    });
+
+    if (!response.ok) {
+      throw new Error(`API Error: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * 수요·경쟁력 분석 조회 (카테고리 × 코호트연도 매트릭스)
+   *
+   * 다른 라우트와 달리 연도 축이 '과정시작일' 기준이고, 서버가 전 연도를 한 번에
+   * 내려주므로 연도 파라미터가 없다. 연도 선택은 클라이언트에서 한다.
+   */
+  async getDemandAnalysis(options?: {
+    trainingType?: 'all' | 'leading' | 'tech';
+    aiCampus?: AiCampusFilter;
+  }): Promise<DemandAnalysisResponse> {
+    const params = new URLSearchParams();
+    if (options?.trainingType && options.trainingType !== 'all') {
+      params.append('training_type', options.trainingType);
+    }
+    if (options?.aiCampus && options.aiCampus !== 'all') {
+      params.append('ai_campus', options.aiCampus);
+    }
+
+    const url = `/api/v1/demand-analysis${params.toString() ? `?${params.toString()}` : ''}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
     });
 
     if (!response.ok) {
