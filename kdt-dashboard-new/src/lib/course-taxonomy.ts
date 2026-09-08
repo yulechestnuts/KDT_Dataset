@@ -97,15 +97,91 @@ export const MANUAL_OVERRIDES: Array<[string, CourseCategory]> = [
 //    priority 가 큰 쪽이 primary. 같으면 배열 순서가 앞선 쪽.
 //
 //    핵심 함정: 2023년 이후 'AI'는 거의 모든 과정명에 브랜딩으로 붙는다.
-//    그래서 AI 를 두 단계로 쪼갠다 —
-//      · AI 코어(딥러닝/LLM/모델링/AI 엔지니어) : priority 80, 직군 규칙을 이긴다
-//      · AI 브랜딩(단순히 'AI'가 박힌 것)        : priority 15, 아무것도 없을 때만
+//    그래서 AI 를 세 단계로 쪼갠다 —
+//      · AI 코어(딥러닝/LLM/챗봇/AI 엔지니어) : priority 80, 직군 규칙을 이긴다
+//      · AI 활용(도구)                        : AI 후보에서 통째로 제외 — 아래 AI_TOOL_USE
+//      · AI 브랜딩(단순히 'AI'가 박힌 것)      : priority 15, 아무것도 없을 때만
 //    이렇게 안 하면 "AI를 활용한 프론트엔드 과정"이 AI로 잡혀 분류가 무너진다.
 // ─────────────────────────────────────────────────────────────
 interface KeywordRule {
   category: CourseCategory;
   pattern: RegExp;
   priority: number;
+}
+
+/**
+ * AI 코어 강신호 — 'AI 자체를 만들거나 다루는 법'을 가르친다는 증거.
+ * 이게 있으면 뒤에 '활용/기반' 표현이 붙어도 AI 과정으로 본다.
+ * (예: "AI를 활용한 자바(JAVA)개발자 (React, SpringBoot, LLM)" → LLM 이 있으니 AI 코어)
+ *
+ * 여기에 '예측 분석'·'영상처리' 같은 범용어를 넣으면 안 된다 — priority 80 이라
+ * 데이터분석(70)·XR(88)에서 과정을 빼앗아 온다. 반드시 AI 를 만든다는 증거만 넣을 것.
+ */
+export const AI_CORE_STRONG =
+  /머신\s*러닝|machine\s*learning|딥\s*러닝|deep\s*learning|\bLLM\b|대규모\s*언어\s*모델|랭체인|langchain|자연어\s*처리|자연언어|\bNLP\b|\bNLU\b|컴퓨터\s*비전|머신\s*비전|\bYOLO\b|\bOCR\b|챗봇|chat\s?bot|MLOps|파인\s*튜닝|fine[-\s]?tuning|프롬프트\s*엔지니어|추천\s*(시스템|알고리즘)|언어지능|음성\s*인식|인공지능\s*(모델|알고리즘|엔진|엔지니어|개발자|전문인력)|AI\s*(모델|알고리즘|엔진|학습|엔지니어|개발자)|지능형\s*(서비스|시스템|영상)|피지컬\s*AI/i;
+
+/**
+ * AI 활용(도구) — 'AI 를 쓴다'는 신호. 배우는 대상은 AI 가 아니라 그 뒤의 도메인이다.
+ *
+ * 정의(2026-09, 사용자): "생성형AI 활용은 곧 생성형 AI 를 쓴다는 것이며, AI 를 배우는
+ * 적극적인 내용은 아니다." 그리고 "인공지능 기반 서비스플랫폼 개발자"의 알맹이는
+ * **서비스플랫폼 개발자**다. 그래서 이 신호가 잡히면 AI/머신러닝 후보를 통째로 뺀다 —
+ * 키워드(80·15)뿐 아니라 **NCS 폴백에서도** 뺀다. 안 그러면 NCS 가 도로 AI 로 돌려보낸다
+ * (위 과정의 NCS 는 '인공지능서비스구현'이라 폴백만 두면 원위치된다).
+ *
+ * 실측(2026-09, 7,230행 기준): AI/머신러닝 241개 과정 중 51개·신청 6,743명(20.6%)이
+ * 여기 해당했다. 웹툰 제작·미디어 크리에이터·리더십 교육까지 AI 로 잡혀 있었고,
+ * 그만큼 AI/머신러닝의 규모·배출률이 왜곡돼 Op Score 1위를 떠받치고 있었다.
+ */
+export const AI_TOOL_USE =
+  /(생성형\s*AI|생성\s*AI|GenAI|챗?\s?GPT|미드저니|midjourney|\bAI\b|인공지능|에이아이)[^,.]{0,20}?(활용|이용|사용|접목|적용|기반|결합|더한|입힌)/i;
+
+/** 과정명이 'AI 를 도구로 쓰는' 과정인가 (= AI 후보에서 제외해야 하는가) */
+export function isAiToolUse(name: string): boolean {
+  return AI_TOOL_USE.test(name) && !AI_CORE_STRONG.test(name);
+}
+
+// ─────────────────────────────────────────────────────────────
+// 수식어 강등 — AI 에 쓴 원리를 다른 도구 용어로 일반화한다.
+//
+// "자바(JAVA)기반 **풀스택 개발자**", "클라우드 기반 **풀스택 엔지니어**",
+// "빅데이터 기반 **SW개발자**" 에서 배우는 것은 자바·클라우드·빅데이터가 아니라
+// 뒤에 오는 직무다. 그런데 자바는 백엔드(60), 빅데이터는 데이터분석(70),
+// 블록체인은 90 이라 명시된 직무를 이겨 버린다.
+//
+// 실측(2026-09): 113개 과정·신청 10,694명이 이 오류였다.
+//
+// 산업 도메인(핀테크·헬스케어·자율주행)은 **일부러 제외**한다.
+// "핀테크 서비스를 위한 풀스택 개발자"의 핀테크는 도구가 아니라 업권이고,
+// 그 업권이 분류 축으로 의미가 있다.
+// ─────────────────────────────────────────────────────────────
+
+/** 도구로 쓰이는 기술 용어. 매치 시작 지점부터 앵커로 검사한다(부분매치 보정용) */
+const TOOL_TERM_AT =
+  /^(클라우드(\s*(컴퓨팅|네이티브))?|cloud|AWS|azure|GCP|빅데이터|big ?data|데이터\s*(분석|처리)|블록체인|blockchain|보안\s*솔루션|유니티|unity|언리얼|unreal|IoT|사물인터넷|자바(\s*\(\s*JAVA\s*\))?|java|파이썬|python|스프링|spring(\s*boot)?|리액트|react(\.js)?|node\.?\s?js|MSA|도커|docker|쿠버네티스|kubernetes|플러터|flutter|RPA|엘라스틱|카티아|CATIA|엣지\s*디바이스)/i;
+
+/** 수식어 표지 — 앞 용어가 '쓰는 것'이지 '배우는 것'이 아님을 뜻한다 */
+const MODIFIER_MARK =
+  /^[\s)\]]*(을|를|은|는|이|가|과|와|및|으로|로|[,·\/])?\s*(기반|활용|이용|위한|적용|연계|접목|결합|중심|통한)/;
+
+/**
+ * 이 규칙이 걸린 근거가 **전부** '도구 용어 + 수식어 자리' 뿐인가.
+ * 하나라도 도구가 아닌 근거(예: '백엔드')나 수식어가 아닌 자리가 있으면 강등하지 않는다.
+ * — "자바 백엔드 개발자"의 백엔드 규칙은 '백엔드'라는 근거가 있으므로 살아남는다.
+ */
+function isModifierOnlyMatch(name: string, rule: KeywordRule): boolean {
+  const g = new RegExp(rule.pattern.source, 'gi');
+  let m: RegExpExecArray | null;
+  let matched = false;
+  while ((m = g.exec(name)) !== null) {
+    if (m[0].length === 0) break; // 빈 매치 무한루프 방지
+    matched = true;
+    const rest = name.slice(m.index);
+    const tm = TOOL_TERM_AT.exec(rest);
+    if (!tm) return false; // 도구 용어가 아닌 근거 → 유지
+    if (!MODIFIER_MARK.test(rest.slice(tm[0].length, tm[0].length + 16))) return false; // 수식어 자리가 아님 → 유지
+  }
+  return matched;
 }
 
 export const KEYWORD_RULES: KeywordRule[] = [
@@ -122,11 +198,14 @@ export const KEYWORD_RULES: KeywordRule[] = [
   { category: '정보보안', pattern: /보안|정보\s*보호|해킹|모의침투|포렌식|security|화이트해커/i, priority: 90 },
   { category: '임베디드/IoT', pattern: /임베디드|embedded|펌웨어|firmware|\bIoT\b|사물인터넷|\bMCU\b|아두이노|라즈베리|엣지\s*디바이스/i, priority: 90 },
 
-  // 80 — AI 코어
+  // 80 — AI 코어 = AI_CORE_STRONG(모델·기법·AI 직무) + '생성형 AI/AI 서비스' 계열.
+  //      뒤쪽 계열은 브랜딩으로도 쓰이므로 isAiToolUse() 에 걸리면 아래 분류기에서 제외된다.
   {
     category: 'AI/머신러닝',
-    pattern:
-      /머신\s*러닝|machine\s*learning|딥\s*러닝|deep\s*learning|\bLLM\b|생성형\s*AI|생성\s*AI|GenAI|ChatGPT|자연어\s*처리|\bNLP\b|컴퓨터\s*비전|인공지능\s*(모델|서비스|플랫폼|엔지니어|개발자|기술)|AI\s*(엔지니어|개발자|모델|서비스|플랫폼)|MLOps|프롬프트|추천\s*(시스템|알고리즘)|언어지능/i,
+    pattern: new RegExp(
+      `${AI_CORE_STRONG.source}|생성형\\s*AI|생성\\s*AI|GenAI|ChatGPT|인공지능\\s*(서비스|플랫폼|기술)|AI\\s*(서비스|플랫폼)|프롬프트`,
+      'i'
+    ),
     priority: 80,
   },
 
@@ -139,8 +218,16 @@ export const KEYWORD_RULES: KeywordRule[] = [
   { category: '모바일', pattern: /안드로이드|android|\biOS\b|모바일\s*(앱|개발)|플러터|flutter|리액트\s*네이티브|앱\s*개발|앱\s*제작/i, priority: 60 },
   { category: '클라우드/DevOps', pattern: /클라우드|cloud|\bAWS\b|azure|\bGCP\b|데브옵스|devops|쿠버네티스|kubernetes|도커|docker|인프라|infra|\bSRE\b|리눅스|linux|네트워크\s*엔지니어|시스템\s*엔지니어/i, priority: 60 },
 
-  // 50 — 범용 웹/풀스택 (직군 키워드가 하나도 없을 때)
-  { category: '풀스택/웹', pattern: /풀[-\s]?스택|full[-\s]?stack|웹\s*(개발|서비스|프로그래|애플리케이션)|웹서비스|웹앱|소프트웨어\s*엔지니어|SW\s*개발자|응용\s*SW|애플리케이션\s*개발/i, priority: 50 },
+  // 65 — '풀스택'을 **명시한** 과정. 직군(60)보다 높다.
+  //      "자바(JAVA)기반 풀스택 개발자"에서 배우는 것은 풀스택이고 자바는 도구다.
+  //      예전엔 풀스택이 50 이라 스쳐 지나가는 '자바' 한 단어(60)에 졌다 — 순서가 거꾸로였다.
+  { category: '풀스택/웹', pattern: /풀[-\s]?스택|full[-\s]?stack/i, priority: 65 },
+
+  // 50 — 범용 웹 (직군 키워드가 하나도 없을 때)
+  //      '서비스/플랫폼 개발' 계열을 여기 둔 이유: AI_TOOL_USE 로 AI 후보가 빠진 뒤
+  //      "인공지능 기반 서비스플랫폼 개발자" 같은 과정이 갈 곳이 없어 NCS 로 떨어지면
+  //      NCS 가 도로 AI 로 보낸다. 이름에 있는 알맹이(서비스플랫폼 개발)로 여기서 잡는다.
+  { category: '풀스택/웹', pattern: /웹\s*(개발|서비스|프로그래|애플리케이션)|웹서비스|웹앱|소프트웨어\s*엔지니어|SW\s*개발자|응용\s*SW|응용\s*소프트웨어|애플리케이션\s*개발|서비스\s*(개발|플랫폼)|플랫폼\s*개발|\bFE\s*[\/&]\s*BE\b/i, priority: 50 },
 
   // 40 — 기획·디자인·마케팅
   { category: 'UX/UI디자인', pattern: /\bUX\b|\bUI\b|UX\/UI|UI\/UX|사용자\s*경험|디자인|퍼블리셔|프로덕트\s*디자|그래픽/i, priority: 40 },
@@ -258,6 +345,11 @@ export interface CourseTaxonomy {
   rulePriority?: number;
   /** 과정명에 AI/인공지능이 박혀 있는가 (실제 AI 과정인지와 무관한 '브랜딩' 지표) */
   aiBranded: boolean;
+  /**
+   * 'AI 를 도구로 쓰는' 과정이라 AI/머신러닝 후보에서 제외됐는가.
+   * true 면 primary 는 과정명 안쪽 도메인으로 잡힌 것이다 — 분류 감사용.
+   */
+  aiToolUse: boolean;
 }
 
 const AI_BRANDING = /\bAI\b|인공지능|A\.\s?I\.|머신\s*러닝|딥\s*러닝|생성형/i;
@@ -279,22 +371,39 @@ export function classifyCourseName(courseName: unknown, ncsName?: unknown): Cour
   const name = normalizeName(courseName);
   const ncs = String(ncsName ?? '').trim();
   const aiBranded = AI_BRANDING.test(name);
+  // 'AI 를 쓰는' 과정인가. 맞으면 AI/머신러닝은 후보에서 통째로 빠진다 (AI_TOOL_USE 주석 참고).
+  const aiToolUse = isAiToolUse(name);
 
-  // 1) 수동 오버라이드
+  // 1) 수동 오버라이드 — 브랜드 판정이므로 aiToolUse 보다 우선한다.
   const lower = name.toLowerCase();
   for (const [needle, category] of MANUAL_OVERRIDES) {
     if (lower.includes(normalizeName(needle).toLowerCase())) {
-      return { primary: category, tags: [category], source: 'override', aiBranded };
+      return { primary: category, tags: [category], source: 'override', aiBranded, aiToolUse };
     }
   }
 
   // 2) 과정명 키워드
   let best: KeywordRule | null = null;
   const tags: CourseCategory[] = [];
+  // 근거가 '도구 + 수식어 자리' 뿐이라 강등된 규칙들. 아무것도 안 남았을 때만 쓴다
+  // ("클라우드 기반 교육과정"처럼 직무명이 아예 없으면 클라우드라도 붙여야 한다).
+  let demotedBest: KeywordRule | null = null;
   for (const rule of KEYWORD_RULES) {
+    // AI 활용 과정이면 AI 규칙(코어 80·브랜딩 15)을 둘 다 건너뛴다.
+    // 15 까지 빼야 하는 이유: 도메인 키워드가 하나도 없는 과정이 브랜딩 규칙에 걸려
+    // 그대로 AI 로 남는다("심화_생성형 AI활용 인재양성과정" 같은 것).
+    if (aiToolUse && rule.category === 'AI/머신러닝') continue;
     if (!rule.pattern.test(name)) continue;
+    if (isModifierOnlyMatch(name, rule)) {
+      if (!demotedBest || rule.priority > demotedBest.priority) demotedBest = rule;
+      continue;
+    }
     if (!tags.includes(rule.category)) tags.push(rule.category);
     if (!best || rule.priority > best.priority) best = rule;
+  }
+  if (!best && demotedBest) {
+    best = demotedBest;
+    if (!tags.includes(demotedBest.category)) tags.push(demotedBest.category);
   }
   if (best) {
     let winner = best.category;
@@ -311,15 +420,20 @@ export function classifyCourseName(courseName: unknown, ncsName?: unknown): Cour
       source: 'keyword',
       rulePriority: best.priority,
       aiBranded,
+      aiToolUse,
     };
   }
 
-  // 3) NCS 폴백
+  // 3) NCS 폴백. AI 활용 과정은 여기서도 AI 로 못 간다 —
+  //    "인공지능 기반 서비스플랫폼 개발자"의 NCS 가 '인공지능서비스구현'이라,
+  //    이 가드가 없으면 위에서 뺀 것이 그대로 원위치된다.
   const byNcs = NCS_CATEGORY_MAP[ncs];
-  if (byNcs) return { primary: byNcs, tags: [byNcs], source: 'ncs', aiBranded };
+  if (byNcs && !(aiToolUse && byNcs === 'AI/머신러닝')) {
+    return { primary: byNcs, tags: [byNcs], source: 'ncs', aiBranded, aiToolUse };
+  }
 
   // 4) 기타
-  return { primary: '기타', tags: ['기타'], source: 'fallback', aiBranded };
+  return { primary: '기타', tags: ['기타'], source: 'fallback', aiBranded, aiToolUse };
 }
 
 /** 과정 객체(ProcessedCourseData / RawCourseData 양쪽 표기)를 받아 분류 */
