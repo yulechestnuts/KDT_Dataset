@@ -91,6 +91,17 @@ export const MATURE_COMPLETION_COVERAGE = 0.7;
  */
 export const MAX_COURSES_PER_CATEGORY = 300;
 
+/** 취업률 관측 기준 — getSafeEmploymentData 의 source 와 같다 */
+export type EmploymentBasis = '6개월' | '3개월';
+export const EMPLOYMENT_BASES: EmploymentBasis[] = ['6개월', '3개월'];
+
+interface BasisAcc {
+  employed: number;
+  targetPop: number;
+  enrolled: number;
+}
+const newBasisAcc = (): BasisAcc => ({ employed: 0, targetPop: 0, enrolled: 0 });
+
 export interface CategoryYearCell {
   year: number;
   /** 회차 행 수 */
@@ -391,6 +402,18 @@ interface Bucket {
    * 배출률이 실제보다 낮게 나온다. 분자(employed)와 같은 과정 집합을 써야 한다.
    */
   employmentCountableEnrolled: number;
+  /**
+   * 취업률 관측 기준(basis)별 누적. 3개월 취업률과 6개월 취업률은 **다른 척도**이므로
+   * (실측 전체 3M전용 21.3% vs 6M 42.1%) 섞어서 하나의 배출률을 만들면 안 된다.
+   * 시장 평균 배율로 6개월 상당으로 환산하는 방법도 남의 평균을 개별 분야에 밀어 넣는
+   * 추정이라 쓰지 않는다. 대신 **층을 나눠 각자의 기준선과 비교**한다 —
+   * 지수는 원래 '기준선 대비 상대값'이라 기준선만 맞추면 변환 없이 나란히 놓인다.
+   *
+   * 실측(2026-09): 3M 전용 층은 2025 개강분부터 생긴다(그 이전은 6개월이 다 찼다).
+   * 2025 코호트의 3M 전용 비중이 분야마다 7%~35%로 달라, 섞으면 비중 큰 분야가
+   * 배출률에서 최대 7.6%p 손해를 본다.
+   */
+  basis: Record<EmploymentBasis, BasisAcc>;
   satSum: number;
   satWeight: number;
   maxRevenue: number;
@@ -411,6 +434,7 @@ function newBucket(): Bucket {
     targetPop: 0,
     employmentCountable: 0,
     employmentCountableEnrolled: 0,
+    basis: { '6개월': newBasisAcc(), '3개월': newBasisAcc() },
     satSum: 0,
     satWeight: 0,
     maxRevenue: 0,
@@ -440,10 +464,18 @@ function addToBucket(b: Bucket, course: any, now: Date) {
 
   const emp = getSafeEmploymentData(course);
   if (emp.employed !== null && emp.targetPop !== null && emp.targetPop > 0) {
+    const enrolled = toNum(course['수강신청 인원']);
     b.employmentCountable += 1;
     b.employed += emp.employed;
     b.targetPop += emp.targetPop;
-    b.employmentCountableEnrolled += toNum(course['수강신청 인원']);
+    b.employmentCountableEnrolled += enrolled;
+    // 층별로도 따로 쌓는다 (위 basis 주석 참고)
+    const acc = b.basis[(emp.source as EmploymentBasis) ?? '6개월'];
+    if (acc) {
+      acc.employed += emp.employed;
+      acc.targetPop += emp.targetPop;
+      acc.enrolled += enrolled;
+    }
   }
 
   const sat = getSatisfactionSample(course);
@@ -587,6 +619,37 @@ export function calculateDemandAnalysis(
     market: number | null | undefined
   ): number | null => (value === null || !market ? null : Math.round((value / market) * 1000) / 10);
 
+  /**
+   * 층화 지수 — 관측 기준(3개월/6개월)을 섞지 않고, 층마다 **같은 기준의 시장**과 비교한 뒤
+   * 표본(가중치)으로 합성한다. 변환이 필요 없는 이유는 지수가 이미 상대값이기 때문이다.
+   *
+   * @param cellsOf 각 코호트 연도의 (분야 버킷, 그 해 시장 버킷)
+   * @param weightOf 층 안에서 쓸 분모 (배출률이면 enrolled, 취업률이면 targetPop)
+   */
+  const stratifiedIndex = (
+    pairs: Array<{ own: Bucket | undefined; market: Bucket | undefined }>,
+    weightOf: (a: BasisAcc) => number
+  ): number | null => {
+    let num = 0;
+    let den = 0;
+    for (const { own, market } of pairs) {
+      if (!own || !market) continue;
+      for (const b of EMPLOYMENT_BASES) {
+        const o = own.basis[b];
+        const m = market.basis[b];
+        const ow = weightOf(o);
+        const mw = weightOf(m);
+        if (ow <= 0 || mw <= 0) continue;
+        const mRate = (m.employed / mw) * 100;
+        if (!(mRate > 0)) continue;
+        const oRate = (o.employed / ow) * 100;
+        num += ((oRate / mRate) * 100) * ow;
+        den += ow;
+      }
+    }
+    return den > 0 ? Math.round((num / den) * 10) / 10 : null;
+  };
+
   const categories: CategorySummary[] = [];
 
   for (const cat of COURSE_CATEGORIES) {
@@ -622,8 +685,11 @@ export function calculateDemandAnalysis(
         completionRate: rate(b.completed, b.completedEnrolled),
         completionCoverage: b.rows.length ? b.completionCountable / b.rows.length : 0,
         employmentRate,
-        yieldRate: rate(b.employed, b.employmentCountableEnrolled),
-        relativeEmploymentRate: indexAgainstMarket(employmentRate, market?.employmentRate),
+        // 층을 섞으면 척도가 없어진다. 표시는 완결된 6개월 층 기준.
+        yieldRate: rate(b.basis['6개월'].employed, b.basis['6개월'].enrolled),
+        // 3개월/6개월을 섞지 않는다. 이 값의 기울기가 Op Score 의 '취업률 추세'가 되므로
+        // 층이 섞이면 3M 비중이 큰 해가 통째로 내려앉아 가짜 하락 추세를 만든다.
+        relativeEmploymentRate: stratifiedIndex([{ own: b, market: byYear.get(y) }], (a) => a.targetPop),
         employed: b.employed,
         targetPop: b.targetPop,
         employmentCoverage: b.rows.length ? b.employmentCountable / b.rows.length : 0,
@@ -664,37 +730,36 @@ export function calculateDemandAnalysis(
     const matureCells = cells.filter(
       (c) => c.employmentCoverage >= MATURE_EMPLOYMENT_COVERAGE && c.targetPop > 0
     );
+    // 표시용 절대값은 **6개월 층**으로 낸다. 층을 섞은 평균은 척도가 없어서
+    // '시장 대비 몇 %'가 성립하지 않는다(기준선 marketYieldRate 도 6개월 층이다).
+    // 3개월 코호트를 버리는 건 아니다 — 지수(matureYieldIndex/matureEmploymentIndex)는
+    // 아래에서 두 층을 각자의 기준선과 비교한 뒤 합성한다.
+    const mature6 = matureCells.map((c) => byCatYear.get(`${cat} ${c.year}`)?.basis['6개월']);
     const matureEmployed = matureCells.reduce((a, c) => a + c.employed, 0);
     const matureTarget = matureCells.reduce((a, c) => a + c.targetPop, 0);
-    const matureEmploymentRate = rate(matureEmployed, matureTarget);
+    const matureEmploymentRate = rate(
+      mature6.reduce((a, x) => a + (x?.employed ?? 0), 0),
+      mature6.reduce((a, x) => a + (x?.targetPop ?? 0), 0)
+    );
 
     // 성숙 코호트가 어느 해에 몰려 있는지는 분야마다 다르다. 시장 평균 취업률이
     // 67.8%(2021) → 52.2%(2025) 로 내려왔으므로, 절대값끼리 비교하면 '오래된
     // 코호트를 가진 분야'가 실력과 무관하게 이긴다. **그 분야가 실제로 쓴 연도들의**
     // 시장 평균과 비교해야 그 편향이 사라진다.
-    const marketEmployed = matureCells.reduce((a, c) => a + (byYear.get(c.year)?.employed ?? 0), 0);
-    const marketTarget = matureCells.reduce((a, c) => a + (byYear.get(c.year)?.targetPop ?? 0), 0);
-    const matureEmploymentIndex = indexAgainstMarket(
-      matureEmploymentRate,
-      rate(marketEmployed, marketTarget)
-    );
+    // ⚠️ 3개월/6개월을 섞지 않는다 — 층마다 같은 기준의 시장과 비교한 뒤 합성한다.
+    const maturePairs = matureCells.map((c) => ({
+      own: byCatYear.get(`${cat} ${c.year}`),
+      market: byYear.get(c.year),
+    }));
+    const matureEmploymentIndex = stratifiedIndex(maturePairs, (a) => a.targetPop);
 
     // 배출률 = 취업자 / (취업률이 산출된 과정들의 신청인원).
     // 분자와 분모가 같은 과정 집합이라 집계 지연에 오염되지 않는다.
     const matureYieldRate = rate(
-      matureEmployed,
-      matureCells.reduce(
-        (a, c) => a + (byCatYear.get(`${cat} ${c.year}`)?.employmentCountableEnrolled ?? 0),
-        0
-      )
+      mature6.reduce((a, x) => a + (x?.employed ?? 0), 0),
+      mature6.reduce((a, x) => a + (x?.enrolled ?? 0), 0)
     );
-    const matureYieldIndex = indexAgainstMarket(
-      matureYieldRate,
-      rate(
-        marketEmployed,
-        matureCells.reduce((a, c) => a + (byYear.get(c.year)?.employmentCountableEnrolled ?? 0), 0)
-      )
-    );
+    const matureYieldIndex = stratifiedIndex(maturePairs, (a) => a.enrolled);
 
     // 수료율도 같은 방식. 다만 유예가 3주뿐이라 거의 모든 코호트가 성숙 판정을 받는다.
     const completionCells = cells.filter(
@@ -932,8 +997,9 @@ export function calculateDemandAnalysis(
             ?.years.find((v) => v.year === y);
           if (!cell || cell.employmentCoverage < MATURE_EMPLOYMENT_COVERAGE || cell.targetPop <= 0)
             continue;
-          emp += b.employed;
-          enr += b.employmentCountableEnrolled;
+          // 층을 섞은 값은 척도가 없다. 완결된 6개월 층을 기준선으로 쓴다.
+          emp += b.basis['6개월'].employed;
+          enr += b.basis['6개월'].enrolled;
         }
         return rate(emp, enr);
       })(),
