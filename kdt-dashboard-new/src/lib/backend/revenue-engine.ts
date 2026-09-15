@@ -240,33 +240,25 @@ function buildCompletionRateEstimator(courses: ProcessedCourseData[], now: Date)
 }
 
 /**
- * 매출 보정을 적용한다. 이미 조정값이 있으면 그대로 둔다.
+ * 매출 보정을 적용한다. 저장된 조정값은 믿지 않고 **항상 다시 계산한다.**
  *
- * 예전엔 업로드 시점(data-transformer)이 추정 없는 수료율로 조정 컬럼을 먼저
- * 채워 버려서, 여기 있는 추정 사다리가 `이미 조정값이 있으면 유지` 가드에 걸려
- * **한 번도 실행되지 않았다.** 지금은 data-transformer 가 조정 컬럼을 비워 두고
- * 배열 변환 끝에서 이 함수를 부른다.
+ * 예전엔 두 겹으로 막혀 있었다. 업로드 시점(data-transformer)이 추정 없는 수료율로
+ * 조정 컬럼을 먼저 채웠고, 여기서는 `이미 조정값이 있으면 유지` 가드가 걸려
+ * 추정 사다리가 **한 번도 실행되지 않았다.**
+ *
+ * 그 가드도 없앴다. `조정_` 을 쓰는 곳은 이 파이프라인 하나뿐이라 — 사람이 손으로
+ * 넣는 경로가 없다 — 보존할 이유가 없고 사실상 캐시였다. 그 캐시 때문에 계수를
+ * 고쳐도 DB 에 남은 옛 값이 그대로 화면에 나가서, 반영하려면 CSV 재업로드가
+ * 필요했다. 항상 재계산하면 **배포만으로 반영된다.**
+ * (7,230행 × O(n) 이고 앞단에 캐시가 있어 비용은 무시할 수준)
  */
-export function applyRevenueAdjustmentIfMissing(
+export function applyRevenueAdjustment(
   courses: ProcessedCourseData[],
   now: Date = new Date()
 ): ProcessedCourseData[] {
   const estimate = buildCompletionRateEstimator(courses, now);
 
   return courses.map((course) => {
-    // 이미 조정값이 있으면 유지.
-    //
-    // 키 존재가 아니라 **값**으로 판단한다. 조정 컬럼은 늘 만들어지므로(0 으로라도)
-    // 키만 보면 언제나 '조정됨'으로 읽혀 보정이 통째로 건너뛰어진다 —
-    // 이 파일이 예전에 겪은 그 버그다.
-    const hasAdjustedYearValue = Object.keys(course).some(
-      (k) => /^조정_\d{4}년$/.test(k) && (Number((course as any)[k]) || 0) > 0
-    );
-    const hasAdjustedTotal = (course.조정_실매출대비 ?? 0) > 0;
-    if (hasAdjustedYearValue && hasAdjustedTotal) {
-      return course;
-    }
-
     const { rate, source } = estimate(course);
     // 수강신청 인원이 없으면 비율 자체가 정의되지 않는다 — 원본을 그대로 둔다.
     const factor =
@@ -274,21 +266,18 @@ export function applyRevenueAdjustmentIfMissing(
 
     const next: ProcessedCourseData = {
       ...course,
+      // `||` 로 이어야 0 을 건너뛴다. `??` 는 0 에서 멈춘다 — 이 파일이 이미 겪은 함정이다.
       조정_실매출대비:
-        (course.조정_실매출대비 ?? 0) > 0
-          ? course.조정_실매출대비
-          : parseNumber(course.누적매출 ?? course['실 매출 대비'] ?? 0) * factor,
+        parseNumber(course.누적매출 || course['실 매출 대비'] || 0) * factor,
       적용수료율: rate,
       수료율_출처: source,
     };
 
-    // 연도별 조정 매출도 동일 계수로 생성 (조정 컬럼이 없거나 0일 때만)
+    // 연도별 조정 매출도 동일 계수로 다시 만든다 (저장값 재사용 안 함)
     const years = getAvailableRevenueYears(course);
     for (const y of years) {
       const yearCol = `${y}년` as const;
       const adjCol = `조정_${yearCol}` as keyof ProcessedCourseData;
-      const already = parseNumber((course[adjCol] as number) ?? 0);
-      if (already > 0) continue;
 
       const origVal = parseNumber(
         (course[yearCol as keyof ProcessedCourseData] as number) ?? ((course as any)[String(y)] as number) ?? 0

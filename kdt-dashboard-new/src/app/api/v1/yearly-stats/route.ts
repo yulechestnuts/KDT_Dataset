@@ -5,7 +5,7 @@ import { jsonResponse } from '@/lib/backend/json-response';
 import { calculateYearlyStats } from '@/lib/backend/aggregation';
 import { getProcessedCourses } from '@/lib/backend/supabase-service';
 import { cacheManager, generateCacheKey } from '@/lib/backend/cache';
-import { applyRevenueAdjustmentIfMissing } from '@/lib/backend/revenue-engine';
+import { applyRevenueAdjustment } from '@/lib/backend/revenue-engine';
 
 export async function GET(request: NextRequest) {
   try {
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     // 데이터 조회
     const courses = await getProcessedCourses();
 
-    const adjustedCourses = applyRevenueAdjustmentIfMissing(courses);
+    const adjustedCourses = applyRevenueAdjustment(courses);
 
     const filteredCourses = adjustedCourses.filter((c: any) => {
       if (!trainingTypeParam || trainingTypeParam === 'all') return true;

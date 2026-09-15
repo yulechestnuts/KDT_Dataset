@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jsonResponse } from '@/lib/backend/json-response';
 import { getProcessedCourses } from '@/lib/backend/supabase-service';
-import { applyRevenueAdjustmentIfMissing, computeCourseRevenueByMode } from '@/lib/backend/revenue-engine';
+import { applyRevenueAdjustment, computeCourseRevenueByMode } from '@/lib/backend/revenue-engine';
 import { extractYearMonth, parseDate } from '@/lib/backend/parsers';
 import { isAiCampusCourse, matchesAiCampusFilter, parseAiCampusFilter } from '@/lib/course-category';
 import { cacheManager, generateCacheKey } from '@/lib/backend/cache';
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     }
 
     const courses = await getProcessedCourses();
-    const adjustedCourses = applyRevenueAdjustmentIfMissing(courses);
+    const adjustedCourses = applyRevenueAdjustment(courses);
 
     const filtered = adjustedCourses.filter((c: any) => {
       if (!matchesAiCampusFilter(c, aiCampusFilter)) return false;

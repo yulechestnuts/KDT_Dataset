@@ -49,8 +49,27 @@ export async function POST(request: NextRequest) {
     // Supabase에 저장
     const saveResult = await saveProcessedCourses(processedData);
     if (!saveResult.success) {
+      // 예전엔 여기서 console.error 만 찍고 아래 `status: 'success'` /
+      // "성공적으로 처리되었습니다" 를 그대로 반환했다. 저장이 통째로 실패해도
+      // 올린 사람에게는 성공으로 보였다는 뜻이다. 재적재는 한 달에 한 번뿐이라
+      // 조용한 실패를 다음 달까지 모르고 지나갈 수 있다.
+      //
+      // 실제로 터질 수 있는 시나리오: `kdt_data.고유값` 에 유니크 인덱스가 없거나
+      // 부분 인덱스만 있으면 upsert(onConflict:'고유값') 가 42P10
+      // (no unique or exclusion constraint matching the ON CONFLICT specification)
+      // 으로 전건 실패한다 — supabase-dedupe-고유값.sql 참고.
       console.error('Supabase 저장 실패:', saveResult.error);
-      // 저장 실패해도 응답은 반환 (경고만)
+      return NextResponse.json(
+        {
+          status: 'error',
+          message:
+            'CSV 는 읽었지만 Supabase 저장에 실패했습니다. 데이터는 갱신되지 않았습니다.',
+          error: saveResult.error,
+          data: { parsed_courses: processedData.length, saved_courses: 0 },
+          health_check: healthCheck,
+        },
+        { status: 500 }
+      );
     }
 
     // CSV 업로드 시 모든 통계 캐시 무효화

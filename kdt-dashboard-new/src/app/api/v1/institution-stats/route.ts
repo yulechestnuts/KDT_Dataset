@@ -7,7 +7,7 @@ import { RevenueMode } from '@/lib/backend/types';
 import { getProcessedCourses } from '@/lib/backend/supabase-service';
 import { cacheManager, generateCacheKey } from '@/lib/backend/cache';
 import { parseDate } from '@/lib/backend/parsers';
-import { applyRevenueAdjustmentIfMissing } from '@/lib/backend/revenue-engine';
+import { applyRevenueAdjustment } from '@/lib/backend/revenue-engine';
 import { extractYearMonth } from '@/lib/backend/parsers';
 import {
   calculateRevenueShare,
@@ -139,7 +139,7 @@ export async function GET(request: NextRequest) {
       };
     })();
 
-    const adjustedCourses = applyRevenueAdjustmentIfMissing(courses);
+    const adjustedCourses = applyRevenueAdjustment(courses);
 
     const matchesTrainingType = (c: any): boolean => {
       if (!trainingTypeParam || trainingTypeParam === 'all') return true;

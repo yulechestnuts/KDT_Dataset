@@ -6,7 +6,7 @@ import { calculateMonthlyStatistics } from '@/lib/backend/aggregation';
 import { getProcessedCourses } from '@/lib/backend/supabase-service';
 import { cacheManager, generateCacheKey } from '@/lib/backend/cache';
 import { parseDate } from '@/lib/backend/parsers';
-import { applyRevenueAdjustmentIfMissing } from '@/lib/backend/revenue-engine';
+import { applyRevenueAdjustment } from '@/lib/backend/revenue-engine';
 import { extractYearMonth } from '@/lib/backend/parsers';
 
 function toFiniteNumber(value: unknown, fallback: number = 0): number {
@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
       };
     })();
 
-    const adjustedCourses = applyRevenueAdjustmentIfMissing(courses);
+    const adjustedCourses = applyRevenueAdjustment(courses);
 
     const filteredCourses = adjustedCourses.filter((c: any) => {
       if (!trainingTypeParam || trainingTypeParam === 'all') return true;

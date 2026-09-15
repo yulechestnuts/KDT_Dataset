@@ -58,7 +58,7 @@ export default function NcsAnalysis() {
   // 이전에는 GitHub 의 result_kdtdata_202512.csv 를 받아 클라이언트에서 파싱·보정했는데,
   // 그 파일이 리포지토리에서 사라져 404 가 나면서 페이지가 통째로 오류였다.
   // 지금은 다른 분석 페이지와 같은 Supabase 기반 API 를 쓴다.
-  // (매출 보정은 서버의 applyRevenueAdjustmentIfMissing 이 이미 적용해 내려준다)
+  // (매출 보정은 서버의 applyRevenueAdjustment 이 이미 적용해 내려준다)
   useEffect(() => {
     let cancelled = false;
     const fetchData = async () => {

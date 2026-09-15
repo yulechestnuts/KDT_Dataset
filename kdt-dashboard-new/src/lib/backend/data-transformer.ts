@@ -14,7 +14,7 @@ import {
   isLeadingCompanyCourse,
   classifyTrainingType,
 } from './institution-grouping';
-import { applyRevenueAdjustmentIfMissing } from './revenue-engine';
+import { applyRevenueAdjustment } from './revenue-engine';
 import { resolveYearColumns } from '@/lib/revenue-years';
 
 /**
@@ -198,7 +198,7 @@ export function transformRawDataToCourseData(rawData: RawCourseData): ProcessedC
   //
   // 예전엔 이 자리에서 원본 수료율로 계수를 곱해 조정 컬럼을 채웠다. 그런데
   // 미종료 회차는 수료율이 0 이라 "0% 수료"로 계산됐고, 더 나쁜 건 조정 컬럼이
-  // 채워진 탓에 revenue-engine 의 `applyRevenueAdjustmentIfMissing` 이
+  // 채워진 탓에 revenue-engine 의 `applyRevenueAdjustment` 이
   // `이미 조정값이 있으면 유지` 가드에 걸려 **추정 사다리가 통째로 안 돌았다.**
   // 수료율 추정은 전체 데이터가 있어야 가능하므로 배열 변환의 마지막 단계
   // (transformRawDataArray)에서 한 번에 처리한다.
@@ -262,5 +262,5 @@ export function transformRawDataToCourseData(rawData: RawCourseData): ProcessedC
  */
 export function transformRawDataArray(rawDataArray: RawCourseData[]): ProcessedCourseData[] {
   // 보정은 반드시 배열 단위로 — 미종료 회차의 수료율 추정에 전체 표본이 필요하다.
-  return applyRevenueAdjustmentIfMissing(rawDataArray.map(transformRawDataToCourseData));
+  return applyRevenueAdjustment(rawDataArray.map(transformRawDataToCourseData));
 }
