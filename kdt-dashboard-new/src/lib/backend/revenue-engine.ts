@@ -3,11 +3,19 @@
 import { ProcessedCourseData, RevenueMode } from './types';
 import { parseNumber, parsePercentage } from './parsers';
 import { extractRevenueYears } from '@/lib/revenue-years';
+import { isCompletionCountable } from '@/lib/completion-rule';
+import {
+  calculateRevenueAdjustmentFactor,
+  type CompletionRateSource,
+} from '@/lib/revenue-factor';
 import {
   retentionWeights,
   getCourseDurationMonths,
   getMonthIndexInCourse,
 } from './retention-curve';
+
+// 계수의 정의는 @/lib/revenue-factor 한 곳에만 있다. 기존 import 경로를 깨지 않도록 재수출한다.
+export { calculateRevenueAdjustmentFactor } from '@/lib/revenue-factor';
 
 /**
  * 연·월 튜플 표기 (1-indexed month). API 파라미터 YYYY-MM에서 파싱한 값과 동일 형태.
@@ -99,141 +107,182 @@ function getAvailableRevenueYears(course: ProcessedCourseData): number[] {
   return extractRevenueYears(course);
 }
 
-function calculateOverallCompletionRatePercent(courses: ProcessedCourseData[]): number {
-  const valid = courses.filter((c) => (c.수료인원 || 0) > 0 && (c['수강신청 인원'] || 0) > 0);
-  const totalEnrollment = valid.reduce((sum, c) => sum + (c['수강신청 인원'] || 0), 0);
-  const totalGraduates = valid.reduce((sum, c) => sum + (c.수료인원 || 0), 0);
-  if (totalEnrollment <= 0) return 0;
-  return (totalGraduates / totalEnrollment) * 100;
+// 수료율 추정에 쓸 표본은 @/lib/completion-rule 의 기준을 그대로 따른다.
+//
+// 예전엔 여기서 `수료인원 > 0` 만 봤다. 그러면 신청 93명에 수료인원 1명만 먼저
+// 올라온 부분반영 과정이 표본으로 들어와 수료율 1.1% 를 만들고, 그 과정의 매출이
+// 통째로 깎였다. completion-rule 이 같은 함정을 수료율 KPI 쪽에서 이미 막아 두었는데
+// 매출 쪽만 적용이 안 돼 있었다.
+function isMeasuredCompletion(c: ProcessedCourseData, now: Date): boolean {
+  return isCompletionCountable(
+    {
+      '수강신청 인원': c['수강신청 인원'],
+      수료인원: c.수료인원,
+      과정종료일: c.과정종료일,
+    },
+    now
+  );
 }
 
-function computeAverageCompletionRateByKey(
+function measuredCompletionRatePercent(c: ProcessedCourseData): number {
+  const enrolled = c['수강신청 인원'] || 0;
+  if (enrolled <= 0) return 0;
+  return ((c.수료인원 || 0) / enrolled) * 100;
+}
+
+/**
+ * 인원가중 수료율. 단순평균이 아니라 Σ수료 / Σ신청 이다.
+ *
+ * 비율을 추정하는데 단순평균을 쓰면 5명짜리 회차와 60명짜리 회차가 같은 무게를
+ * 갖는다. 매출은 인원에 비례하므로 인원가중이 맞다.
+ */
+function completionRateByKey(
   courses: ProcessedCourseData[],
-  getKey: (c: ProcessedCourseData) => string | undefined
+  now: Date,
+  getKey: (c: ProcessedCourseData) => string | undefined,
+  minSamples: number
 ): Map<string, number> {
-  const sums = new Map<string, number>();
-  const counts = new Map<string, number>();
+  const enrolled = new Map<string, number>();
+  const graduated = new Map<string, number>();
+  const samples = new Map<string, number>();
 
   for (const c of courses) {
-    if ((c.수료인원 || 0) <= 0 || (c['수강신청 인원'] || 0) <= 0) continue;
+    if (!isMeasuredCompletion(c, now)) continue;
     const key = getKey(c);
     if (!key) continue;
-    const rate = ((c.수료인원 || 0) / (c['수강신청 인원'] || 1)) * 100;
-    sums.set(key, (sums.get(key) || 0) + rate);
-    counts.set(key, (counts.get(key) || 0) + 1);
+    enrolled.set(key, (enrolled.get(key) || 0) + (c['수강신청 인원'] || 0));
+    graduated.set(key, (graduated.get(key) || 0) + (c.수료인원 || 0));
+    samples.set(key, (samples.get(key) || 0) + 1);
   }
 
   const result = new Map<string, number>();
-  for (const [key, sum] of sums.entries()) {
-    const count = counts.get(key) || 0;
-    if (count > 0) result.set(key, sum / count);
+  for (const [key, denom] of enrolled.entries()) {
+    if (denom <= 0) continue;
+    if ((samples.get(key) || 0) < minSamples) continue;
+    result.set(key, ((graduated.get(key) || 0) / denom) * 100);
   }
   return result;
 }
 
-function computeFirstTimeCourseSet(courses: ProcessedCourseData[]): Set<string> {
-  const courseIdEarliestStart = new Map<string, number>();
-  for (const c of courses) {
-    const id = c['훈련과정 ID'];
-    if (!id) continue;
-    const t = new Date(c.과정시작일).getTime();
-    if (!Number.isFinite(t)) continue;
-    const prev = courseIdEarliestStart.get(id);
-    if (prev === undefined || t < prev) {
-      courseIdEarliestStart.set(id, t);
-    }
-  }
+/**
+ * 같은 과정의 다른 회차는 표본 1개라도 쓴다. 남의 평균보다 자기 과거가 언제나 낫다.
+ * 기관·NCS 레벨은 3회차 이상 모였을 때만 쓴다 — 한 회차짜리 평균은 추정이 아니라 복사다.
+ */
+const MIN_SAMPLES_SAME_COURSE = 1;
+const MIN_SAMPLES_PEER_GROUP = 3;
 
-  const firstTime = new Set<string>();
-  for (const c of courses) {
-    const id = c['훈련과정 ID'];
-    if (!id) continue;
-    const earliest = courseIdEarliestStart.get(id);
-    if (earliest === undefined) continue;
-    const t = new Date(c.과정시작일).getTime();
-    if (Number.isFinite(t) && t === earliest) {
-      firstTime.add(c.고유값);
-    }
-  }
-
-  return firstTime;
+export interface CompletionRateEstimate {
+  /** 매출 보정에 실제로 쓴 수료율(%). 추정치일 수 있다. */
+  rate: number;
+  source: CompletionRateSource;
 }
 
-function calculateAdjustedRevenueForCourse(params: {
-  course: ProcessedCourseData;
-  originalRevenue: number;
-  overallCompletionRatePercent: number;
-  courseCompletionRatePercent?: number;
-  institutionCompletionRatePercent?: number;
-  isFirstTimeCourse: boolean;
-}): number {
-  const {
-    course,
-    originalRevenue,
-    overallCompletionRatePercent,
-    courseCompletionRatePercent,
-    institutionCompletionRatePercent,
-    isFirstTimeCourse,
-  } = params;
+/** 수료율 추정 사다리. 자기 과거 → 좁은 피어 → 넓은 피어 → 전체 순. */
+function buildCompletionRateEstimator(courses: ProcessedCourseData[], now: Date) {
+  const bySameCourse = completionRateByKey(
+    courses, now, (c) => c['훈련과정 ID'] || undefined, MIN_SAMPLES_SAME_COURSE
+  );
+  const byInstNcs = completionRateByKey(
+    courses, now,
+    (c) => (c.훈련기관 && c.NCS코드 ? `${c.훈련기관}|${c.NCS코드}` : undefined),
+    MIN_SAMPLES_PEER_GROUP
+  );
+  const byInstitution = completionRateByKey(
+    courses, now, (c) => c.훈련기관 || undefined, MIN_SAMPLES_PEER_GROUP
+  );
+  const byNcs = completionRateByKey(
+    courses, now, (c) => c.NCS코드 || undefined, MIN_SAMPLES_PEER_GROUP
+  );
+  const overall = completionRateByKey(courses, now, () => 'ALL', 1).get('ALL');
 
-  if (originalRevenue === 0) return 0;
-  if ((course['수강신청 인원'] || 0) === 0) return originalRevenue;
-
-  let usedCompletionRatePercent = ((course.수료인원 || 0) / (course['수강신청 인원'] || 1)) * 100;
-
-  // 수료인원이 0인 경우, 또는 초회차인 경우 예상 수료율 결정
-  if ((course.수료인원 || 0) === 0 || isFirstTimeCourse) {
-    let estimated = 0;
-    if (courseCompletionRatePercent !== undefined && courseCompletionRatePercent > 0) {
-      estimated = courseCompletionRatePercent;
-    } else if (institutionCompletionRatePercent !== undefined && institutionCompletionRatePercent > 0) {
-      estimated = institutionCompletionRatePercent;
-    } else {
-      estimated = overallCompletionRatePercent;
+  return function estimate(course: ProcessedCourseData): CompletionRateEstimate {
+    // 실측이 있으면 무엇으로도 대체하지 않는다.
+    //
+    // 예전엔 '초회차'라는 이유만으로 실측 수료율을 과정 평균으로 덮어썼다.
+    // 이미 끝나서 수료인원이 확정된 회차의 실측값을 평균으로 바꾸는 것은
+    // 보정이 아니라 데이터를 버리는 일이다.
+    if (isMeasuredCompletion(course, now)) {
+      return { rate: measuredCompletionRatePercent(course), source: '실측' };
     }
-    usedCompletionRatePercent = estimated;
-  }
 
-  const factor = calculateRevenueAdjustmentFactor(usedCompletionRatePercent);
-  return originalRevenue * factor;
+    const picked = ((): CompletionRateEstimate => {
+      const sameCourse = course['훈련과정 ID'] ? bySameCourse.get(course['훈련과정 ID']) : undefined;
+      if (sameCourse && sameCourse > 0) return { rate: sameCourse, source: '동일과정' };
+
+      if (course.훈련기관 && course.NCS코드) {
+        const v = byInstNcs.get(`${course.훈련기관}|${course.NCS코드}`);
+        if (v && v > 0) return { rate: v, source: '기관×NCS' };
+      }
+
+      const inst = course.훈련기관 ? byInstitution.get(course.훈련기관) : undefined;
+      if (inst && inst > 0) return { rate: inst, source: '기관' };
+
+      const ncs = course.NCS코드 ? byNcs.get(course.NCS코드) : undefined;
+      if (ncs && ncs > 0) return { rate: ncs, source: 'NCS' };
+
+      if (overall && overall > 0) return { rate: overall, source: '전체' };
+
+      return { rate: 0, source: '미확정' };
+    })();
+
+    // 이미 올라온 수료인원은 수료율의 하한이다 - 반영이 늦어질 뿐 줄지는 않는다.
+    //
+    // 유예 기간(3주) 안인데 수료인원은 사실상 다 올라온 회차가 실제로 있다.
+    // 거기에 과정 평균을 그대로 씌우면 추정치가 이미 확정된 수료인원보다 낮아져,
+    // 매출이 `매출 최소`(= 훈련비 x 수료인원) 아래로 내려간다. 이미 수료한 사람
+    // 몫보다 적게 버는 경우는 없으므로 하한을 우선한다.
+    // (실측 32건에서 발생했고 전부 종료 후 2~3주 구간이었다)
+    const floor = measuredCompletionRatePercent(course);
+    if (floor > picked.rate) return { rate: floor, source: '부분실측' };
+
+    return picked;
+  };
 }
 
+/**
+ * 매출 보정을 적용한다. 이미 조정값이 있으면 그대로 둔다.
+ *
+ * 예전엔 업로드 시점(data-transformer)이 추정 없는 수료율로 조정 컬럼을 먼저
+ * 채워 버려서, 여기 있는 추정 사다리가 `이미 조정값이 있으면 유지` 가드에 걸려
+ * **한 번도 실행되지 않았다.** 지금은 data-transformer 가 조정 컬럼을 비워 두고
+ * 배열 변환 끝에서 이 함수를 부른다.
+ */
 export function applyRevenueAdjustmentIfMissing(
-  courses: ProcessedCourseData[]
+  courses: ProcessedCourseData[],
+  now: Date = new Date()
 ): ProcessedCourseData[] {
-  const overallCompletionRatePercent = calculateOverallCompletionRatePercent(courses);
-  const byCourseId = computeAverageCompletionRateByKey(courses, (c) => c['훈련과정 ID']);
-  const byInstitution = computeAverageCompletionRateByKey(courses, (c) => c.훈련기관);
-  const firstTime = computeFirstTimeCourseSet(courses);
+  const estimate = buildCompletionRateEstimator(courses, now);
 
   return courses.map((course) => {
-    // 이미 조정값이 있으면 유지
-    const hasAnyAdjustedYear = Object.keys(course).some((k) => k.startsWith('조정_') && /\d{4}년$/.test(k));
+    // 이미 조정값이 있으면 유지.
+    //
+    // 키 존재가 아니라 **값**으로 판단한다. 조정 컬럼은 늘 만들어지므로(0 으로라도)
+    // 키만 보면 언제나 '조정됨'으로 읽혀 보정이 통째로 건너뛰어진다 —
+    // 이 파일이 예전에 겪은 그 버그다.
+    const hasAdjustedYearValue = Object.keys(course).some(
+      (k) => /^조정_\d{4}년$/.test(k) && (Number((course as any)[k]) || 0) > 0
+    );
     const hasAdjustedTotal = (course.조정_실매출대비 ?? 0) > 0;
-    if (hasAnyAdjustedYear && hasAdjustedTotal) {
+    if (hasAdjustedYearValue && hasAdjustedTotal) {
       return course;
     }
 
-    const isFirstTimeCourse = firstTime.has(course.고유값);
-    const courseRate = course['훈련과정 ID'] ? byCourseId.get(course['훈련과정 ID']) : undefined;
-    const instRate = course.훈련기관 ? byInstitution.get(course.훈련기관) : undefined;
-
-    const baseTotalRevenue = parseNumber(course.누적매출 ?? course['실 매출 대비'] ?? 0);
-    const adjustedTotalRevenue = calculateAdjustedRevenueForCourse({
-      course,
-      originalRevenue: baseTotalRevenue,
-      overallCompletionRatePercent,
-      courseCompletionRatePercent: courseRate,
-      institutionCompletionRatePercent: instRate,
-      isFirstTimeCourse,
-    });
+    const { rate, source } = estimate(course);
+    // 수강신청 인원이 없으면 비율 자체가 정의되지 않는다 — 원본을 그대로 둔다.
+    const factor =
+      (course['수강신청 인원'] || 0) > 0 ? calculateRevenueAdjustmentFactor(rate) : 1.0;
 
     const next: ProcessedCourseData = {
       ...course,
-      조정_실매출대비: (course.조정_실매출대비 ?? 0) > 0 ? course.조정_실매출대비 : adjustedTotalRevenue,
+      조정_실매출대비:
+        (course.조정_실매출대비 ?? 0) > 0
+          ? course.조정_실매출대비
+          : parseNumber(course.누적매출 ?? course['실 매출 대비'] ?? 0) * factor,
+      적용수료율: rate,
+      수료율_출처: source,
     };
 
-    // 연도별 조정 매출도 동일 로직으로 생성 (조정 컬럼이 없거나 0일 때만)
+    // 연도별 조정 매출도 동일 계수로 생성 (조정 컬럼이 없거나 0일 때만)
     const years = getAvailableRevenueYears(course);
     for (const y of years) {
       const yearCol = `${y}년` as const;
@@ -246,35 +295,11 @@ export function applyRevenueAdjustmentIfMissing(
       );
       if (origVal <= 0) continue;
 
-      (next as any)[adjCol] = calculateAdjustedRevenueForCourse({
-        course,
-        originalRevenue: origVal,
-        overallCompletionRatePercent,
-        courseCompletionRatePercent: courseRate,
-        institutionCompletionRatePercent: instRate,
-        isFirstTimeCourse,
-      });
+      (next as any)[adjCol] = origVal * factor;
     }
 
     return next;
   });
-}
-
-/**
- * 매출 조정 계수 계산
- */
-export function calculateRevenueAdjustmentFactor(completionRate: number): number {
-  if (completionRate >= 100.0) {
-    return 1.25;
-  } else if (completionRate >= 75.0) {
-    // 선형 보간: 75%에서 1.0, 100%에서 1.25
-    return 1.0 + (0.25 * (completionRate - 75.0)) / 25.0;
-  } else if (completionRate >= 50.0) {
-    // 선형 보간: 50%에서 0.75, 75%에서 1.0
-    return 0.75 + (0.25 * (completionRate - 50.0)) / 25.0;
-  } else {
-    return 0.75;
-  }
 }
 
 /**

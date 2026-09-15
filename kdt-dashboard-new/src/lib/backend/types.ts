@@ -1,3 +1,4 @@
+import type { CompletionRateSource } from '@/lib/revenue-factor';
 // 백엔드 통계 엔진 타입 정의
 
 export interface RawCourseData {
@@ -84,6 +85,13 @@ export interface ProcessedCourseData {
   /** DB에 컬럼이 늦게 추가돼 기존 객체 리터럴에는 없을 수 있다 */
   조정_2027년?: number;
   조정_실매출대비: number;
+  /**
+   * 매출 보정에 실제로 쓴 수료율(%). 실측이 없으면 추정치가 들어간다.
+   * 원본 `수료율` 컬럼과 달리, 미종료 회차에서도 0 이 아니다.
+   */
+  적용수료율?: number;
+  /** 위 값의 출처. '실측' 이 아니면 그 과정의 매출은 추정이다. */
+  수료율_출처?: CompletionRateSource;
   /** 자비부담금(원). AI캠퍼스 과정 판정에 사용 — src/lib/course-category.ts */
   자비부담금?: number;
   [key: string]: any;

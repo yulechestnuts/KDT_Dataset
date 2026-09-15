@@ -14,7 +14,7 @@ import {
   isLeadingCompanyCourse,
   classifyTrainingType,
 } from './institution-grouping';
-import { calculateRevenueAdjustmentFactor } from './revenue-engine';
+import { applyRevenueAdjustmentIfMissing } from './revenue-engine';
 import { resolveYearColumns } from '@/lib/revenue-years';
 
 /**
@@ -181,27 +181,27 @@ export function transformRawDataToCourseData(rawData: RawCourseData): ProcessedC
       (rawData as any)[yearCol] ?? (rawData as any)[yearDigits] ?? 0
     );
     yearlyRevenues[yearCol] = originalRevenue;
-    adjustedYearlyRevenues[`조정_${yearCol}`] = originalRevenue; // 초기값은 원본과 동일
+    // 조정 컬럼은 여기서 채우지 않는다 — 아래 주석 참고.
+    adjustedYearlyRevenues[`조정_${yearCol}`] = 0;
   }
 
-  // 수료율에 따른 매출 보정 적용
   const completionRate = parsePercentage(rawData.수료율 || 0);
-  const adjustmentFactor = calculateRevenueAdjustmentFactor(completionRate);
 
-  // 조정된 연도별 매출 계산
-  for (const yearCol of yearColumns) {
-    const adjKey = `조정_${yearCol}`;
-    adjustedYearlyRevenues[adjKey] = adjustedYearlyRevenues[adjKey] * adjustmentFactor;
-  }
-
-  // 조정된 실매출대비
   const 실매출대비 = parseNumber(
     (rawData as any).실매출대비 ||
       (rawData as any)['실 매출 대비'] ||
       (rawData as any)['실 매출 대비 '] ||
       0
   );
-  const 조정_실매출대비 = 실매출대비 * adjustmentFactor;
+
+  // 매출 보정은 여기(행 단위)서 하지 않는다.
+  //
+  // 예전엔 이 자리에서 원본 수료율로 계수를 곱해 조정 컬럼을 채웠다. 그런데
+  // 미종료 회차는 수료율이 0 이라 "0% 수료"로 계산됐고, 더 나쁜 건 조정 컬럼이
+  // 채워진 탓에 revenue-engine 의 `applyRevenueAdjustmentIfMissing` 이
+  // `이미 조정값이 있으면 유지` 가드에 걸려 **추정 사다리가 통째로 안 돌았다.**
+  // 수료율 추정은 전체 데이터가 있어야 가능하므로 배열 변환의 마지막 단계
+  // (transformRawDataArray)에서 한 번에 처리한다.
 
   // 훈련 유형 분류
   const trainingType = classifyTrainingType(
@@ -244,7 +244,7 @@ export function transformRawDataToCourseData(rawData: RawCourseData): ProcessedC
     // 연도 키는 yearColumns 에서 동적으로 펼친다 (리터럴 나열 금지)
     ...yearlyRevenues,
     ...adjustedYearlyRevenues,
-    조정_실매출대비: 조정_실매출대비,
+    조정_실매출대비: 0,
     훈련유형: trainingType,
     NCS명: String(rawData.NCS명 || '').trim(),
     NCS코드: String(rawData.NCS코드 || '').trim(),
@@ -261,5 +261,6 @@ export function transformRawDataToCourseData(rawData: RawCourseData): ProcessedC
  * 원본 데이터 배열을 처리된 데이터 배열로 변환
  */
 export function transformRawDataArray(rawDataArray: RawCourseData[]): ProcessedCourseData[] {
-  return rawDataArray.map(transformRawDataToCourseData);
+  // 보정은 반드시 배열 단위로 — 미종료 회차의 수료율 추정에 전체 표본이 필요하다.
+  return applyRevenueAdjustmentIfMissing(rawDataArray.map(transformRawDataToCourseData));
 }

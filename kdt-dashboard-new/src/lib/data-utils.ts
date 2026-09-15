@@ -1,4 +1,5 @@
 import { resolveRevenueYears, toAdjustedYearColumns } from '@/lib/revenue-years';
+import { calculateRevenueAdjustmentFactor } from '@/lib/revenue-factor';
 import { formatNumber } from "@/utils/formatters";
 import { parsePercentageNullable, parseDate as parseDateStrict } from "@/lib/backend/parsers";
 import { isCompletionCountable } from "@/lib/completion-rule";
@@ -553,13 +554,9 @@ export function calculateCompletionRate(data: CourseData[], year?: number): numb
   return totalEnrollment > 0 ? Number(((totalCompletion / totalEnrollment) * 100).toFixed(1)) : 0;
 }
 
-// 매출 보정 계수
-export function calculateRevenueAdjustmentFactor(completionRate: number): number {
-  if (completionRate >= 100) return 1.25;
-  if (completionRate >= 75) return 1.0 + (0.25 * (completionRate - 75) / 25);
-  if (completionRate >= 50) return 0.75 + (0.25 * (completionRate - 50) / 25);
-  return 0.75;
-}
+// 매출 보정 계수 — 정의는 @/lib/revenue-factor 한 곳에만 둔다.
+// 예전엔 여기와 backend/revenue-engine.ts 에 같은 계단식 분기가 복붙돼 있었다.
+export { calculateRevenueAdjustmentFactor };
 
 // 개별 과정 매출 계산
 //
