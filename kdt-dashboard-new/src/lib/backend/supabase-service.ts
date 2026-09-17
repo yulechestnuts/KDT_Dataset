@@ -230,6 +230,10 @@ export async function saveProcessedCourses(
         throw error;
       }
 
+      // 방금 쓴 데이터를 이 인스턴스가 곧바로 보게 한다.
+      // 다른 인스턴스는 버전이 바뀐 것을 스스로 알아챈다.
+      invalidateCourseCache();
+
       return { success: true };
     });
   } catch (error) {
@@ -533,13 +537,111 @@ async function fetchProcessedCourses(): Promise<ProcessedCourseData[]> {
  */
 let inFlightFetch: Promise<ProcessedCourseData[]> | null = null;
 
+// ── 행 캐시 (데이터 버전 기준) ─────────────────────────────────────────
+//
+// 예전에는 행 캐시가 **아예 없었다.** 집계 결과 캐시(cacheManager)만 있고,
+// 그게 비면 매번 전량을 다시 끌어왔다. 캐시 키가 연도·월·모드·필터 조합마다
+// 따로라 필터를 바꿔 누를 때마다 전량 조회가 한 번씩 났다.
+//
+// 실측(2026-09-17): 7,505행 전량이 **5.75MB**. Supabase 무료 egress 는 5GB/월이라
+// 전량 조회 약 890회면 한도다. 필터 조합 수를 생각하면 넘길 수 있는 수치다.
+//
+// 데이터는 하루 한 번(수집 후)만 바뀐다. 그래서 **버전이 같으면 다시 안 끌어온다.**
+// 버전 조회는 200바이트 남짓이라 전량 조회의 3만분의 1이다.
+//
+// 이 구조는 CLAUDE.md §2.1 의 "Vercel 다중 인스턴스 스테일 캐시" 도 같이 고친다 —
+// 업로드로 데이터가 바뀌면 버전이 달라지므로 **모든 인스턴스가 스스로 알아챈다.**
+// 무효화 신호를 인스턴스 간에 전파할 필요가 없다.
+
+let cachedRows: ProcessedCourseData[] | null = null;
+let cachedVersion: string | null = null;
+let versionCheckedAt = 0;
+
+/** 버전 재확인 간격. 매 요청마다 물으면 그것도 낭비다. */
+const VERSION_RECHECK_MS = 30_000;
+/** 버전 조회가 계속 실패해도 이만큼 지나면 강제로 다시 끌어온다. */
+const HARD_REFRESH_MS = 6 * 60 * 60 * 1000;
+let lastFullFetchAt = 0;
+
+/**
+ * 데이터 버전 문자열. 바뀌면 캐시를 버린다.
+ *
+ * `max(updated_at)` 만으로는 부족하다 — 행이 **삭제**되면 최댓값이 그대로일 수 있다.
+ * 그래서 행 수를 같이 본다. overrides 는 별도 테이블이라 kdt_data 의 updated_at 을
+ * 건드리지 않으므로 그쪽 건수도 포함한다 (사람이 선도기업을 고쳐도 반영되도록).
+ */
+async function getDataVersion(): Promise<string | null> {
+  try {
+    const main = await supabase
+      .from(TABLE_NAME)
+      .select('updated_at', { count: 'exact' })
+      .order('updated_at', { ascending: false })
+      .limit(1);
+    if (main.error) throw main.error;
+
+    const ov = await supabase
+      .from(OVERRIDES_TABLE)
+      .select('updated_at', { count: 'exact' })
+      .order('updated_at', { ascending: false })
+      .limit(1);
+    // overrides 조회 실패는 치명적이지 않다 — 본 테이블 버전만으로도 대부분 잡힌다.
+    const ovPart = ov.error ? 'x' : `${(ov.data as any)?.[0]?.updated_at ?? ''}:${ov.count ?? ''}`;
+
+    return `${(main.data as any)?.[0]?.updated_at ?? ''}:${main.count ?? ''}|${ovPart}`;
+  } catch (error) {
+    console.error('[캐시] 데이터 버전 조회 실패:', error);
+    return null;
+  }
+}
+
+/** 업로드 직후처럼 즉시 갱신이 필요할 때. */
+export function invalidateCourseCache(): void {
+  cachedRows = null;
+  cachedVersion = null;
+  versionCheckedAt = 0;
+}
+
+/** 진단용 — 지금 캐시가 어떤 상태인지. */
+export function getCourseCacheStatus() {
+  return {
+    cached: cachedRows !== null,
+    rows: cachedRows?.length ?? 0,
+    version: cachedVersion,
+    ageMs: cachedRows ? Date.now() - lastFullFetchAt : null,
+  };
+}
+
 /**
  * Supabase에서 처리된 과정 데이터 조회
  */
-export function getProcessedCourses(): Promise<ProcessedCourseData[]> {
+export async function getProcessedCourses(): Promise<ProcessedCourseData[]> {
+  if (cachedRows) {
+    const now = Date.now();
+    const stale = now - lastFullFetchAt > HARD_REFRESH_MS;
+    if (!stale && now - versionCheckedAt < VERSION_RECHECK_MS) return cachedRows;
+
+    const version = await getDataVersion();
+    versionCheckedAt = now;
+    // 버전을 못 재면 캐시를 유지한다 — 조회 장애 때 전량 조회를 반복해
+    // egress 를 태우는 것이 더 나쁘다. 단 HARD_REFRESH_MS 는 넘기지 않는다.
+    if (!stale && (version === null || version === cachedVersion)) {
+      if (version !== null) cachedVersion = version;
+      return cachedRows;
+    }
+  }
+
   if (inFlightFetch) return inFlightFetch;
 
-  inFlightFetch = fetchProcessedCourses().finally(() => {
+  inFlightFetch = (async () => {
+    const version = await getDataVersion();
+    const rows = await fetchProcessedCourses();
+    cachedRows = rows;
+    cachedVersion = version;
+    versionCheckedAt = Date.now();
+    lastFullFetchAt = Date.now();
+    console.log(`[캐시] 전량 조회 ${rows.length}행 (버전 ${version ?? '알수없음'})`);
+    return rows;
+  })().finally(() => {
     inFlightFetch = null;
   });
 
