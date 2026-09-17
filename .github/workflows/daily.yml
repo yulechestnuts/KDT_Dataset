@@ -14,14 +14,17 @@ name: KDT 데이터셋 갱신
 
 on:
   schedule:
-    # 02:00 UTC = 11:00 KST. work24 가 한가한 시간대이고,
-    # 회사 PC 파이프라인(09:20/10:00/10:30 KST)과 겹치지 않는다.
-    # Actions 스케줄은 5~30분 늦는 일이 흔하다 — 이 파이프라인은 시각에 민감하지 않다.
-    - cron: '0 2 * * *'
-    # 일요일 03:00 UTC = 12:00 KST — 3년 전량.
+    # 21:00 UTC = 다음날 06:00 KST.
+    #
+    # 왜 이 시각인가: **아침에 사이트를 열었을 때 이미 최신이어야 의미가 있다.**
+    # 11:00 KST 에 시작하면 끝나는 게 11시 반이라 오전 업무에 늦다.
+    # Actions 스케줄은 5~30분 늦는 일이 흔하므로, 06:00 시작이면 지연을 감안해도
+    # 07시 전후에는 끝난다. work24 도 새벽이라 한가하다.
+    - cron: '0 21 * * *'
+    # 토요일 20:00 UTC = 일요일 05:00 KST — 3년 전량 (오래 걸리므로 더 일찍).
     # 매일 창은 좁아서 오래된 과정의 실적 확정(6개월 취업률 등)을 놓친다.
     # 주 1회 전량이 그걸 따라잡는다.
-    - cron: '0 3 * * 0'
+    - cron: '0 20 * * 6'
   workflow_dispatch:
     inputs:
       full:
@@ -66,7 +69,7 @@ jobs:
         run: |
           # 일요일 정기 실행도 전량으로 돈다 (schedule 은 cron 문자열로 구분한다).
           FULL="${{ inputs.full }}"
-          if [ "${{ github.event.schedule }}" = "0 3 * * 0" ]; then FULL=true; fi
+          if [ "${{ github.event.schedule }}" = "0 20 * * 6" ]; then FULL=true; fi
           if [ "$FULL" = "true" ]; then
             # 목록 API 는 3년치만 준다 (2021년 조회 → 0건). 그보다 넓게 잡아도 의미 없다.
             START=$(date -u -d '3 years ago' +%Y0101)
@@ -141,6 +144,35 @@ jobs:
           SITE_URL: ${{ vars.SITE_URL || 'https://kdt-dataset-svth.vercel.app' }}
           UPLOAD_FORCE: ${{ inputs.force_upload && '1' || '0' }}
         run: node pipeline/upload.mjs final.csv
+
+      # 매일 돌아가는 것을 "천천히 보면서" 가려면, 로그를 파헤치지 않고도
+      # 오늘 무엇이 얼마나 바뀌었는지가 한 화면에 보여야 한다.
+      # Actions 실행 페이지 맨 위에 붙는 요약이다.
+      - name: 실행 요약
+        if: always()
+        run: |
+          {
+            echo "## KDT 데이터셋 갱신 (${{ steps.window.outputs.mode }})"
+            echo ""
+            echo "| 항목 | 값 |"
+            echo "|---|---|"
+            echo "| 수집 창 | ${{ steps.window.outputs.start }} ~ ${{ steps.window.outputs.end }} |"
+            for f in master.csv collected.csv final.csv; do
+              if [ -f "$f" ]; then
+                echo "| $f | $(($(wc -l < "$f") - 1))행 |"
+              else
+                echo "| $f | (없음) |"
+              fi
+            done
+            if [ -f final.csv ] && [ -f master.csv ]; then
+              echo "| 신규 행 | $(( $(wc -l < final.csv) - $(wc -l < master.csv) ))행 |"
+            fi
+            if [ -f satisfaction.csv ]; then
+              echo "| 만족도 신규 수집 | $(($(wc -l < satisfaction.csv) - 1))건 |"
+            fi
+            echo ""
+            echo "결과: **${{ job.status }}**"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # ⚠ 이 리포는 공개다. 아티팩트는 런을 볼 수 있는 사람이면 내려받을 수 있다.
       #   collected.csv/final.csv 에는 매출·선도기업 등 직접 만든 값이 들어 있다.
