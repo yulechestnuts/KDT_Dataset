@@ -25,7 +25,7 @@ on:
         type: boolean
         default: false
       refresh_satisfaction:
-        description: '이미 값이 있는 만족도도 최신값으로 덮기'
+        description: '기간 무시하고 만족도 전부 덮기 (평소엔 불필요)'
         type: boolean
         default: false
       force_upload:
@@ -93,12 +93,14 @@ jobs:
             --out collected.csv \
             --workers 6
 
+      # 만족도는 종료 후 한 달이면 고정된다 (2026-09-17 실측: 30일 넘은 32건 전수 일치,
+      # 16~20일 구간은 25건 중 13건이 움직였다). 그래서 조회 대상을 시간으로 자른다.
       - name: 3) 만족도 대상 선별
         env:
           PYTHONIOENCODING: utf-8
         run: |
           python pipeline/pick_satisfaction_targets.py \
-            --input collected.csv --out sat_targets.csv --max-days 400
+            --input collected.csv --out sat_targets.csv             --fresh-days 35 --backfill-days 120
 
       - name: 4) 회차별 만족도 수집
         env:

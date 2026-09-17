@@ -16,6 +16,21 @@
 
 ③ 의 상한을 두는 이유: 2021~2023 의 빈칸을 매일 다시 긁어봐야 계속 빈칸이다.
 포기 기준을 두지 않으면 영원히 같은 과정을 재시도한다.
+
+★ 만족도는 종료 후 한 달이면 고정된다 (2026-09-17 실측)
+   같은 (과정, 회차)를 다시 받아 DB 와 대조한 결과:
+       종료 후 16~20일   25건 중 13건 다름 (52%), 최대 1.30
+       종료 후 30~50일    8건 중  0건
+       종료 후 60~120일   8건 중  0건
+       종료 후 180~400일  8건 중  0건
+       종료 후 400일+     8건 중  0건
+   즉 값이 움직이는 구간은 **종료 직후 한 달**뿐이고, 그 뒤로는 한 건도 안 바뀐다.
+   (사용자 확인: 설문이 3주~한 달 사이에 마감된다)
+
+   그래서 조회 대상이 둘로 갈린다.
+     · 갱신 창 (종료 후 <= fresh-days) — 값이 있어도 다시 받는다. 아직 확정 전이다.
+     · 보충 창 (값이 비었고 종료 후 <= backfill-days) — 뒤늦게 올라오는 것만 줍는다.
+   그 밖은 조회 자체가 낭비다.
 """
 import argparse
 import csv
@@ -42,10 +57,10 @@ def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--input", required=True, help="collect.py 결과 CSV")
     p.add_argument("--out", required=True)
-    p.add_argument("--max-days", type=int, default=400,
-                   help="종료 후 이 일수를 넘도록 비어 있으면 포기 (기본 400일)")
-    p.add_argument("--min-days", type=int, default=0,
-                   help="종료 후 최소 이 일수는 지나야 조회 (기본 0)")
+    p.add_argument("--fresh-days", type=int, default=35,
+                   help="종료 후 이 일수 이내면 값이 있어도 다시 받는다 (기본 35일)")
+    p.add_argument("--backfill-days", type=int, default=120,
+                   help="값이 비었을 때 이 일수까지는 계속 시도한다 (기본 120일)")
     a = p.parse_args()
 
     today = date.today()
@@ -53,21 +68,30 @@ def main() -> None:
         rows = list(csv.DictReader(f))
 
     targets = []
-    reasons = {"이미있음": 0, "미종료": 0, "너무오래됨": 0, "종료일없음": 0}
+    reasons = {"미종료": 0, "고정됨(안봄)": 0, "보충기한초과": 0, "종료일없음": 0}
+    fresh = backfill = 0
     for r in rows:
-        if str(r.get("만족도") or "").strip() not in ("", "0"):
-            reasons["이미있음"] += 1
-            continue
+        has_value = str(r.get("만족도") or "").strip() not in ("", "0")
         end = parse_date(r.get("과정종료일"))
         if end is None:
             reasons["종료일없음"] += 1
             continue
-        if end > today - timedelta(days=a.min_days):
+        days = (today - end).days
+        if days < 0:
             reasons["미종료"] += 1
             continue
-        if end < today - timedelta(days=a.max_days):
-            reasons["너무오래됨"] += 1
+
+        if days <= a.fresh_days:
+            fresh += 1                      # 갱신 창 — 값이 있어도 다시 받는다
+        elif not has_value and days <= a.backfill_days:
+            backfill += 1                   # 보충 창 — 뒤늦게 올라오는 것만
+        elif has_value:
+            reasons["고정됨(안봄)"] += 1
             continue
+        else:
+            reasons["보충기한초과"] += 1
+            continue
+
         targets.append({
             "훈련과정 ID": str(r.get("훈련과정 ID") or "").strip(),
             "회차": str(r.get("회차") or "").strip(),
@@ -84,6 +108,7 @@ def main() -> None:
 
     courses = len({t["훈련과정 ID"] for t in targets})
     print(f"전체 {len(rows)}행 → 대상 {len(targets)}행 (과정 {courses}개)")
+    print(f"  갱신 창(종료 {a.fresh_days}일 이내) {fresh}행 · 보충 창(빈칸, {a.backfill_days}일 이내) {backfill}행")
     print("  제외: " + " · ".join(f"{k} {v}" for k, v in reasons.items()))
 
 

@@ -15,20 +15,27 @@ DB(5점 척도, 회차별 실값)를 20배로 뻥튀기하며 덮는다.
 - 척도를 검사한다. 5 를 넘으면 100점 값이 섞인 것이므로 **그 행은 버린다.**
   (사이트 업로드 안전장치도 같은 것을 보지만, 여기서 먼저 걸러 그날 수집을 살린다)
 
-★ 만족도는 확정 후에도 움직인다 (2026-09-17 실측)
-   같은 (과정, 회차)를 크롤러로 다시 받아 DB 와 대조했더니 **25개 중 13개가 달랐다.**
-   차이는 -1.3 ~ +0.9, 평균 -0.16 — 계통 오차가 아니라 값 자체가 바뀐 것이다.
-   (평가 참여자가 늘면서 갱신되는 것으로 보인다)
+★ 언제 덮어야 하는가 — 시간이 정해 준다 (2026-09-17 실측)
+   같은 (과정, 회차)를 다시 받아 DB 와 대조한 결과:
+       종료 후 16~20일   25건 중 13건 다름 (52%), 최대 1.30
+       종료 후 30~50일    8건 중  0건
+       종료 후 60~120일   8건 중  0건
+       종료 후 180~400일  8건 중  0건
+       종료 후 400일+     8건 중  0건
+   **값이 움직이는 구간은 종료 직후 한 달뿐이다.** 그 뒤로는 한 건도 안 바뀐다.
+   (사용자 확인: 설문이 3주~한 달 사이에 마감된다)
 
-   그래서 "빈칸만 채우기"를 계속 쓰면 DB 가 서서히 옛 값으로 굳는다.
-   반대로 매번 덮으면 과거 리포트와 숫자가 달라진다.
-   **어느 쪽이든 사람이 정할 문제이므로 기본값을 바꾸지 않고 `--refresh` 로 열어 둔다.**
-   `--dry-run` 으로 몇 건이 바뀔지 먼저 볼 수 있다.
+   그래서 "덮을까 말까"는 사람이 고를 문제가 아니다.
+     · 종료 후 <= refresh-days  → **덮는다.** 아직 확정 전이라 최신값이 맞다.
+     · 그 뒤                     → **빈칸만 채운다.** 어차피 같으므로 덮을 일이 없고,
+                                    다르다면 그건 이상 신호이므로 로그로 남긴다.
+   `--refresh` 는 기간을 무시하고 전부 덮는 수동 탈출구다. `--dry-run` 으로 먼저 볼 것.
 """
 import argparse
 import csv
 import io
 import sys
+from datetime import date, datetime
 
 for stream in (sys.stdout, sys.stderr):
     if hasattr(stream, "reconfigure"):
@@ -39,13 +46,26 @@ def norm(value) -> str:
     return str(value or "").strip()
 
 
+def days_since_end(value) -> int | None:
+    """과정 종료 후 며칠 지났는지. 파싱 불가면 None."""
+    text = norm(value)[:10]
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d"):
+        try:
+            return (date.today() - datetime.strptime(text, fmt).date()).days
+        except ValueError:
+            continue
+    return None
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--base", required=True, help="collect.py 가 만든 CSV")
     p.add_argument("--satisfaction", required=True, help="만족도 수집 결과 CSV")
     p.add_argument("--out", required=True)
+    p.add_argument("--refresh-days", type=int, default=35,
+                   help="종료 후 이 일수 이내면 기존 값도 덮는다 (기본 35일)")
     p.add_argument("--refresh", action="store_true",
-                   help="이미 값이 있는 행도 최신값으로 덮는다 (기본: 빈칸만 채움)")
+                   help="기간을 무시하고 전부 덮는다 (수동 탈출구)")
     p.add_argument("--dry-run", action="store_true",
                    help="파일을 쓰지 않고 몇 건이 바뀔지만 보고한다")
     a = p.parse_args()
@@ -86,11 +106,16 @@ def main() -> None:
         current = norm(row.get("만족도"))
         has_value = current not in ("", "0")
 
-        if has_value and not a.refresh:
+        days = days_since_end(row.get("과정종료일"))
+        # 갱신 창 안이면 덮는다. 밖이면 빈칸만 채운다.
+        in_window = a.refresh or (days is not None and days <= a.refresh_days)
+
+        if has_value and not in_window:
             kept += 1
-            # 덮지는 않지만, 값이 움직였는지는 세어 둔다 — 드리프트를 보는 창이다.
+            # 덮지는 않지만, 값이 움직였는지는 세어 둔다.
+            # 창 밖에서 값이 달라졌다면 그건 드리프트가 아니라 **이상 신호**다.
             if value and abs(float(value) - float(current)) >= 0.05:
-                changed.append((row.get("고유값"), current, value))
+                changed.append((row.get("고유값"), current, value, days))
             continue
 
         if not value:
@@ -100,7 +125,7 @@ def main() -> None:
 
         if has_value:
             if abs(float(value) - float(current)) >= 0.05:
-                changed.append((row.get("고유값"), current, value))
+                changed.append((row.get("고유값"), current, value, days))
             else:
                 kept += 1
                 continue
@@ -118,14 +143,18 @@ def main() -> None:
     print(f"만족도 수집 {len(sat_rows)}행 → 유효 {len(sat)}건")
     if dropped_scale:
         print(f"  [!] 5점 초과라 버린 행 {dropped_scale}건 (100점 척도 혼입)")
-    mode = "덮어쓰기" if a.refresh else "빈칸만"
+    mode = "전부 덮어쓰기" if a.refresh else f"종료 {a.refresh_days}일 이내 덮어쓰기"
     tail = " (dry-run — 파일 안 씀)" if a.dry_run else f" → {a.out}"
     print(f"[{mode}] 기존 유지 {kept}행 · 반영 {filled}행 · 전체 {len(rows)}행{tail}")
     if changed:
-        print(f"  값이 움직인 행 {len(changed)}건" +
-              ("" if a.refresh else " (덮지 않음 — --refresh 로 반영 가능)"))
-        for k, before, after in changed[:5]:
-            print(f"    {k}: {before} → {after}")
+        late = [c for c in changed if c[3] is not None and c[3] > a.refresh_days]
+        print(f"  값이 움직인 행 {len(changed)}건")
+        for k, before, after, d in changed[:5]:
+            print(f"    {k}: {before} → {after} (종료 후 {d}일)")
+        if late and not a.refresh:
+            # 실측상 한 달 지나면 안 움직인다. 그런데 움직였다면 확인이 필요하다.
+            print(f"  [!] 갱신 창({a.refresh_days}일) 밖인데 값이 달라진 행 {len(late)}건 — "
+                  "확정 후에는 바뀌지 않아야 한다. 원인 확인 필요.")
 
 
 if __name__ == "__main__":
