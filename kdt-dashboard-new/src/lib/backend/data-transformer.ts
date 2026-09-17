@@ -234,6 +234,15 @@ export function transformRawDataToCourseData(rawData: RawCourseData): ProcessedC
     만족도: parsePercentage(rawData.만족도 || 0),
     평가인원: parseNumber((rawData as any).평가인원 || (rawData as any)['평가 인원'] || 0),
     훈련비: parseNumber(rawData.훈련비 || 0),
+    // 자비부담금은 AI캠퍼스 판정의 유일한 근거다 (src/lib/course-category.ts).
+    // 여기서 빠뜨리면 업로드할 때마다 DB 의 자비부담금이 0 으로 덮여 판정이 무너진다.
+    // 2026-09-17 실측: CSV 에 10.0% 채워져 있는데 변환 후 0% 가 되어 안전장치에 걸렸다.
+    자비부담금: parseNumber(
+      (rawData as any).자비부담금 ??
+        (rawData as any)['자비 부담금'] ??
+        (rawData as any).자비_부담금 ??
+        0
+    ),
     정원: parseNumber(rawData.정원 || 0),
     총훈련일수: totalDays,
     총훈련시간: totalHours,
