@@ -1,0 +1,149 @@
+name: KDT 데이터셋 갱신
+
+# 왜 Actions 인가
+#   지금까지는 로컬에서 수집기를 돌려 엑셀을 만들고 Sheet1 을 CSV 로 내보내
+#   사람이 업로드했다. PC 가 꺼져 있으면 아무것도 안 돈다.
+#
+# 왜 Vercel Cron 이 아닌가
+#   수집은 몇 분이 걸린다. Vercel 함수 실행시간 상한을 못 버틴다.
+#   Actions 는 별도 러너라 시간 제약이 사실상 없다.
+#
+# 해외 러너에서 work24 가 되는가 — 잰다음 확인했다 (2026-09-17)
+#   Azure US Virginia 에서 목록·상세·성과 전부 200, 차단 0건.
+#   다만 한국보다 약 3.8배 느리다. 그래서 타임아웃을 넉넉히 준다.
+
+on:
+  schedule:
+    # 02:00 UTC = 11:00 KST. work24 가 한가한 시간대이고,
+    # 회사 PC 파이프라인(09:20/10:00/10:30 KST)과 겹치지 않는다.
+    # Actions 스케줄은 5~30분 늦는 일이 흔하다 — 이 파이프라인은 시각에 민감하지 않다.
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      full:
+        description: '전량 수집 (기본: 최근 창만)'
+        type: boolean
+        default: false
+      refresh_satisfaction:
+        description: '이미 값이 있는 만족도도 최신값으로 덮기'
+        type: boolean
+        default: false
+      force_upload:
+        description: '업로드 안전장치 우회 (내용을 확인했을 때만)'
+        type: boolean
+        default: false
+
+# 겹쳐 돌면 같은 데이터를 두 번 올린다. 앞엣것이 끝날 때까지 기다린다.
+concurrency:
+  group: kdt-dataset-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 파이썬 의존성
+        run: pip install --quiet requests
+
+      - name: 수집 창 결정
+        id: window
+        run: |
+          if [ "${{ inputs.full }}" = "true" ]; then
+            # 목록 API 는 3년치만 준다 (2021년 조회 → 0건). 그보다 넓게 잡아도 의미 없다.
+            START=$(date -u -d '3 years ago' +%Y0101)
+            END=$(date -u -d '+2 years' +%Y1231)
+            echo "mode=전량" >> "$GITHUB_OUTPUT"
+          else
+            # 매일은 최근 개강분과 앞으로 열릴 과정만. 옛 행은 마스터에서 그대로 승계된다.
+            START=$(date -u -d '6 months ago' +%Y%m%d)
+            END=$(date -u -d '+12 months' +%Y%m%d)
+            echo "mode=증분" >> "$GITHUB_OUTPUT"
+          fi
+          echo "start=$START" >> "$GITHUB_OUTPUT"
+          echo "end=$END"     >> "$GITHUB_OUTPUT"
+          echo "수집 창: $START ~ $END"
+
+      - name: 1) 마스터 내보내기 (Supabase → CSV)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node pipeline/export_master.mjs - master.csv
+
+      - name: 2) 수집 (work24 OpenAPI)
+        env:
+          WORK24_AUTH_KEY: ${{ secrets.WORK24_AUTH_KEY }}
+          PYTHONIOENCODING: utf-8
+        run: |
+          python pipeline/collect.py \
+            --start "${{ steps.window.outputs.start }}" \
+            --end   "${{ steps.window.outputs.end }}" \
+            --master master.csv \
+            --out collected.csv \
+            --workers 6
+
+      - name: 3) 만족도 대상 선별
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          python pipeline/pick_satisfaction_targets.py \
+            --input collected.csv --out sat_targets.csv --max-days 400
+
+      - name: 4) 회차별 만족도 수집
+        env:
+          PYTHONIOENCODING: utf-8
+        # 목록 API 의 stdgScor 는 100점·과정평균이라 쓸 수 없다.
+        # selectSatisfactionAjax.do 만 회차별 실값을 준다 (kdt_satisfaction_collector.py).
+        # 대상이 0건이면 수집기가 실패로 끝나므로 빈 결과를 만들어 넘긴다.
+        run: |
+          if [ "$(tail -n +2 sat_targets.csv | wc -l)" -gt 0 ]; then
+            python kdt_satisfaction_collector.py \
+              --input sat_targets.csv --output satisfaction.csv --delay 0.3 || true
+          fi
+          if [ ! -f satisfaction.csv ]; then
+            echo "훈련과정 ID,회차,만족도(5점)" > satisfaction.csv
+            echo "만족도 신규 수집 없음"
+          fi
+
+      - name: 5) 만족도 병합
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          python pipeline/merge_satisfaction.py \
+            --base collected.csv --satisfaction satisfaction.csv --out final.csv \
+            ${{ inputs.refresh_satisfaction && '--refresh' || '' }}
+
+      - name: 6) 업로드
+        env:
+          UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
+          SITE_URL: ${{ vars.SITE_URL || 'https://kdt-dataset-svth.vercel.app' }}
+          UPLOAD_FORCE: ${{ inputs.force_upload && '1' || '0' }}
+        run: node pipeline/upload.mjs final.csv
+
+      # ⚠ 이 리포는 공개다. 아티팩트는 런을 볼 수 있는 사람이면 내려받을 수 있다.
+      #   collected.csv/final.csv 에는 매출·선도기업 등 직접 만든 값이 들어 있다.
+      #   그래서 **실패했을 때만** 남긴다. 리포를 비공개로 돌리면 always() 로 바꿔도 된다.
+      - name: 산출물 보관 (실패 원인 추적용)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kdt-${{ steps.window.outputs.mode }}-${{ github.run_number }}
+          # 업로드가 막히면 무엇이 문제였는지 CSV 를 직접 봐야 한다.
+          path: |
+            collected.csv
+            final.csv
+            sat_targets.csv
+            satisfaction.csv
+          retention-days: 14
+          if-no-files-found: warn
