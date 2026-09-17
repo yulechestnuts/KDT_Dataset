@@ -120,6 +120,23 @@ function buildYearFields(
   return out;
 }
 
+/**
+ * `조정_YYYY년` 키를 떨군다.
+ *
+ * kdt_data 에는 `2021년`~`2027년` 만 있고 `조정_*` 컬럼은 없다. PostgREST 는
+ * 없는 컬럼이 하나라도 섞이면 요청 전체를 400(PGRST204)으로 거절하므로,
+ * 한 건이라도 남으면 적재가 통째로 실패한다.
+ * (조정값은 어차피 읽을 때 applyRevenueAdjustmentIfMissing 이 다시 계산한다)
+ */
+function stripMissingYearColumns(fields: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(fields)) {
+    if (k.startsWith('조정_')) continue;
+    out[k] = v;
+  }
+  return out;
+}
+
 export async function saveProcessedCourses(
   courses: ProcessedCourseData[]
 ): Promise<{ success: boolean; error?: string }> {
@@ -135,41 +152,49 @@ export async function saveProcessedCourses(
       const db = requireSupabaseAdmin();
 
       // 데이터 삽입
+      //
+      // ★ 컬럼명은 **DB 실제 이름(공백 표기)** 이어야 한다.
+      //   예전 코드는 `훈련과정_ID`·`수강신청_인원`·`매출_최대` 처럼 언더스코어로 보냈는데
+      //   kdt_data 의 실제 컬럼은 `훈련과정 ID`·`수강신청 인원`·`매출 최대` 다.
+      //   그래서 저장이 항상 PGRST204 로 실패했다 (2026-09-17 실증:
+      //   언더스코어 → 400 "Could not find the '매출_최대' column", 공백 → 201).
+      //   읽기 경로는 pickRowValue 가 두 표기를 모두 시도해서 이 불일치가 가려져 있었다.
+      //
+      //   DB 에 없는 컬럼을 하나라도 넣으면 요청 전체가 400 이 된다. 그래서
+      //   `원본훈련기관`·`평가인원`·`누적매출`·`취업인원`·`취업률`·`훈련유형`·
+      //   `조정_실매출대비`·`조정_YYYY년`·`is_leading_company_course` 등
+      //   **테이블에 존재하지 않는 키는 전부 뺐다.** 새 컬럼을 쓰고 싶으면
+      //   테이블에 먼저 추가할 것.
       const { error } = await db.from(TABLE_NAME).upsert(
         courses.map((course) => ({
           고유값: course.고유값,
           과정명: course.과정명,
-          훈련과정_ID: course['훈련과정 ID'],
+          '훈련과정 ID': course['훈련과정 ID'],
           회차: course.회차,
           훈련기관: course.훈련기관,
-          원본훈련기관: course.원본훈련기관,
           과정시작일: course.과정시작일,
           과정종료일: course.과정종료일,
-          수강신청_인원: course['수강신청 인원'],
+          '수강신청 인원': course['수강신청 인원'],
           수료인원: course.수료인원,
-          취업인원: course.취업인원,
-          취업인원_3개월: course['취업인원 (3개월)'],
-          취업인원_6개월: course['취업인원 (6개월)'],
+          '취업인원 (3개월)': course['취업인원 (3개월)'],
+          '취업인원 (6개월)': course['취업인원 (6개월)'],
           수료율: course.수료율,
-          취업률: course.취업률,
-          취업률_3개월: course['취업률 (3개월)'],
-          취업률_6개월: course['취업률 (6개월)'],
+          '취업률 (3개월)': course['취업률 (3개월)'],
+          '취업률 (6개월)': course['취업률 (6개월)'],
           만족도: course.만족도,
-          평가인원: course.평가인원,
           훈련비: course.훈련비,
           정원: course.정원,
-          총훈련일수: course.총훈련일수,
-          총훈련시간: course.총훈련시간,
-          누적매출: course.누적매출,
-          실_매출_대비: course['실 매출 대비'],
-          매출_최대: course['매출 최대'],
-          매출_최소: course['매출 최소'],
+          '총 훈련일수': course.총훈련일수,
+          '총 훈련시간': course.총훈련시간,
+          자비부담금: course.자비부담금,
+          '실 매출 대비': course['실 매출 대비'],
+          '매출 최대': course['매출 최대'],
+          '매출 최소': course['매출 최소'],
           // 연도 키는 리터럴로 나열하지 않는다 (@/lib/revenue-years).
           // 2026년까지만 박혀 있어서 2027년 매출이 저장되지 않았다 — 읽기 경로만
           // 동적화돼 있고 쓰기 경로에 같은 함정이 남아 있었다.
-          ...buildYearFields(course, saveYears),
-          조정_실매출대비: course.조정_실매출대비,
-          훈련유형: course.훈련유형,
+          // 조정_YYYY년 은 DB 에 컬럼이 없으므로 여기서 걸러낸다.
+          ...stripMissingYearColumns(buildYearFields(course, saveYears)),
           NCS명: course.NCS명,
           NCS코드: course.NCS코드,
           // 선도기업·파트너기관은 여기서 쓰지 않는다.
@@ -181,8 +206,6 @@ export async function saveProcessedCourses(
           // 읽기 경로(fetchCourseOverrides)가 고유값으로 얹어 준다.
           //
           // 사람이 고친 값을 저장하는 경로는 overrides 테이블에 직접 써야 한다.
-          is_leading_company_course: course.isLeadingCompanyCourse,
-          leading_company_partner_institution: course.leadingCompanyPartnerInstitution,
         })),
         {
           onConflict: '고유값',
