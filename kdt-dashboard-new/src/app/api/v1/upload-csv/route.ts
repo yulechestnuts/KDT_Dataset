@@ -6,9 +6,45 @@ import { RawCourseData } from '@/lib/backend/types';
 import { transformRawDataArray } from '@/lib/backend/data-transformer';
 import { generateHealthCheckReport } from '@/lib/backend/health-check';
 import { saveProcessedCourses } from '@/lib/backend/supabase-service';
+import { timingSafeEqual } from 'node:crypto';
+
+/**
+ * 이 엔드포인트는 7,230행짜리 데이터셋을 통째로 덮어쓴다. 그런데 인증이 한 줄도
+ * 없어서 URL 만 알면 누구나 POST 할 수 있었다. 수집이 자동화되면 이 경로가 매일
+ * 열리므로 토큰을 요구한다.
+ *
+ * `UPLOAD_TOKEN` 이 설정되지 않은 환경에서는 **열지 않고 막는다.** 미설정을
+ * "인증 없음"으로 해석하면 환경변수를 빠뜨린 순간 조용히 무방비로 돌아간다.
+ */
+function isAuthorized(request: NextRequest): { ok: true } | { ok: false; reason: string } {
+  const expected = process.env.UPLOAD_TOKEN;
+  if (!expected) {
+    return { ok: false, reason: 'UPLOAD_TOKEN 이 서버에 설정되지 않았습니다.' };
+  }
+
+  const header = request.headers.get('authorization') || '';
+  const provided = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+  if (!provided) return { ok: false, reason: '인증 토큰이 없습니다.' };
+
+  // 길이가 다르면 timingSafeEqual 이 던지므로 먼저 거른다.
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
+    return { ok: false, reason: '인증 토큰이 일치하지 않습니다.' };
+  }
+  return { ok: true };
+}
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = isAuthorized(request);
+    if (!auth.ok) {
+      return NextResponse.json(
+        { status: 'error', message: `업로드 권한이 없습니다. ${auth.reason}` },
+        { status: 401 }
+      );
+    }
+
     const formData = await request.formData();
     const file = formData.get('csv_file') as File;
 

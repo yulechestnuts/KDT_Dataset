@@ -1,6 +1,7 @@
 // Supabase 데이터 서비스
 
 import { supabase } from '@/lib/supabaseClient';
+import { requireSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { ProcessedCourseData } from './types';
 import { executeWithRetry, SupabaseConnectionError } from '@/lib/supabase-wrapper';
 import { resolveRevenueYears, resolveRevenueYearsFrom } from '@/lib/revenue-years';
@@ -10,6 +11,59 @@ import { normalizeCourseLink } from '@/lib/course-link';
 const DEBUG_RAW = process.env.DEBUG_SUPABASE === '1';
 
 const TABLE_NAME = process.env.SUPABASE_TABLE_NAME || 'kdt_data';
+
+/**
+ * 사람이 손으로 채우는 값만 모아 둔 테이블 (선도기업·파트너기관).
+ *
+ * kdt_data 는 수집기가 매일 upsert 하는 기계 테이블이 된다. 두 컬럼이 그 upsert
+ * 페이로드에 들어 있으므로, 수집기가 값을 모르는 순간 수작업 1,995건이 한 번에
+ * null 로 덮인다. 그래서 사람 값은 여기에만 두고 읽을 때 고유값으로 얹는다.
+ * (스키마: supabase-overrides-선도기업.sql)
+ */
+const OVERRIDES_TABLE = process.env.SUPABASE_OVERRIDES_TABLE || 'kdt_course_overrides';
+
+type CourseOverride = { 선도기업: string; 파트너기관: string };
+
+/**
+ * overrides 를 전량 읽어 고유값 → 값 맵으로 돌려준다.
+ *
+ * 실패하면 **빈 맵이 아니라 null** 을 돌려준다. 빈 맵으로 퇴화시키면 "오버라이드가
+ * 하나도 없다"와 "읽지 못했다"가 구분되지 않아, 조회 장애 한 번이 선도기업 전건
+ * 소실로 조용히 둔갑한다. null 이면 호출부가 kdt_data 에 남은 값을 그대로 쓴다.
+ */
+async function fetchCourseOverrides(): Promise<Map<string, CourseOverride> | null> {
+  try {
+    const map = new Map<string, CourseOverride>();
+    const pageSize = 1000;
+    for (let offset = 0; ; offset += pageSize) {
+      const { data, error } = await supabase
+        .from(OVERRIDES_TABLE)
+        .select('고유값, 선도기업, 파트너기관')
+        .order('고유값', { ascending: true })
+        .range(offset, offset + pageSize - 1);
+
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+
+      for (const row of data as any[]) {
+        const key = String(row.고유값 ?? '').trim();
+        if (!key) continue;
+        map.set(key, {
+          선도기업: String(row.선도기업 ?? '').trim(),
+          파트너기관: String(row.파트너기관 ?? '').trim(),
+        });
+      }
+      if (data.length < pageSize) break;
+    }
+    return map;
+  } catch (error) {
+    console.error(
+      `[overrides] ${OVERRIDES_TABLE} 조회 실패 — kdt_data 에 남은 값을 그대로 씁니다:`,
+      error
+    );
+    return null;
+  }
+}
 
 function parseNumeric(value: unknown, fallback: number = 0): number {
   if (value === null || value === undefined) return fallback;
@@ -76,8 +130,12 @@ export async function saveProcessedCourses(
       // 기존 데이터 삭제 (선택사항)
       // await supabase.from(TABLE_NAME).delete().neq('id', 0);
 
+      // 쓰기는 service_role 로만. anon 키는 프론트 번들에 실려 공개되므로
+      // kdt_data 에 RLS 를 걸어 anon 은 읽기만 하게 둔다. (supabaseAdmin.ts 참고)
+      const db = requireSupabaseAdmin();
+
       // 데이터 삽입
-      const { error } = await supabase.from(TABLE_NAME).upsert(
+      const { error } = await db.from(TABLE_NAME).upsert(
         courses.map((course) => ({
           고유값: course.고유값,
           과정명: course.과정명,
@@ -114,8 +172,15 @@ export async function saveProcessedCourses(
           훈련유형: course.훈련유형,
           NCS명: course.NCS명,
           NCS코드: course.NCS코드,
-          선도기업: course.선도기업,
-          파트너기관: course.파트너기관,
+          // 선도기업·파트너기관은 여기서 쓰지 않는다.
+          //
+          // 이 둘은 사람이 손으로 채운 값이고(2026-09-17 기준 1,995건),
+          // kdt_data 는 곧 수집기가 매일 upsert 하는 기계 테이블이 된다.
+          // 페이로드에 남겨 두면 값을 모르는 수집이 한 번 돌 때마다 1,995건이
+          // 통째로 null 이 된다. 정본은 kdt_course_overrides 이고,
+          // 읽기 경로(fetchCourseOverrides)가 고유값으로 얹어 준다.
+          //
+          // 사람이 고친 값을 저장하는 경로는 overrides 테이블에 직접 써야 한다.
           is_leading_company_course: course.isLeadingCompanyCourse,
           leading_company_partner_institution: course.leadingCompanyPartnerInstitution,
         })),
@@ -281,6 +346,26 @@ async function fetchProcessedCourses(): Promise<ProcessedCourseData[]> {
             'leading_company_partner_institution': (sample as any).leading_company_partner_institution,
             'is_leading_company_course': (sample as any).is_leading_company_course,
           });
+        }
+      }
+
+      // 사람 값(선도기업·파트너기관)을 얹는다. 매핑 **전에** 행에 직접 써넣어야
+      // 아래 rawPartnerInstitution 파생과 그 뒤 모든 계산이 같은 값을 본다.
+      const overrides = await fetchCourseOverrides();
+      if (overrides) {
+        let applied = 0;
+        for (const row of allRows) {
+          const ov = overrides.get(String(row?.고유값 ?? '').trim());
+          if (!ov) continue;
+          // 오버라이드가 사람이 정한 정본이다. 빈 문자열도 "비우기"라는 뜻이므로
+          // kdt_data 값으로 되메우지 않는다.
+          row.선도기업 = ov.선도기업;
+          row.파트너기관 = ov.파트너기관;
+          row.leading_company_partner_institution = ov.파트너기관;
+          applied += 1;
+        }
+        if (process.env.DEBUG_SUPABASE === '1') {
+          console.log(`[overrides] ${applied}/${allRows.length} 행에 적용`);
         }
       }
 
