@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { jsonResponse } from '@/lib/backend/json-response';
 import { calculateInstitutionStats } from '@/lib/backend/aggregation';
 import { RevenueMode } from '@/lib/backend/types';
-import { getProcessedCourses } from '@/lib/backend/supabase-service';
+import { getProcessedCourses, getRevenueDeriveStats } from '@/lib/backend/supabase-service';
 import { cacheManager, generateCacheKey } from '@/lib/backend/cache';
 import { parseDate } from '@/lib/backend/parsers';
 import { applyRevenueAdjustment } from '@/lib/backend/revenue-engine';
@@ -344,6 +344,9 @@ export async function GET(request: NextRequest) {
       meta: {
         ...meta,
         ...filterMeta,
+        // 매출을 몇 건이나 계산으로 채웠는지. 0 이면 마스터가 전부 채워져 있다는 뜻이고,
+        // 갑자기 커지면 수집기가 매출 컬럼을 못 가져오고 있다는 신호다.
+        revenue_derive: getRevenueDeriveStats(),
         applied_filters: {
           year,
           month,

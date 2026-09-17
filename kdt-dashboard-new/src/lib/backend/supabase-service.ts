@@ -2,6 +2,7 @@
 
 import { supabase } from '@/lib/supabaseClient';
 import { requireSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { fillMissingRevenue, type DeriveStats } from '@/lib/revenue-derive';
 import { ProcessedCourseData } from './types';
 import { executeWithRetry, SupabaseConnectionError } from '@/lib/supabase-wrapper';
 import { resolveRevenueYears, resolveRevenueYearsFrom } from '@/lib/revenue-years';
@@ -23,6 +24,18 @@ const TABLE_NAME = process.env.SUPABASE_TABLE_NAME || 'kdt_data';
 const OVERRIDES_TABLE = process.env.SUPABASE_OVERRIDES_TABLE || 'kdt_course_overrides';
 
 type CourseOverride = { 선도기업: string; 파트너기관: string };
+
+/**
+ * 직전 조회에서 매출을 몇 건이나 계산으로 채웠는지. API 응답 meta 로 노출한다.
+ *
+ * 이게 갑자기 커지면 "수집기가 매출 컬럼을 못 가져오고 있다"는 신호이고,
+ * 0 이면 마스터가 전부 채워져 있다는 뜻이다. 자동 수집이 정상인지 보는 창이다.
+ */
+let lastRevenueDeriveStats: DeriveStats = { total: 0, filled: 0, unresolvable: 0 };
+
+export function getRevenueDeriveStats(): DeriveStats {
+  return lastRevenueDeriveStats;
+}
 
 /**
  * overrides 를 전량 읽어 고유값 → 값 맵으로 돌려준다.
@@ -370,6 +383,21 @@ async function fetchProcessedCourses(): Promise<ProcessedCourseData[]> {
             'is_leading_company_course': (sample as any).is_leading_company_course,
           });
         }
+      }
+
+      // 매출 기본값이 비어 있는 행을 계산으로 채운다.
+      //
+      // 지금까지 이 컬럼들은 엑셀 마스터에서 사람이 넣던 값이다. 수집이 자동화되면
+      // 마스터에 없는 신규 과정이 매일 들어오는데 수집기는 이 값을 채우지 않아
+      // 그대로 두면 새 과정이 전부 매출 0 으로 보인다.
+      // 저장값이 있으면 절대 덮어쓰지 않으므로 기존 숫자는 바뀌지 않는다.
+      // (산식은 저장값 전수와 대조해 불일치 0 건 확인 — revenue-derive.ts)
+      lastRevenueDeriveStats = fillMissingRevenue(allRows);
+      if (lastRevenueDeriveStats.filled > 0 || process.env.DEBUG_SUPABASE === '1') {
+        console.log(
+          `[매출파생] ${lastRevenueDeriveStats.filled}/${lastRevenueDeriveStats.total}행 계산으로 채움` +
+            ` (계산불가 ${lastRevenueDeriveStats.unresolvable}행)`
+        );
       }
 
       // 사람 값(선도기업·파트너기관)을 얹는다. 매핑 **전에** 행에 직접 써넣어야
