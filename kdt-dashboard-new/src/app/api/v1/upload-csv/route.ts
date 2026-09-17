@@ -6,7 +6,28 @@ import { RawCourseData } from '@/lib/backend/types';
 import { transformRawDataArray } from '@/lib/backend/data-transformer';
 import { generateHealthCheckReport } from '@/lib/backend/health-check';
 import { saveProcessedCourses } from '@/lib/backend/supabase-service';
+import { runUploadGuards } from '@/lib/backend/upload-guards';
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { timingSafeEqual } from 'node:crypto';
+
+/**
+ * 현재 DB 행 수. 급감 안전장치의 기준.
+ *
+ * 세지 못하면 undefined 를 돌려준다 — 그 경우 급감 검사만 건너뛰고 나머지는 돈다.
+ * 여기서 실패했다고 업로드 전체를 막으면 조회 장애가 적재 장애로 번진다.
+ */
+async function countExistingRows(): Promise<number | undefined> {
+  try {
+    if (!supabaseAdmin) return undefined;
+    const { count, error } = await supabaseAdmin
+      .from(process.env.SUPABASE_TABLE_NAME || 'kdt_data')
+      .select('id', { count: 'exact', head: true });
+    if (error) return undefined;
+    return typeof count === 'number' ? count : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * 이 엔드포인트는 7,230행짜리 데이터셋을 통째로 덮어쓴다. 그런데 인증이 한 줄도
@@ -81,6 +102,26 @@ export async function POST(request: NextRequest) {
 
     // Health Check 리포트 생성
     const healthCheck = generateHealthCheckReport(processedData);
+
+    // 안전장치 — 자동 수집이 데이터를 조용히 망가뜨리는 것을 막는다.
+    // `?force=1` 로 넘길 수 있지만, 그건 사람이 내용을 보고 판단했을 때만 쓴다.
+    const force = request.nextUrl.searchParams.get('force') === '1';
+    const existingRowCount = await countExistingRows();
+    const guard = runUploadGuards(processedData, { existingRowCount });
+    if (!guard.ok && !force) {
+      return NextResponse.json(
+        {
+          status: 'error',
+          message:
+            '안전장치에 걸려 저장하지 않았습니다. 데이터는 그대로입니다. ' +
+            '내용을 확인한 뒤 의도한 것이 맞으면 ?force=1 로 다시 보내세요.',
+          violations: guard.violations,
+          data: { parsed_courses: processedData.length, saved_courses: 0 },
+          health_check: healthCheck,
+        },
+        { status: 422 }
+      );
+    }
 
     // Supabase에 저장
     const saveResult = await saveProcessedCourses(processedData);
