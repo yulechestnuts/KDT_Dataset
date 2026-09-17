@@ -18,6 +18,10 @@ on:
     # 회사 PC 파이프라인(09:20/10:00/10:30 KST)과 겹치지 않는다.
     # Actions 스케줄은 5~30분 늦는 일이 흔하다 — 이 파이프라인은 시각에 민감하지 않다.
     - cron: '0 2 * * *'
+    # 일요일 03:00 UTC = 12:00 KST — 3년 전량.
+    # 매일 창은 좁아서 오래된 과정의 실적 확정(6개월 취업률 등)을 놓친다.
+    # 주 1회 전량이 그걸 따라잡는다.
+    - cron: '0 3 * * 0'
   workflow_dispatch:
     inputs:
       full:
@@ -41,7 +45,7 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 150
 
     steps:
       - uses: actions/checkout@v4
@@ -60,15 +64,20 @@ jobs:
       - name: 수집 창 결정
         id: window
         run: |
-          if [ "${{ inputs.full }}" = "true" ]; then
+          # 일요일 정기 실행도 전량으로 돈다 (schedule 은 cron 문자열로 구분한다).
+          FULL="${{ inputs.full }}"
+          if [ "${{ github.event.schedule }}" = "0 3 * * 0" ]; then FULL=true; fi
+          if [ "$FULL" = "true" ]; then
             # 목록 API 는 3년치만 준다 (2021년 조회 → 0건). 그보다 넓게 잡아도 의미 없다.
             START=$(date -u -d '3 years ago' +%Y0101)
             END=$(date -u -d '+2 years' +%Y1231)
             echo "mode=전량" >> "$GITHUB_OUTPUT"
           else
-            # 매일은 최근 개강분과 앞으로 열릴 과정만. 옛 행은 마스터에서 그대로 승계된다.
-            START=$(date -u -d '6 months ago' +%Y%m%d)
-            END=$(date -u -d '+12 months' +%Y%m%d)
+            # 매일은 좁게 — 신규 개설과 갓 끝난 과정만.
+            # 넓게 잡으면 오래 걸린다 (18개월 창 = 해외 러너에서 36분, 2026-09-17 실측).
+            # 과거 실적 확정은 주 1회 전량이 따라잡으므로 여기서 넓힐 필요가 없다.
+            START=$(date -u -d '2 months ago' +%Y%m%d)
+            END=$(date -u -d '+6 months' +%Y%m%d)
             echo "mode=증분" >> "$GITHUB_OUTPUT"
           fi
           echo "start=$START" >> "$GITHUB_OUTPUT"
@@ -91,7 +100,7 @@ jobs:
             --end   "${{ steps.window.outputs.end }}" \
             --master master.csv \
             --out collected.csv \
-            --workers 6
+            --workers 10
 
       # 만족도는 종료 후 한 달이면 고정된다 (2026-09-17 실측: 30일 넘은 32건 전수 일치,
       # 16~20일 구간은 25건 중 13건이 움직였다). 그래서 조회 대상을 시간으로 자른다.
